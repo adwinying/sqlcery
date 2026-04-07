@@ -1,0 +1,23 @@
+version: 2
+
+project_name: sqlcery
+
+builds:
+  - id: sqlcery
+    main: ./cmd/sqlcery
+    binary: sqlcery
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - formats:
+      - binary

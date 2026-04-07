@@ -1,0 +1,243 @@
+package db
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"net"
+	"net/url"
+	"strconv"
+	"strings"
+
+	"github.com/adwinying/sqlcery/internal/config"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
+)
+
+var openPostgresDB = func(connConfig pgx.ConnConfig) *sql.DB {
+	return stdlib.OpenDB(connConfig)
+}
+
+func openPostgres(ctx context.Context, connection config.Connection, settings lifecycleSettings) (*SQLAdapter, error) {
+	options := connection.Postgres
+	connConfig, err := postgresConnConfigWithLifecycle(options, config.ConnectionLifecycleOptions{
+		ConnectTimeout: config.Duration(settings.ConnectTimeout),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	closeResources := func() error { return nil }
+	if connection.SSHHost != "" {
+		tunnel, err := openSSHTunnel(ctx, connection.SSHHost)
+		if err != nil {
+			return nil, fmt.Errorf("configure ssh tunnel for postgres database %q on %s:%d: %w", options.Database, options.Host, options.Port, err)
+		}
+
+		connConfig.DialFunc = tunnel.dialContext
+		closeResources = tunnel.close
+	}
+
+	db := openPostgresDB(*connConfig)
+	closed := false
+	defer func() {
+		if !closed {
+			_ = db.Close()
+			_ = closeResources()
+		}
+	}()
+
+	applyLifecycleSettings(db, settings)
+
+	if err := pingDatabase(ctx, db, settings); err != nil {
+		return nil, wrapConnectionError("postgres", fmt.Sprintf("ping postgres database %q on %s:%d", options.Database, options.Host, options.Port), err)
+	}
+
+	adapter, err := newAdapter(
+		sqlRunner{db: db},
+		PostgresDialect(),
+		postgresMetadata{runner: sqlRunner{db: db}},
+		wrapPingWithTimeout(db.PingContext, settings.HealthCheckTimeout),
+		func() error {
+			closeErr := db.Close()
+			if err := closeResources(); err != nil && closeErr == nil {
+				closeErr = err
+			}
+			return closeErr
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	closed = true
+	return adapter, nil
+}
+
+func postgresConnConfig(options config.PostgresConnectionOptions) (*pgx.ConnConfig, error) {
+	return postgresConnConfigWithLifecycle(options, config.ConnectionLifecycleOptions{})
+}
+
+func postgresConnConfigWithLifecycle(options config.PostgresConnectionOptions, lifecycle config.ConnectionLifecycleOptions) (*pgx.ConnConfig, error) {
+	connConfig, err := pgx.ParseConfig(postgresConnectionString(options))
+	if err != nil {
+		return nil, fmt.Errorf("parse postgres connection config for database %q on %s:%d: %w", options.Database, options.Host, options.Port, err)
+	}
+
+	connConfig.ConnectTimeout = resolveLifecycleSettings("postgres", lifecycle).ConnectTimeout
+
+	return connConfig, nil
+}
+
+func postgresConnectionString(options config.PostgresConnectionOptions) string {
+	connectionURL := &url.URL{
+		Scheme: "postgres",
+		Host:   net.JoinHostPort(options.Host, strconv.Itoa(options.Port)),
+		Path:   "/" + options.Database,
+	}
+
+	if options.Password == "" {
+		connectionURL.User = url.User(options.Username)
+	} else {
+		connectionURL.User = url.UserPassword(options.Username, options.Password)
+	}
+
+	return connectionURL.String()
+}
+
+type postgresMetadata struct {
+	runner Runner
+}
+
+func (m postgresMetadata) Tables(ctx context.Context, filter TableFilter) ([]Table, error) {
+	query := strings.Builder{}
+	query.WriteString("SELECT table_catalog, table_schema, table_name, table_type FROM information_schema.tables WHERE table_type IN ('BASE TABLE', 'VIEW')")
+
+	args := make([]any, 0, 2)
+	if schema := strings.TrimSpace(filter.Schema); schema != "" {
+		args = append(args, schema)
+		query.WriteString(" AND table_schema = $")
+		query.WriteString(strconv.Itoa(len(args)))
+	} else {
+		query.WriteString(" AND table_schema NOT IN ('information_schema', 'pg_catalog')")
+	}
+
+	if catalog := strings.TrimSpace(filter.Catalog); catalog != "" {
+		args = append(args, catalog)
+		query.WriteString(" AND table_catalog = $")
+		query.WriteString(strconv.Itoa(len(args)))
+	}
+
+	query.WriteString(" ORDER BY table_schema, table_name")
+
+	rows, err := m.runner.QueryContext(ctx, query.String(), args...)
+	if err != nil {
+		return nil, fmt.Errorf("list postgres tables: %w", err)
+	}
+	defer rows.Close()
+
+	tables := make([]Table, 0)
+	for rows.Next() {
+		var table Table
+		var tableType string
+		if err := rows.Scan(&table.Catalog, &table.Schema, &table.Name, &tableType); err != nil {
+			return nil, fmt.Errorf("scan postgres table metadata: %w", err)
+		}
+
+		table.Type = normalizeTableType(tableType)
+		tables = append(tables, table)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate postgres tables: %w", err)
+	}
+
+	return tables, nil
+}
+
+func (m postgresMetadata) Columns(ctx context.Context, table TableRef) ([]Column, error) {
+	schema := strings.TrimSpace(table.Schema)
+	if schema == "" {
+		schema = "public"
+	}
+
+	const query = "SELECT a.attname, a.attnum, pg_catalog.format_type(a.atttypid, a.atttypmod), NOT a.attnotnull, pg_catalog.pg_get_expr(ad.adbin, ad.adrelid) FROM pg_catalog.pg_attribute AS a JOIN pg_catalog.pg_class AS c ON c.oid = a.attrelid JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace LEFT JOIN pg_catalog.pg_attrdef AS ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum"
+
+	rows, err := m.runner.QueryContext(ctx, query, schema, table.Name)
+	if err != nil {
+		return nil, fmt.Errorf("list postgres columns for %s: %w", PostgresDialect().QuoteIdentifier(schema, table.Name), err)
+	}
+	defer rows.Close()
+
+	columns := make([]Column, 0)
+	for rows.Next() {
+		var column Column
+		var defaultValue sql.NullString
+		if err := rows.Scan(&column.Name, &column.Position, &column.Type, &column.Nullable, &defaultValue); err != nil {
+			return nil, fmt.Errorf("scan postgres column metadata: %w", err)
+		}
+
+		column.DefaultValue = nullStringPointer(defaultValue)
+		columns = append(columns, column)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate postgres columns for %s: %w", PostgresDialect().QuoteIdentifier(schema, table.Name), err)
+	}
+
+	return columns, nil
+}
+
+func (m postgresMetadata) PrimaryKeys(ctx context.Context, table TableRef) ([]PrimaryKey, error) {
+	schema := strings.TrimSpace(table.Schema)
+	if schema == "" {
+		schema = "public"
+	}
+
+	const query = "SELECT tc.constraint_name, kcu.column_name, kcu.ordinal_position FROM information_schema.table_constraints AS tc JOIN information_schema.key_column_usage AS kcu ON tc.constraint_catalog = kcu.constraint_catalog AND tc.constraint_schema = kcu.constraint_schema AND tc.constraint_name = kcu.constraint_name WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = $1 AND tc.table_name = $2 ORDER BY kcu.ordinal_position"
+
+	rows, err := m.runner.QueryContext(ctx, query, schema, table.Name)
+	if err != nil {
+		return nil, fmt.Errorf("list postgres primary keys for %s: %w", PostgresDialect().QuoteIdentifier(schema, table.Name), err)
+	}
+	defer rows.Close()
+
+	primaryKeys := make([]PrimaryKey, 0)
+	for rows.Next() {
+		var key PrimaryKey
+		if err := rows.Scan(&key.Name, &key.Column, &key.Position); err != nil {
+			return nil, fmt.Errorf("scan postgres primary key metadata: %w", err)
+		}
+
+		primaryKeys = append(primaryKeys, key)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate postgres primary keys for %s: %w", PostgresDialect().QuoteIdentifier(schema, table.Name), err)
+	}
+
+	return primaryKeys, nil
+}
+
+func (postgresMetadata) Types(context.Context) ([]TypeInfo, error) {
+	return cloneTypes(postgresTypeInfo), nil
+}
+
+var postgresTypeInfo = []TypeInfo{
+	{Schema: "pg_catalog", Name: "bigint"},
+	{Schema: "pg_catalog", Name: "boolean"},
+	{Schema: "pg_catalog", Name: "bytea"},
+	{Schema: "pg_catalog", Name: "date"},
+	{Schema: "pg_catalog", Name: "double precision"},
+	{Schema: "pg_catalog", Name: "integer"},
+	{Schema: "pg_catalog", Name: "jsonb"},
+	{Schema: "pg_catalog", Name: "numeric"},
+	{Schema: "pg_catalog", Name: "real"},
+	{Schema: "pg_catalog", Name: "smallint"},
+	{Schema: "pg_catalog", Name: "text"},
+	{Schema: "pg_catalog", Name: "time"},
+	{Schema: "pg_catalog", Name: "timestamp"},
+	{Schema: "pg_catalog", Name: "timestamptz"},
+	{Schema: "pg_catalog", Name: "uuid"},
+	{Schema: "pg_catalog", Name: "varchar"},
+}

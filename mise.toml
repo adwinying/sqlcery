@@ -1,5 +1,5 @@
 [tools]
-go = "1.22.12"
+go = "1.24.2"
 "npm:figlet" = "latest"
 
 [hooks]
@@ -12,6 +12,22 @@ echo "$(go version)"
 dir = "../webdev"
 description = "Start webdev"
 run = "docker compose up -d mysql8 pgsql"
+
+[tasks.fmt]
+description = "Format Go code"
+run = "gofmt -w ."
+
+[tasks.test]
+description = "Run Go tests"
+run = "go test ./..."
+
+[tasks.lint]
+description = "Run golangci-lint"
+run = "go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run ./..."
+
+[tasks.release-snapshot]
+description = "Build snapshot release binaries"
+run = "go run github.com/goreleaser/goreleaser/v2@v2.15.2 build --snapshot --clean --config .goreleaser.yaml"
 
 [settings]
 experimental = true
