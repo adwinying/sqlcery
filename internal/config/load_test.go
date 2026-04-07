@@ -403,6 +403,44 @@ func TestLoadConnectionsDecodesSSHHost(t *testing.T) {
 	}
 }
 
+func TestLoadConnectionsSupportsFlatMySQLFields(t *testing.T) {
+	configHome := t.TempDir()
+	workingDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	globalDir := filepath.Join(configHome, DirName)
+	if err := os.MkdirAll(globalDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	localPath := filepath.Join(workingDir, ConnectionsFileName)
+	if err := os.WriteFile(localPath, []byte("[connection.mysql]\ntype = \"mysql\"\nhost = \"127.0.0.1\"\nport = 3307\nusername = \"root\"\npassword = \"password\"\ndatabase = \"sqlcery\"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	result, err := LoadConnections[Connections](workingDir)
+	if err != nil {
+		t.Fatalf("LoadConnections() error = %v", err)
+	}
+
+	connection := result.Value.Connection["mysql"]
+	if got, want := connection.MySQL.Host, "127.0.0.1"; got != want {
+		t.Fatalf("connection.MySQL.Host = %q, want %q", got, want)
+	}
+	if got, want := connection.MySQL.Port, 3307; got != want {
+		t.Fatalf("connection.MySQL.Port = %d, want %d", got, want)
+	}
+	if got, want := connection.MySQL.Database, "sqlcery"; got != want {
+		t.Fatalf("connection.MySQL.Database = %q, want %q", got, want)
+	}
+	if got, want := connection.MySQL.Username, "root"; got != want {
+		t.Fatalf("connection.MySQL.Username = %q, want %q", got, want)
+	}
+	if got, want := connection.MySQL.Password, "password"; got != want {
+		t.Fatalf("connection.MySQL.Password = %q, want %q", got, want)
+	}
+}
+
 func TestConnectionValidate(t *testing.T) {
 	tests := []struct {
 		name    string

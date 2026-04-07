@@ -96,3 +96,46 @@ func TestDurationString(t *testing.T) {
 		t.Fatalf("String() = %q, want %q", got, want)
 	}
 }
+
+func TestConnectionValidateSupportsFlatMySQLFields(t *testing.T) {
+	err := Connection{
+		Type:     "mysql",
+		Host:     "127.0.0.1",
+		Port:     3307,
+		Database: "sqlcery",
+		Username: "root",
+		Password: "password",
+	}.Validate()
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestConnectionNormalizedCopiesFlatFieldsIntoMySQLOptions(t *testing.T) {
+	connection := Connection{
+		Type:     "mysql",
+		Host:     "127.0.0.1",
+		Port:     3307,
+		Database: "sqlcery",
+		Username: "root",
+		Password: "password",
+	}
+
+	normalized := connection.Normalized()
+
+	if got, want := normalized.MySQL.Host, "127.0.0.1"; got != want {
+		t.Fatalf("normalized.MySQL.Host = %q, want %q", got, want)
+	}
+	if got, want := normalized.MySQL.Port, 3307; got != want {
+		t.Fatalf("normalized.MySQL.Port = %d, want %d", got, want)
+	}
+	if got, want := normalized.MySQL.Database, "sqlcery"; got != want {
+		t.Fatalf("normalized.MySQL.Database = %q, want %q", got, want)
+	}
+	if got, want := normalized.MySQL.Username, "root"; got != want {
+		t.Fatalf("normalized.MySQL.Username = %q, want %q", got, want)
+	}
+	if got, want := normalized.MySQL.Password, "password"; got != want {
+		t.Fatalf("normalized.MySQL.Password = %q, want %q", got, want)
+	}
+}

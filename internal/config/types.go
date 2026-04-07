@@ -56,6 +56,11 @@ func (c Connections) Validate() error {
 
 type Connection struct {
 	Type      string                     `toml:"type"`
+	Host      string                     `toml:"host"`
+	Port      int                        `toml:"port"`
+	Database  string                     `toml:"database"`
+	Username  string                     `toml:"username"`
+	Password  string                     `toml:"password"`
 	SQLite    SQLiteConnectionOptions    `toml:"sqlite"`
 	Postgres  PostgresConnectionOptions  `toml:"postgres"`
 	MySQL     MySQLConnectionOptions     `toml:"mysql"`
@@ -64,6 +69,8 @@ type Connection struct {
 }
 
 func (c Connection) Validate() error {
+	c = c.Normalized()
+
 	if c.SSHHost != "" && strings.TrimSpace(c.SSHHost) == "" {
 		return fmt.Errorf("ssh_host must not be blank")
 	}
@@ -98,6 +105,76 @@ func (c Connection) Validate() error {
 	}
 
 	return nil
+}
+
+func (c Connection) Normalized() Connection {
+	normalized := c
+
+	switch normalized.Type {
+	case "sqlite":
+		if strings.TrimSpace(normalized.SQLite.Database) == "" {
+			normalized.SQLite.Database = normalized.Database
+		}
+	case "postgres":
+		normalized.Postgres = mergePostgresConnectionOptions(normalized.Postgres, normalized)
+	case "mysql":
+		normalized.MySQL = mergeMySQLConnectionOptions(normalized.MySQL, normalized)
+	}
+
+	return normalized
+}
+
+func (c Connections) Normalized() Connections {
+	if len(c.Connection) == 0 {
+		return c
+	}
+
+	normalized := Connections{Connection: make(map[string]Connection, len(c.Connection))}
+	for name, connection := range c.Connection {
+		normalized.Connection[name] = connection.Normalized()
+	}
+
+	return normalized
+}
+
+func mergePostgresConnectionOptions(options PostgresConnectionOptions, fallback Connection) PostgresConnectionOptions {
+	if strings.TrimSpace(options.Host) == "" {
+		options.Host = fallback.Host
+	}
+	if options.Port == 0 {
+		options.Port = fallback.Port
+	}
+	if strings.TrimSpace(options.Database) == "" {
+		options.Database = fallback.Database
+	}
+	if strings.TrimSpace(options.Username) == "" {
+		options.Username = fallback.Username
+	}
+	if strings.TrimSpace(options.Password) == "" {
+		options.Password = fallback.Password
+	}
+
+	return options
+}
+
+func mergeMySQLConnectionOptions(options MySQLConnectionOptions, fallback Connection) MySQLConnectionOptions {
+	if strings.TrimSpace(options.Host) == "" {
+		options.Host = fallback.Host
+	}
+	if options.Port == 0 {
+		options.Port = fallback.Port
+	}
+	if strings.TrimSpace(options.Database) == "" {
+		options.Database = fallback.Database
+	}
+	if strings.TrimSpace(options.Username) == "" {
+		options.Username = fallback.Username
+	}
+	if strings.TrimSpace(options.Password) == "" {
+		options.Password = fallback.Password
+	}
+
+	return options
 }
 
 type ConnectionLifecycleOptions struct {

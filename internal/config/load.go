@@ -78,6 +78,8 @@ func load[T any](cwd string, fileName string) (Result[T], error) {
 		return result, &InvalidConfigError{Op: "validate", Path: validationSource(result.Loaded, fileName), Err: err}
 	}
 
+	result.Value = normalizeValue(result.Value)
+
 	return result, nil
 }
 
@@ -91,6 +93,14 @@ func validateValue[T any](value T) error {
 	}
 
 	return nil
+}
+
+func normalizeValue[T any](value T) T {
+	if normalized, ok := any(value).(interface{ Normalized() T }); ok {
+		return normalized.Normalized()
+	}
+
+	return value
 }
 
 func validationSource(loaded []string, fileName string) string {
