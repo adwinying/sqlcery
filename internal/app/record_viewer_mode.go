@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/adwinying/sqlcery/internal/db"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
@@ -13,7 +15,28 @@ const (
 	defaultRecordViewerHeight = 24
 	minimumRecordViewerWidth  = 20
 	minimumRecordViewerHeight = 8
+	recordViewerPageSize      = 300
+	recordViewerPrimaryKeyTag = "[pk] "
 )
+
+var (
+	recordViewerPrimaryKeyHeaderStyle = lipgloss.NewStyle().Bold(true).Underline(true).Foreground(lipgloss.AdaptiveColor{Light: "166", Dark: "214"})
+	recordViewerPrimaryKeyValueStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.AdaptiveColor{Light: "166", Dark: "214"})
+)
+
+type recordViewerColumn struct {
+	Header     string
+	PrimaryKey bool
+}
+
+type recordViewerPageContext struct {
+	Index      int
+	Number     int
+	TotalPages int
+	StartRow   int
+	EndRow     int
+	TotalRows  int
+}
 
 type recordViewerModeModel struct {
 	width  int
@@ -35,17 +58,19 @@ func (m *recordViewerModeModel) SetSize(width, height int) {
 func (m recordViewerModeModel) View(query QueryContext) string {
 	latest := query.LatestResult
 	if latest == nil || latest.PreservedResult == nil {
-		return "Record viewer\n\nRun a query that returns rows, then press ctrl+x."
+		return "Record viewer\n\nRun a query that returns rows, then press ctrl+x or ctrl+3."
 	}
 
 	result := latest.PreservedResult
+	page := recordViewerPageContextFor(query.ViewerPage, len(result.Rows))
 	header := []string{
 		"Record viewer",
 		fmt.Sprintf("Query: %s", summarizeViewerQuery(latest.Query, m.width)),
 		fmt.Sprintf("Rows: %d  Columns: %d", len(result.Rows), len(result.Columns)),
+		fmt.Sprintf("Page: %d/%d  Showing rows %s", page.Number, page.TotalPages, formatRecordViewerRowRange(page)),
 	}
 
-	body := renderRecordViewerTable(result, m.width, m.height-len(header)-2)
+	body := renderRecordViewerTable(result, query.ViewerPage, m.width, m.height-len(header)-2)
 	if body == "" {
 		body = "(no visible rows)"
 	}
@@ -54,7 +79,7 @@ func (m recordViewerModeModel) View(query QueryContext) string {
 }
 
 func (m recordViewerModeModel) Footer(connectionName, dialect string, query QueryContext) string {
-	parts := []string{"Record viewer"}
+	parts := []string{"Record viewer", fmt.Sprintf("layout %s", layoutLabel(query.Layout))}
 	if label := strings.TrimSpace(connectionName); label != "" {
 		parts = append(parts, fmt.Sprintf("connection %s", label))
 	}
@@ -62,32 +87,51 @@ func (m recordViewerModeModel) Footer(connectionName, dialect string, query Quer
 		parts = append(parts, fmt.Sprintf("dialect %s", label))
 	}
 	if latest := query.LatestResult; latest != nil && latest.PreservedResult != nil {
-		parts = append(parts, fmt.Sprintf("%d rows", len(latest.PreservedResult.Rows)))
+		page := recordViewerPageContextFor(query.ViewerPage, len(latest.PreservedResult.Rows))
+		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
 	}
-	parts = append(parts, "ctrl+x mode", "ctrl+c quit")
+	if running := formatRunningIndicator(query.Running); running != "" {
+		parts = append(parts, running)
+	}
+	parts = append(parts, "ctrl+u prev page", "ctrl+d next page", "ctrl+x focus", "ctrl+1 split", "ctrl+2 command", "ctrl+3 viewer", "ctrl+c quit")
 	return strings.Join(parts, " | ")
 }
 
-func renderRecordViewerTable(result *db.ResultSet, width, _ int) string {
+func renderRecordViewerTable(result *db.ResultSet, page, width, _ int) string {
 	if result == nil {
 		return ""
 	}
 
-	columns := viewerColumnNames(result.Columns)
-	widths := viewerColumnWidths(columns, result.Rows)
-	viewerRows := make([][]string, 0, len(result.Rows))
-	for _, row := range result.Rows {
+	columns := viewerColumns(result.Columns)
+	pageRows, _ := recordViewerRowsForPage(result.Rows, page)
+	widths := viewerColumnWidths(columns, pageRows)
+	viewerRows := make([][]string, 0, len(pageRows))
+	for _, row := range pageRows {
 		values := make([]string, len(columns))
 		for i := range columns {
+			formatted := ""
 			if i < len(row.Values) {
-				values[i] = formatRecordViewerValue(row.Values[i])
+				formatted = formatRecordViewerValue(row.Values[i])
 			}
+			if columns[i].PrimaryKey {
+				values[i] = recordViewerPrimaryKeyValueStyle.Render(formatted)
+				continue
+			}
+			values[i] = formatted
 		}
 		viewerRows = append(viewerRows, values)
 	}
 
+	headers := make([]string, len(columns))
+	for i, column := range columns {
+		headers[i] = column.Header
+		if column.PrimaryKey {
+			headers[i] = recordViewerPrimaryKeyHeaderStyle.Render(column.Header)
+		}
+	}
+
 	lines := []string{
-		renderInlineResultLine(columns, widths),
+		renderInlineResultLine(headers, widths),
 		renderInlineSeparator(widths),
 	}
 
@@ -102,22 +146,26 @@ func renderRecordViewerTable(result *db.ResultSet, width, _ int) string {
 	return trimRenderedWidth(strings.Join(lines, "\n"), width)
 }
 
-func viewerColumnNames(columns []db.ResultColumn) []string {
-	names := make([]string, 0, len(columns))
+func viewerColumns(columns []db.ResultColumn) []recordViewerColumn {
+	names := make([]recordViewerColumn, 0, len(columns))
 	for i, column := range columns {
 		name := strings.TrimSpace(column.Name)
 		if name == "" {
 			name = fmt.Sprintf("column_%d", i+1)
 		}
-		names = append(names, name)
+		header := name
+		if column.PrimaryKey != nil {
+			header = recordViewerPrimaryKeyTag + header
+		}
+		names = append(names, recordViewerColumn{Header: header, PrimaryKey: column.PrimaryKey != nil})
 	}
 	return names
 }
 
-func viewerColumnWidths(columns []string, rows []db.ResultRow) []int {
+func viewerColumnWidths(columns []recordViewerColumn, rows []db.ResultRow) []int {
 	widths := make([]int, len(columns))
 	for i, column := range columns {
-		widths[i] = runeWidth(column)
+		widths[i] = ansi.StringWidth(column.Header)
 	}
 	for _, row := range rows {
 		for i := range columns {
@@ -163,6 +211,78 @@ func formatRecordViewerValue(value db.ResultValue) string {
 	return fmt.Sprint(value.Value)
 }
 
+func recordViewerRowCount(latest *LatestResultContext) int {
+	if latest == nil || latest.PreservedResult == nil {
+		return 0
+	}
+
+	return len(latest.PreservedResult.Rows)
+}
+
+func clampRecordViewerPage(page, totalRows int) int {
+	totalPages := recordViewerTotalPages(totalRows)
+	if totalPages <= 1 {
+		return 0
+	}
+	if page < 0 {
+		return 0
+	}
+	if page >= totalPages {
+		return totalPages - 1
+	}
+	return page
+}
+
+func recordViewerTotalPages(totalRows int) int {
+	if totalRows <= 0 {
+		return 1
+	}
+
+	return (totalRows-1)/recordViewerPageSize + 1
+}
+
+func recordViewerPageContextFor(page, totalRows int) recordViewerPageContext {
+	clamped := clampRecordViewerPage(page, totalRows)
+	context := recordViewerPageContext{
+		Index:      clamped,
+		Number:     clamped + 1,
+		TotalPages: recordViewerTotalPages(totalRows),
+		TotalRows:  totalRows,
+	}
+	if totalRows == 0 {
+		return context
+	}
+
+	start := clamped * recordViewerPageSize
+	end := min(start+recordViewerPageSize, totalRows)
+	context.StartRow = start + 1
+	context.EndRow = end
+	return context
+}
+
+func recordViewerRowsForPage(rows []db.ResultRow, page int) ([]db.ResultRow, recordViewerPageContext) {
+	context := recordViewerPageContextFor(page, len(rows))
+	if len(rows) == 0 {
+		return nil, context
+	}
+
+	start := context.StartRow - 1
+	end := context.EndRow
+	return rows[start:end], context
+}
+
+func formatRecordViewerRowRange(page recordViewerPageContext) string {
+	if page.TotalRows == 0 {
+		return "0"
+	}
+
+	if page.StartRow == page.EndRow {
+		return fmt.Sprintf("%d", page.StartRow)
+	}
+
+	return fmt.Sprintf("%d-%d", page.StartRow, page.EndRow)
+}
+
 func summarizeViewerQuery(query string, width int) string {
 	trimmed := strings.Join(strings.Fields(strings.TrimSpace(query)), " ")
 	if trimmed == "" {
@@ -191,12 +311,11 @@ func trimRenderedWidth(value string, width int) string {
 		if runeWidth(line) <= width {
 			continue
 		}
-		runes := []rune(line)
 		if width <= 3 {
-			lines[i] = string(runes[:width])
+			lines[i] = ansi.Truncate(line, width, "")
 			continue
 		}
-		lines[i] = string(runes[:width-3]) + "..."
+		lines[i] = ansi.Truncate(line, width, "...")
 	}
 	return strings.Join(lines, "\n")
 }

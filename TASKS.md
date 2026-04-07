@@ -45,14 +45,14 @@
 - [x] Handle log directory creation, file growth strategy, and write failures gracefully.
 - [x] Build a full-screen result viewer with `bubbletea` and either `bubbles/table` or a custom grid model.
 - [x] Display all rows for the active result set.
-- [ ] Add multiple layouts: record viewer on top + command line on bottom; command line only; record viewer only. Switch between them with Ctrl-1, Ctrl-2, Ctrl-3.
-- [ ] Add pagination to record viewer mode; show max 300 row at a time
-- [ ] Add spinner and elapsed time to UI when running queries
-- [ ] Allow for multiline input in command mode, only running query when semicolon is inserted
+- [x] Add multiple layouts: record viewer on top + command line on bottom; command line only; record viewer only. Switch between them with Ctrl-1, Ctrl-2, Ctrl-3.
+- [x] Add pagination to record viewer mode; show max 300 row at a time
+- [x] Add spinner and elapsed time to UI when running queries
+- [x] Allow for multiline input in command mode, only running query when semicolon is inserted
 - [ ] (skip for now) Freeze the primary key column, even if this requires custom rendering beyond the stock table component.
-- [ ] Highlight primary keys distinctly with `lipgloss` styling.
+- [x] Highlight primary keys distinctly with `lipgloss` styling.
 - [ ] Support navigation with arrow keys and `hjkl`.
-- [ ] Support paging with `Ctrl-d` and `Ctrl-u`.
+- [x] Support paging with `Ctrl-d` and `Ctrl-u`.
 - [ ] Implement row selection toggling with `space` and maintain multi-row selection state.
 - [ ] Support `Ctrl-x` to switch cleanly between record viewer mode and command mode.
 - [ ] Ensure large result sets render efficiently without blocking the UI thread.

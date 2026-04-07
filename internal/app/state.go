@@ -15,6 +15,14 @@ const (
 	ModeRecordViewer  AppMode = "record-viewer"
 )
 
+type AppLayout string
+
+const (
+	LayoutSplit       AppLayout = "split"
+	LayoutCommandOnly AppLayout = "command-only"
+	LayoutViewerOnly  AppLayout = "viewer-only"
+)
+
 type AppState string
 
 const (
@@ -57,7 +65,10 @@ type QueryContext struct {
 	LastSubmittedSQL     string
 	PendingIntent        PendingIntent
 	LastAction           string
+	Running              *RunningQueryContext
+	Layout               AppLayout
 	ActiveMode           AppMode
+	ViewerPage           int
 	SessionHistory       []HistoryEntryContext
 	HistorySearch        *HistorySearchContext
 	AutocompleteSchema   *AutocompleteSchemaContext
@@ -70,6 +81,13 @@ type QueryContext struct {
 type HistorySearchContext struct {
 	Query         string
 	SelectedIndex int
+}
+
+type RunningQueryContext struct {
+	Label        string
+	StartedAt    time.Time
+	Elapsed      time.Duration
+	SpinnerFrame int
 }
 
 type SlashCommandWizardStep string
@@ -122,6 +140,8 @@ type LatestResultContext struct {
 }
 
 type ModeSwitchContext struct {
+	FromLayout    AppLayout
+	ToLayout      AppLayout
 	FromMode      AppMode
 	ToMode        AppMode
 	ResultContext *LatestResultContext
@@ -139,7 +159,9 @@ func NewSharedAppState() SharedAppState {
 			Current: StateStartup,
 		},
 		Query: QueryContext{
+			Layout:     LayoutCommandOnly,
 			ActiveMode: ModeCommand,
+			ViewerPage: 0,
 		},
 		Status: "Starting SQLcery.",
 	}
@@ -202,6 +224,21 @@ func (s *SharedAppState) SetActiveMode(mode AppMode) {
 	s.Query.ActiveMode = mode
 }
 
+func (s *SharedAppState) SetLayout(layout AppLayout) {
+	switch layout {
+	case LayoutSplit, LayoutViewerOnly:
+		// keep requested layout
+	default:
+		layout = LayoutCommandOnly
+	}
+
+	s.Query.Layout = layout
+}
+
+func (s *SharedAppState) SetRunningQueryContext(context *RunningQueryContext) {
+	s.Query.Running = cloneRunningQueryContext(context)
+}
+
 func (s *SharedAppState) SetSessionHistory(entries []HistoryEntryContext) {
 	s.Query.SessionHistory = cloneHistoryEntries(entries)
 }
@@ -212,6 +249,15 @@ func (s *SharedAppState) SetHistorySearchContext(context *HistorySearchContext) 
 
 func (s *SharedAppState) SetLatestResultContext(context *LatestResultContext) {
 	s.Query.LatestResult = cloneLatestResultContext(context)
+	s.Query.ViewerPage = 0
+}
+
+func (s *SharedAppState) SetViewerPage(page int) {
+	s.Query.ViewerPage = clampRecordViewerPage(page, recordViewerRowCount(s.Query.LatestResult))
+}
+
+func (s *SharedAppState) ChangeViewerPage(delta int) {
+	s.SetViewerPage(s.Query.ViewerPage + delta)
 }
 
 func (s *SharedAppState) SetSlashWizardContext(context *SlashCommandWizardContext) {
@@ -232,6 +278,7 @@ func (s *SharedAppState) SetSelectedHistoryEntry(entry *HistoryEntryContext) {
 
 func (q QueryContext) snapshot() QueryContext {
 	clone := q
+	clone.Running = cloneRunningQueryContext(q.Running)
 	clone.SessionHistory = cloneHistoryEntries(q.SessionHistory)
 	clone.HistorySearch = cloneHistorySearchContext(q.HistorySearch)
 	clone.AutocompleteSchema = cloneAutocompleteSchemaContext(q.AutocompleteSchema)
@@ -240,6 +287,15 @@ func (q QueryContext) snapshot() QueryContext {
 	clone.PendingModeSwitch = cloneModeSwitchContext(q.PendingModeSwitch)
 	clone.SelectedHistoryEntry = cloneHistoryEntryContext(q.SelectedHistoryEntry)
 	return clone
+}
+
+func cloneRunningQueryContext(context *RunningQueryContext) *RunningQueryContext {
+	if context == nil {
+		return nil
+	}
+
+	clone := *context
+	return &clone
 }
 
 func (a AppStateContext) snapshot() AppStateContext {

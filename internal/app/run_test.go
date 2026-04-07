@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -67,7 +68,7 @@ func TestRunUsesProvidedHistorySession(t *testing.T) {
 			return fakeProgram{run: func() (tea.Model, error) {
 				typed := model.(Model)
 				typed.state.SetReady("")
-				typed.command.editor.SetValue("select 1")
+				typed.command.editor.SetValue("select 1;")
 				typed.syncCurrentSQL()
 
 				next, cmd := typed.Update(submitIntentMsg{})
@@ -75,7 +76,7 @@ func TestRunUsesProvidedHistorySession(t *testing.T) {
 					return nil, fmt.Errorf("submit cmd was nil")
 				}
 
-				next, _ = next.(Model).Update(cmd())
+				next, _ = next.(Model).Update(firstCommandMessageForTest[statementExecutedMsg](t, cmd))
 				return next, nil
 			}}
 		},
@@ -98,7 +99,7 @@ func TestRunUsesProvidedHistorySession(t *testing.T) {
 	if err := json.Unmarshal(data, &persisted); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
-	if got, want := persisted.Command, "select 1"; got != want {
+	if got, want := persisted.Command, "select 1;"; got != want {
 		t.Fatalf("persisted command = %q, want %q", got, want)
 	}
 	if got, want := persisted.Connection, "local"; got != want {
@@ -122,6 +123,7 @@ func TestModelViewIncludesSessionDetails(t *testing.T) {
 		"Connection: local",
 		"Dialect: sqlite",
 		"App state: ready",
+		"Layout: command only",
 		"Mode: command",
 		"Status: Ready for SQL input.",
 		"Write SQL here",
@@ -129,7 +131,10 @@ func TestModelViewIncludesSessionDetails(t *testing.T) {
 		"ctrl+g submit",
 		"esc clear",
 		"ctrl+r history",
-		"ctrl+x mode",
+		"ctrl+x focus",
+		"ctrl+1 split",
+		"ctrl+2 command",
+		"ctrl+3 viewer",
 		"ctrl+c quit",
 	} {
 		if !strings.Contains(view, want) {
@@ -156,7 +161,7 @@ func TestModelUpdateSubmitWarnsWhenHistoryPersistenceFails(t *testing.T) {
 	history := apphistory.NewFileBackedSession(filepath.Join(blockerPath, apphistory.FileName))
 	model := newModelWithDependencies(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter, modelDependencies{history: history})
 	model.state.SetReady("")
-	model.command.editor.SetValue("select 1")
+	model.command.editor.SetValue("select 1;")
 	model.syncCurrentSQL()
 
 	next, cmd := model.Update(submitIntentMsg{})
@@ -165,7 +170,7 @@ func TestModelUpdateSubmitWarnsWhenHistoryPersistenceFails(t *testing.T) {
 	}
 	model = next.(Model)
 
-	next, _ = model.Update(cmd())
+	next, _ = model.Update(firstCommandMessageForTest[statementExecutedMsg](t, cmd))
 	model = next.(Model)
 
 	if got, want := len(model.state.Query.SessionHistory), 1; got != want {
@@ -291,7 +296,7 @@ func TestModelViewIncludesSharedQueryContextPlaceholders(t *testing.T) {
 	model.state.SetReady("")
 	model.state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1", ConnectionName: "local"}})
 	model.state.SetLatestResultContext(&LatestResultContext{Query: "select 1", OriginMode: ModeCommand})
-	model.state.SetPendingModeSwitch(&ModeSwitchContext{FromMode: ModeCommand, ToMode: ModeRecordViewer})
+	model.state.SetPendingModeSwitch(&ModeSwitchContext{FromLayout: LayoutCommandOnly, ToLayout: LayoutViewerOnly, FromMode: ModeCommand, ToMode: ModeRecordViewer})
 	model.state.SetSelectedHistoryEntry(&HistoryEntryContext{SQL: "select 2", ConnectionName: "local"})
 
 	view := model.View()
@@ -466,6 +471,8 @@ func TestModelUpdateSubmitSetsPendingIntent(t *testing.T) {
 	model.state.SetReady("")
 	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s', 'e', 'l', 'e', 'c', 't'}})
 	model = next.(Model)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{';'}})
+	model = next.(Model)
 
 	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlG})
 	if cmd == nil {
@@ -483,21 +490,99 @@ func TestModelUpdateSubmitSetsPendingIntent(t *testing.T) {
 	if got, want := model.state.Query.PendingIntent, IntentSubmit; got != want {
 		t.Fatalf("state.PendingIntent = %q, want %q", got, want)
 	}
+	if model.state.Query.Running == nil {
+		t.Fatal("state.Query.Running = nil, want running context")
+	}
+	if got, want := model.state.Query.Running.Label, "SQL"; got != want {
+		t.Fatalf("state.Query.Running.Label = %q, want %q", got, want)
+	}
 
 	if got, want := model.state.Query.LastAction, "submit"; got != want {
 		t.Fatalf("state.LastAction = %q, want %q", got, want)
 	}
 
-	if got, want := model.state.Query.CurrentSQL, "select"; got != want {
+	if got, want := model.state.Query.CurrentSQL, "select;"; got != want {
 		t.Fatalf("state.Query.CurrentSQL = %q, want %q", got, want)
 	}
 
-	if got, want := model.state.Query.LastSubmittedSQL, "select"; got != want {
+	if got, want := model.state.Query.LastSubmittedSQL, "select;"; got != want {
 		t.Fatalf("state.Query.LastSubmittedSQL = %q, want %q", got, want)
 	}
 
 	view := model.View()
-	for _, want := range []string{"Pending: submit", "Last action: submit", "Current SQL: 6 characters", "Last submitted SQL: 6 characters", "Status: Executing 6 characters of SQL."} {
+	for _, want := range []string{"Pending: submit", "Running: - SQL 0.0s", "Last action: submit", "Current SQL: 7 characters", "Last submitted SQL: 7 characters", "Status: Executing 7 characters of SQL."} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() = %q, want to contain %q", view, want)
+		}
+	}
+}
+
+func TestModelUpdateSubmitRejectsIncompleteSQL(t *testing.T) {
+	model := NewModel(Session{}, nil)
+	model.state.SetReady("")
+	model.command.editor.SetValue("select\n1")
+	model.syncCurrentSQL()
+	model.state.SetLastSubmittedSQL("select 0;")
+
+	next, cmd := model.Update(submitIntentMsg{})
+	if cmd != nil {
+		t.Fatalf("Update(submitIntentMsg{}) cmd = %v, want nil", cmd)
+	}
+	model = next.(Model)
+
+	if got, want := model.state.Query.PendingIntent, IntentNone; got != want {
+		t.Fatalf("state.Query.PendingIntent = %q, want %q", got, want)
+	}
+	if model.state.Query.Running != nil {
+		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Query.Running)
+	}
+	if got, want := model.state.Status, "SQL is incomplete. End the statement with ';' to run it."; got != want {
+		t.Fatalf("state.Status = %q, want %q", got, want)
+	}
+	if got, want := model.command.editor.Value(), "select\n1"; got != want {
+		t.Fatalf("editor.Value() = %q, want %q", got, want)
+	}
+	if got, want := model.state.Query.CurrentSQL, "select\n1"; got != want {
+		t.Fatalf("state.Query.CurrentSQL = %q, want %q", got, want)
+	}
+	if got, want := model.state.Query.LastSubmittedSQL, "select 0;"; got != want {
+		t.Fatalf("state.Query.LastSubmittedSQL = %q, want %q", got, want)
+	}
+	if got, want := model.state.Query.LastAction, "submit"; got != want {
+		t.Fatalf("state.Query.LastAction = %q, want %q", got, want)
+	}
+	if got, want := model.state.App.Current, StateReady; got != want {
+		t.Fatalf("state.App.Current = %q, want %q", got, want)
+	}
+	if got := model.View(); !strings.Contains(got, "Status: SQL is incomplete. End the statement with ';' to run it.") {
+		t.Fatalf("View() = %q, want incomplete SQL status", got)
+	}
+}
+
+func TestModelUpdateRunningTickUpdatesElapsedAndFooter(t *testing.T) {
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model.state.SetReady("")
+	startedAt := time.Date(2026, time.April, 8, 10, 0, 0, 0, time.UTC)
+	model.state.SetRunningQueryContext(&RunningQueryContext{Label: "SQL", StartedAt: startedAt})
+
+	next, cmd := model.Update(runningTickMsg{StartedAt: startedAt, Now: startedAt.Add(1500 * time.Millisecond)})
+	if cmd == nil {
+		t.Fatal("Update(runningTickMsg{}) cmd = nil, want follow-up tick")
+	}
+	model = next.(Model)
+
+	if model.state.Query.Running == nil {
+		t.Fatal("state.Query.Running = nil, want running context")
+	}
+	if got, want := model.state.Query.Running.Elapsed, 1500*time.Millisecond; got != want {
+		t.Fatalf("state.Query.Running.Elapsed = %v, want %v", got, want)
+	}
+	if got, want := model.state.Query.Running.SpinnerFrame, 1; got != want {
+		t.Fatalf("state.Query.Running.SpinnerFrame = %d, want %d", got, want)
+	}
+
+	view := model.View()
+	for _, want := range []string{"Running: \\ SQL 1.5s", "\\ SQL 1.5s"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
 		}
@@ -523,7 +608,7 @@ func TestModelUpdateSubmitExecutesSelectAndLimitsInlineRows(t *testing.T) {
 
 	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
 	model.state.SetReady("")
-	query := "select id, name from widgets order by id"
+	query := "select id, name from widgets order by id;"
 	model.command.editor.SetValue(query)
 	model.syncCurrentSQL()
 
@@ -540,17 +625,16 @@ func TestModelUpdateSubmitExecutesSelectAndLimitsInlineRows(t *testing.T) {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
-	msg := cmd()
-	executed, ok := msg.(statementExecutedMsg)
-	if !ok {
-		t.Fatalf("cmd() type = %T, want %T", msg, statementExecutedMsg{})
-	}
+	executed := firstCommandMessageForTest[statementExecutedMsg](t, cmd)
 
 	next, _ = model.Update(executed)
 	model = next.(Model)
 
 	if got, want := model.state.Query.PendingIntent, IntentNone; got != want {
 		t.Fatalf("state.PendingIntent = %q, want empty", got)
+	}
+	if model.state.Query.Running != nil {
+		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Query.Running)
 	}
 	if got, want := model.state.Status, "Query returned 6 rows."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -599,7 +683,7 @@ func TestModelUpdateSubmitExecutesNonSelectStatement(t *testing.T) {
 
 	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
 	model.state.SetReady("")
-	model.command.editor.SetValue(`insert into widgets (name) values ('Ada'), ('Grace')`)
+	model.command.editor.SetValue(`insert into widgets (name) values ('Ada'), ('Grace');`)
 	model.syncCurrentSQL()
 
 	next, cmd := model.Update(submitIntentMsg{})
@@ -608,7 +692,7 @@ func TestModelUpdateSubmitExecutesNonSelectStatement(t *testing.T) {
 	}
 	model = next.(Model)
 
-	next, _ = model.Update(cmd())
+	next, _ = model.Update(firstCommandMessageForTest[statementExecutedMsg](t, cmd))
 	model = next.(Model)
 
 	if got, want := model.state.Status, "Statement executed successfully. 2 rows affected."; got != want {
@@ -852,8 +936,14 @@ func TestModelUpdateModeSwitchSetsPendingIntent(t *testing.T) {
 	if got, want := model.state.Query.PendingModeSwitch.FromMode, ModeCommand; got != want {
 		t.Fatalf("state.Query.PendingModeSwitch.FromMode = %q, want %q", got, want)
 	}
+	if got, want := model.state.Query.PendingModeSwitch.FromLayout, LayoutCommandOnly; got != want {
+		t.Fatalf("state.Query.PendingModeSwitch.FromLayout = %q, want %q", got, want)
+	}
 	if got, want := model.state.Query.PendingModeSwitch.ToMode, ModeRecordViewer; got != want {
 		t.Fatalf("state.Query.PendingModeSwitch.ToMode = %q, want %q", got, want)
+	}
+	if got, want := model.state.Query.PendingModeSwitch.ToLayout, LayoutViewerOnly; got != want {
+		t.Fatalf("state.Query.PendingModeSwitch.ToLayout = %q, want %q", got, want)
 	}
 
 	if got, want := model.state.Status, "Record viewer is available after running a query that returns tabular results."; got != want {
@@ -886,7 +976,7 @@ func TestModelUpdateModeSwitchPreservesLatestResultContext(t *testing.T) {
 
 	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
 	model.state.SetReady("")
-	query := "select id, name from widgets order by id"
+	query := "select id, name from widgets order by id;"
 	model.command.editor.SetValue(query)
 	model.syncCurrentSQL()
 
@@ -896,7 +986,7 @@ func TestModelUpdateModeSwitchPreservesLatestResultContext(t *testing.T) {
 	}
 	model = next.(Model)
 
-	next, _ = model.Update(cmd())
+	next, _ = model.Update(firstCommandMessageForTest[statementExecutedMsg](t, cmd))
 	model = next.(Model)
 
 	next, cmd = model.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
@@ -910,6 +1000,9 @@ func TestModelUpdateModeSwitchPreservesLatestResultContext(t *testing.T) {
 
 	if got, want := model.state.Status, "Opened record viewer for 6 row(s) across 2 column(s)."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
+	}
+	if got, want := model.state.Query.Layout, LayoutViewerOnly; got != want {
+		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
 	}
 	if got, want := model.state.Query.ActiveMode, ModeRecordViewer; got != want {
 		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
@@ -931,16 +1024,238 @@ func TestModelUpdateModeSwitchPreservesLatestResultContext(t *testing.T) {
 	}
 
 	view := model.View()
-	for _, want := range []string{"Record viewer", "Rows: 6  Columns: 2", "id | name", "1  | one", "6  | six"} {
+	for _, want := range []string{"Layout: viewer only", "Record viewer", "Rows: 6  Columns: 2", "id | name", "1  | one", "6  | six", "ctrl+3 viewer"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
 		}
 	}
 }
 
+func TestModelUpdateNewResultResetsViewerPage(t *testing.T) {
+	adapter := openTestAdapter(t)
+	defer func() {
+		if err := adapter.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	}()
+
+	for _, statement := range []string{
+		`create table widgets (id integer primary key, name text not null)`,
+		`insert into widgets (name) values ('one'), ('two'), ('three'), ('four'), ('five'), ('six')`,
+	} {
+		if _, err := adapter.ExecContext(context.Background(), statement); err != nil {
+			t.Fatalf("ExecContext(%q) error = %v", statement, err)
+		}
+	}
+
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model.state.SetReady("")
+	model.state.SetViewerPage(4)
+	model.command.editor.SetValue("select id, name from widgets order by id;")
+	model.syncCurrentSQL()
+
+	next, cmd := model.Update(submitIntentMsg{})
+	if cmd == nil {
+		t.Fatal("Update(submitIntentMsg{}) cmd = nil, want execution command")
+	}
+	model = next.(Model)
+
+	next, _ = model.Update(firstCommandMessageForTest[statementExecutedMsg](t, cmd))
+	model = next.(Model)
+
+	if got, want := model.state.Query.ViewerPage, 0; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	}
+}
+
+func TestModelViewRecordViewerShowsPaginatedRows(t *testing.T) {
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model.state.SetReady("")
+	model.state.SetLayout(LayoutViewerOnly)
+	model.state.SetActiveMode(ModeRecordViewer)
+
+	rows := make([]db.ResultRow, 0, 305)
+	for i := 1; i <= 305; i++ {
+		rows = append(rows, db.ResultRow{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(i)}}})
+	}
+
+	model.state.SetLatestResultContext(&LatestResultContext{
+		Query: "select id from widgets order by id",
+		PreservedResult: &db.ResultSet{
+			Columns: []db.ResultColumn{{Name: "id"}},
+			Rows:    rows,
+		},
+	})
+	model.state.SetViewerPage(1)
+
+	view := model.View()
+	for _, want := range []string{"Layout: viewer only", "Rows: 305  Columns: 1", "Page: 2/2  Showing rows 301-305", "page 2/2", "301", "305"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() = %q, want to contain %q", view, want)
+		}
+	}
+
+	for _, unwanted := range []string{"299", "300"} {
+		if strings.Contains(view, unwanted) {
+			t.Fatalf("View() = %q, want not to contain %q", view, unwanted)
+		}
+	}
+}
+
+func TestModelUpdateCtrlDPagesForwardInViewerOnlyLayout(t *testing.T) {
+	model := NewModel(Session{}, nil)
+	model.state.SetReady("")
+	model.state.SetLayout(LayoutViewerOnly)
+	model.state.SetActiveMode(ModeRecordViewer)
+	model.state.SetLatestResultContext(&LatestResultContext{
+		Query: "select id from widgets order by id",
+		PreservedResult: &db.ResultSet{
+			Columns: []db.ResultColumn{{Name: "id"}},
+			Rows:    make([]db.ResultRow, 605),
+		},
+	})
+
+	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	model = next.(Model)
+
+	if cmd != nil {
+		t.Fatalf("Update(ctrl+d) cmd = %#v, want nil", cmd)
+	}
+	if got, want := model.state.Query.ViewerPage, 1; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	}
+	if got, want := model.state.Status, "Showing record viewer page 2/3 (301-600)."; got != want {
+		t.Fatalf("state.Status = %q, want %q", got, want)
+	}
+
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	model = next.(Model)
+	if got, want := model.state.Query.ViewerPage, 2; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	}
+
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	model = next.(Model)
+	if got, want := model.state.Query.ViewerPage, 2; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	}
+	if got, want := model.state.Status, "Already at the last record viewer page (601-605)."; got != want {
+		t.Fatalf("state.Status = %q, want %q", got, want)
+	}
+}
+
+func TestModelUpdateCtrlUPagesBackwardInViewerOnlyLayout(t *testing.T) {
+	model := NewModel(Session{}, nil)
+	model.state.SetReady("")
+	model.state.SetLayout(LayoutViewerOnly)
+	model.state.SetActiveMode(ModeRecordViewer)
+	model.state.SetLatestResultContext(&LatestResultContext{
+		Query: "select id from widgets order by id",
+		PreservedResult: &db.ResultSet{
+			Columns: []db.ResultColumn{{Name: "id"}},
+			Rows:    make([]db.ResultRow, 605),
+		},
+	})
+	model.state.SetViewerPage(2)
+
+	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	model = next.(Model)
+
+	if cmd != nil {
+		t.Fatalf("Update(ctrl+u) cmd = %#v, want nil", cmd)
+	}
+	if got, want := model.state.Query.ViewerPage, 1; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	}
+	if got, want := model.state.Status, "Showing record viewer page 2/3 (301-600)."; got != want {
+		t.Fatalf("state.Status = %q, want %q", got, want)
+	}
+
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	model = next.(Model)
+	if got, want := model.state.Query.ViewerPage, 0; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	}
+
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	model = next.(Model)
+	if got, want := model.state.Query.ViewerPage, 0; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	}
+	if got, want := model.state.Status, "Already at the first record viewer page (1-300)."; got != want {
+		t.Fatalf("state.Status = %q, want %q", got, want)
+	}
+}
+
+func TestModelUpdateCtrlDPagesOnlyWhenViewerFocusedInSplitLayout(t *testing.T) {
+	model := NewModel(Session{}, nil)
+	model.state.SetReady("")
+	model.state.SetLayout(LayoutSplit)
+	model.state.SetLatestResultContext(&LatestResultContext{
+		Query: "select id from widgets order by id",
+		PreservedResult: &db.ResultSet{
+			Columns: []db.ResultColumn{{Name: "id"}},
+			Rows:    make([]db.ResultRow, 605),
+		},
+	})
+	model.state.SetViewerPage(1)
+	model.command.editor.SetValue("select 1;")
+	model.command.editor.CursorEnd()
+	model.syncCurrentSQL()
+
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	model = next.(Model)
+	if got, want := model.state.Query.ViewerPage, 1; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	}
+
+	model.state.SetActiveMode(ModeRecordViewer)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	model = next.(Model)
+	if got, want := model.state.Query.ViewerPage, 2; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	}
+	if got, want := model.state.Status, "Showing record viewer page 3/3 (601-605)."; got != want {
+		t.Fatalf("state.Status = %q, want %q", got, want)
+	}
+}
+
+func TestModelUpdateCtrlDDoesNotPageDuringHistorySearch(t *testing.T) {
+	model := NewModel(Session{}, nil)
+	model.state.SetReady("")
+	model.state.SetLayout(LayoutSplit)
+	model.state.SetActiveMode(ModeHistorySearch)
+	model.state.SetHistorySearchContext(&HistorySearchContext{Query: "sel"})
+	model.state.SetLatestResultContext(&LatestResultContext{
+		Query: "select id from widgets order by id",
+		PreservedResult: &db.ResultSet{
+			Columns: []db.ResultColumn{{Name: "id"}},
+			Rows:    make([]db.ResultRow, 605),
+		},
+	})
+	model.state.SetViewerPage(1)
+
+	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	model = next.(Model)
+
+	if cmd != nil {
+		t.Fatalf("Update(ctrl+d) cmd = %#v, want nil", cmd)
+	}
+	if got, want := model.state.Query.ViewerPage, 1; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	}
+	if got, want := model.state.Query.ActiveMode, ModeHistorySearch; got != want {
+		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+	}
+	if model.state.Query.HistorySearch == nil || model.state.Query.HistorySearch.Query != "sel" {
+		t.Fatalf("state.Query.HistorySearch = %#v, want query preserved", model.state.Query.HistorySearch)
+	}
+}
+
 func TestModelUpdateModeSwitchReturnsFromRecordViewerToCommandMode(t *testing.T) {
 	model := NewModel(Session{}, nil)
 	model.state.SetReady("")
+	model.state.SetLayout(LayoutViewerOnly)
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.state.SetLatestResultContext(&LatestResultContext{
 		Query: "select 1",
@@ -959,13 +1274,16 @@ func TestModelUpdateModeSwitchReturnsFromRecordViewerToCommandMode(t *testing.T)
 	next, _ = model.Update(cmd())
 	model = next.(Model)
 
+	if got, want := model.state.Query.Layout, LayoutCommandOnly; got != want {
+		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+	}
 	if got, want := model.state.Query.ActiveMode, ModeCommand; got != want {
 		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
 	}
 	if got, want := model.state.Query.PendingIntent, IntentNone; got != want {
 		t.Fatalf("state.Query.PendingIntent = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, "Returned to command mode."; got != want {
+	if got, want := model.state.Status, "Returned to command line."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if model.state.Query.PendingModeSwitch != nil {
@@ -973,6 +1291,144 @@ func TestModelUpdateModeSwitchReturnsFromRecordViewerToCommandMode(t *testing.T)
 	}
 	if strings.Contains(model.View(), "Record viewer") {
 		t.Fatalf("View() = %q, want command mode view", model.View())
+	}
+}
+
+func TestModelUpdateLayoutSwitchesToSplitAndKeepsHistorySearch(t *testing.T) {
+	model := NewModel(Session{}, nil)
+	model.state.SetReady("")
+	model.state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1"}})
+	next, _ := model.Update(historyIntentMsg{})
+	model = next.(Model)
+
+	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}, Alt: true})
+	if cmd == nil {
+		t.Fatal("Update(ctrl+1) cmd = nil, want layout intent command")
+	}
+	msg := cmd()
+	if got, ok := msg.(switchLayoutIntentMsg); !ok || got.Layout != LayoutSplit {
+		t.Fatalf("Update(ctrl+1) cmd() = %#v, want split layout intent", msg)
+	}
+
+	next, _ = next.(Model).Update(msg)
+	model = next.(Model)
+
+	if got, want := model.state.Query.Layout, LayoutSplit; got != want {
+		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+	}
+	if got, want := model.state.Query.ActiveMode, ModeHistorySearch; got != want {
+		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+	}
+	view := model.View()
+	for _, want := range []string{"Layout: split", "Record viewer", "Command line [active]", "Reverse search:"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() = %q, want to contain %q", view, want)
+		}
+	}
+}
+
+func TestModelUpdateLayoutSwitchesToViewerOnlyAndClosesHistorySearch(t *testing.T) {
+	model := NewModel(Session{}, nil)
+	model.state.SetReady("")
+	model.state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1"}})
+	next, _ := model.Update(historyIntentMsg{})
+	model = next.(Model)
+
+	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}, Alt: true})
+	if cmd == nil {
+		t.Fatal("Update(ctrl+3) cmd = nil, want layout intent command")
+	}
+	next, _ = next.(Model).Update(cmd())
+	model = next.(Model)
+
+	if got, want := model.state.Query.Layout, LayoutViewerOnly; got != want {
+		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+	}
+	if got, want := model.state.Query.ActiveMode, ModeRecordViewer; got != want {
+		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+	}
+	if model.state.Query.HistorySearch != nil {
+		t.Fatalf("state.Query.HistorySearch = %#v, want nil", model.state.Query.HistorySearch)
+	}
+	if model.state.Query.SelectedHistoryEntry != nil {
+		t.Fatalf("state.Query.SelectedHistoryEntry = %#v, want nil", model.state.Query.SelectedHistoryEntry)
+	}
+	if got, want := model.state.Status, "Switched to viewer only. Run a query that returns rows to populate the viewer."; got != want {
+		t.Fatalf("state.Status = %q, want %q", got, want)
+	}
+	view := model.View()
+	for _, want := range []string{"Layout: viewer only", "Run a query that returns rows, then press ctrl+x or ctrl+3."} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() = %q, want to contain %q", view, want)
+		}
+	}
+}
+
+func TestModelUpdateLayoutSwitchesToCommandOnlyFromSplitViewerFocus(t *testing.T) {
+	model := NewModel(Session{}, nil)
+	model.state.SetReady("")
+	model.state.SetLayout(LayoutSplit)
+	model.state.SetActiveMode(ModeRecordViewer)
+	model.state.SetLatestResultContext(&LatestResultContext{
+		Query: "select 1",
+		PreservedResult: &db.ResultSet{
+			Columns: []db.ResultColumn{{Name: "value"}},
+			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}}}},
+		},
+	})
+
+	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}, Alt: true})
+	if cmd == nil {
+		t.Fatal("Update(ctrl+2) cmd = nil, want layout intent command")
+	}
+	next, _ = next.(Model).Update(cmd())
+	model = next.(Model)
+
+	if got, want := model.state.Query.Layout, LayoutCommandOnly; got != want {
+		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+	}
+	if got, want := model.state.Query.ActiveMode, ModeCommand; got != want {
+		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+	}
+	view := model.View()
+	if strings.Contains(view, "Command line [active]") || strings.Contains(view, "----------------------------------------") {
+		t.Fatalf("View() = %q, want command-only layout without split sections", view)
+	}
+}
+
+func TestModelUpdateCtrlXUsesSplitFocusWhenAlreadyInSplitLayout(t *testing.T) {
+	model := NewModel(Session{}, nil)
+	model.state.SetReady("")
+	model.state.SetLayout(LayoutSplit)
+	model.state.SetLatestResultContext(&LatestResultContext{
+		Query: "select 1",
+		PreservedResult: &db.ResultSet{
+			Columns: []db.ResultColumn{{Name: "value"}},
+			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}}}},
+		},
+	})
+
+	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
+	if cmd == nil {
+		t.Fatal("Update(ctrl+x) cmd = nil, want switch mode intent command")
+	}
+	next, _ = next.(Model).Update(cmd())
+	model = next.(Model)
+
+	if got, want := model.state.Query.Layout, LayoutSplit; got != want {
+		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+	}
+	if got, want := model.state.Query.ActiveMode, ModeRecordViewer; got != want {
+		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+	}
+	if got, want := model.state.Status, "Focused the record viewer in split layout for 1 row(s) across 1 column(s)."; got != want {
+		t.Fatalf("state.Status = %q, want %q", got, want)
+	}
+	view := model.View()
+	for _, want := range []string{"Layout: split", "Record viewer [active]", "Command line"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() = %q, want to contain %q", view, want)
+		}
 	}
 }
 

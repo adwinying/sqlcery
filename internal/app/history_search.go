@@ -17,6 +17,9 @@ type historySearchMatch struct {
 }
 
 func (m *Model) openHistorySearch() {
+	if !layoutShowsCommand(m.state.Query.Layout) {
+		m.state.SetLayout(LayoutSplit)
+	}
 	m.state.SetActiveMode(ModeHistorySearch)
 	m.state.SetHistorySearchContext(&HistorySearchContext{})
 	m.syncHistorySearchSelection()
@@ -24,6 +27,9 @@ func (m *Model) openHistorySearch() {
 }
 
 func (m *Model) closeHistorySearch() {
+	if m.state.Query.ActiveMode != ModeHistorySearch && m.state.Query.HistorySearch == nil && m.state.Query.SelectedHistoryEntry == nil {
+		return
+	}
 	m.state.SetActiveMode(ModeCommand)
 	m.state.SetHistorySearchContext(nil)
 	m.state.SetSelectedHistoryEntry(nil)

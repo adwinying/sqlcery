@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/adwinying/sqlcery/internal/db"
 )
@@ -31,14 +32,17 @@ type commandModeModel struct {
 }
 
 type commandModeKeyMap struct {
-	Submit           key.Binding
-	Cancel           key.Binding
-	History          key.Binding
-	RestoreHistory   key.Binding
-	SwitchMode       key.Binding
-	AcceptSuggestion key.Binding
-	NextSuggestion   key.Binding
-	PrevSuggestion   key.Binding
+	Submit            key.Binding
+	Cancel            key.Binding
+	History           key.Binding
+	RestoreHistory    key.Binding
+	SwitchMode        key.Binding
+	LayoutSplit       key.Binding
+	LayoutCommandOnly key.Binding
+	LayoutViewerOnly  key.Binding
+	AcceptSuggestion  key.Binding
+	NextSuggestion    key.Binding
+	PrevSuggestion    key.Binding
 }
 
 func newCommandModeModel() commandModeModel {
@@ -55,14 +59,17 @@ func newCommandModeModel() commandModeModel {
 		highlighter:        newSQLSyntaxHighlighter(),
 		selectedSuggestion: 0,
 		keys: commandModeKeyMap{
-			Submit:           key.NewBinding(key.WithKeys("ctrl+g"), key.WithHelp("ctrl+g", "submit")),
-			Cancel:           key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear")),
-			History:          key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "history")),
-			RestoreHistory:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restore")),
-			SwitchMode:       key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "mode")),
-			AcceptSuggestion: key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("ctrl+y", "accept")),
-			NextSuggestion:   key.NewBinding(key.WithKeys("alt+n"), key.WithHelp("alt+n", "next suggestion")),
-			PrevSuggestion:   key.NewBinding(key.WithKeys("alt+p"), key.WithHelp("alt+p", "prev suggestion")),
+			Submit:            key.NewBinding(key.WithKeys("ctrl+g"), key.WithHelp("ctrl+g", "submit")),
+			Cancel:            key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear")),
+			History:           key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "history")),
+			RestoreHistory:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restore")),
+			SwitchMode:        key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "focus")),
+			LayoutSplit:       key.NewBinding(key.WithKeys("ctrl+1"), key.WithHelp("ctrl+1", "split")),
+			LayoutCommandOnly: key.NewBinding(key.WithKeys("ctrl+2"), key.WithHelp("ctrl+2", "command")),
+			LayoutViewerOnly:  key.NewBinding(key.WithKeys("ctrl+3"), key.WithHelp("ctrl+3", "viewer")),
+			AcceptSuggestion:  key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("ctrl+y", "accept")),
+			NextSuggestion:    key.NewBinding(key.WithKeys("alt+n"), key.WithHelp("alt+n", "next suggestion")),
+			PrevSuggestion:    key.NewBinding(key.WithKeys("alt+p"), key.WithHelp("alt+p", "prev suggestion")),
 		},
 	}
 }
@@ -139,8 +146,10 @@ func (m commandModeModel) Footer(connectionName, dialect string, query QueryCont
 	modeLabel := "Command mode"
 	if query.ActiveMode == ModeHistorySearch {
 		modeLabel = "History search"
+	} else if query.ActiveMode == ModeRecordViewer && query.Layout == LayoutSplit {
+		modeLabel = "Command line hidden focus"
 	}
-	parts := []string{modeLabel}
+	parts := []string{modeLabel, fmt.Sprintf("layout %s", layoutLabel(query.Layout))}
 
 	if label := strings.TrimSpace(connectionName); label != "" {
 		parts = append(parts, fmt.Sprintf("connection %s", label))
@@ -151,12 +160,18 @@ func (m commandModeModel) Footer(connectionName, dialect string, query QueryCont
 	}
 
 	parts = append(parts, fmt.Sprintf("line %d col %d", m.editor.Line()+1, m.editor.LineInfo().ColumnOffset+1))
-	parts = append(parts, bindingSummary(m.keys.Submit), bindingSummary(m.keys.Cancel), bindingSummary(m.keys.History), bindingSummary(m.keys.SwitchMode))
+	parts = append(parts, bindingSummary(m.keys.Submit), bindingSummary(m.keys.Cancel), bindingSummary(m.keys.History), bindingSummary(m.keys.SwitchMode), bindingSummary(m.keys.LayoutSplit), bindingSummary(m.keys.LayoutCommandOnly), bindingSummary(m.keys.LayoutViewerOnly))
+	if query.ActiveMode == ModeRecordViewer {
+		parts = append(parts, "ctrl+u prev page", "ctrl+d next page")
+	}
 	if query.ActiveMode == ModeHistorySearch {
 		parts = append(parts, bindingSummary(m.keys.RestoreHistory), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
 	}
 	if query.SlashWizard != nil {
 		parts = append(parts, "wizard /commands")
+	}
+	if running := formatRunningIndicator(query.Running); running != "" {
+		parts = append(parts, running)
 	}
 	if len(m.autocompleteItems(query)) > 0 {
 		parts = append(parts, bindingSummary(m.keys.AcceptSuggestion), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
@@ -686,5 +701,5 @@ func formatInlineResultValue(value db.ResultValue) string {
 }
 
 func runeWidth(value string) int {
-	return len([]rune(value))
+	return ansi.StringWidth(value)
 }

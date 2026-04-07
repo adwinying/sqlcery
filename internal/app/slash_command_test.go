@@ -358,18 +358,23 @@ func TestModelSubmitDispatchesSlashTablesWithoutRunningRawSQL(t *testing.T) {
 	if got, want := model.state.Status, "Dispatching /tables."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
-
-	msg := cmd()
-	executed, ok := msg.(slashCommandExecutedMsg)
-	if !ok {
-		t.Fatalf("cmd() type = %T, want %T", msg, slashCommandExecutedMsg{})
+	if model.state.Query.Running == nil {
+		t.Fatal("state.Query.Running = nil, want running context")
 	}
+	if got, want := model.state.Query.Running.Label, "/tables"; got != want {
+		t.Fatalf("state.Query.Running.Label = %q, want %q", got, want)
+	}
+
+	executed := firstCommandMessageForTest[slashCommandExecutedMsg](t, cmd)
 
 	next, _ = model.Update(executed)
 	model = next.(Model)
 
 	if got, want := model.state.Query.LastSubmittedSQL, "/tables"; got != want {
 		t.Fatalf("state.Query.LastSubmittedSQL = %q, want %q", got, want)
+	}
+	if model.state.Query.Running != nil {
+		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Query.Running)
 	}
 	if got, want := len(model.state.Query.SessionHistory), 1; got != want {
 		t.Fatalf("len(state.Query.SessionHistory) = %d, want %d", got, want)
@@ -426,7 +431,7 @@ func TestModelSubmitSlashCommandPersistsBoundedResultSummary(t *testing.T) {
 	}
 	model = next.(Model)
 
-	next, _ = model.Update(cmd())
+	next, _ = model.Update(firstCommandMessageForTest[slashCommandExecutedMsg](t, cmd))
 	model = next.(Model)
 
 	data, err := os.ReadFile(historyPath)
@@ -478,7 +483,7 @@ func TestModelSubmitDispatchesSlashSelectIntoEditor(t *testing.T) {
 	}
 	model = next.(Model)
 
-	next, _ = model.Update(cmd())
+	next, _ = model.Update(firstCommandMessageForTest[slashCommandExecutedMsg](t, cmd))
 	model = next.(Model)
 
 	if got, want := model.state.Query.LastSubmittedSQL, "/select widgets"; got != want {
@@ -515,7 +520,7 @@ func TestModelSubmitCommandsOpensWizard(t *testing.T) {
 	}
 	model = next.(Model)
 
-	next, _ = model.Update(cmd())
+	next, _ = model.Update(firstCommandMessageForTest[slashCommandExecutedMsg](t, cmd))
 	model = next.(Model)
 
 	if model.state.Query.SlashWizard == nil {
@@ -564,9 +569,18 @@ func TestModelSubmitCommandsWizardDispatchesResultCommand(t *testing.T) {
 	if got, want := model.state.Status, "Dispatching /tables from wizard."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
+	if model.state.Query.Running == nil {
+		t.Fatal("state.Query.Running = nil, want running context")
+	}
+	if got, want := model.state.Query.Running.Label, "/tables"; got != want {
+		t.Fatalf("state.Query.Running.Label = %q, want %q", got, want)
+	}
 
-	next, _ = model.Update(cmd())
+	next, _ = model.Update(firstCommandMessageForTest[slashCommandExecutedMsg](t, cmd))
 	model = next.(Model)
+	if model.state.Query.Running != nil {
+		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Query.Running)
+	}
 	if model.state.Query.SlashWizard != nil {
 		t.Fatalf("state.Query.SlashWizard = %#v, want nil", model.state.Query.SlashWizard)
 	}
@@ -598,9 +612,18 @@ func TestModelSubmitCommandsWizardLoadsTargetedTemplate(t *testing.T) {
 	if got, want := model.state.Status, "Dispatching /select from wizard."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
+	if model.state.Query.Running == nil {
+		t.Fatal("state.Query.Running = nil, want running context")
+	}
+	if got, want := model.state.Query.Running.Label, "/select"; got != want {
+		t.Fatalf("state.Query.Running.Label = %q, want %q", got, want)
+	}
 
-	next, _ = model.Update(cmd())
+	next, _ = model.Update(firstCommandMessageForTest[slashCommandExecutedMsg](t, cmd))
 	model = next.(Model)
+	if model.state.Query.Running != nil {
+		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Query.Running)
+	}
 	if got, want := model.command.editor.Value(), "SELECT\n  *\nFROM \"widgets\"\nLIMIT 50;"; got != want {
 		t.Fatalf("editor.Value() = %q, want %q", got, want)
 	}
@@ -724,7 +747,7 @@ func TestModelSubmitUnknownSlashCommandShowsErrorAndSkipsSQLExecution(t *testing
 	}
 	model = next.(Model)
 
-	next, _ = model.Update(cmd())
+	next, _ = model.Update(firstCommandMessageForTest[slashCommandExecutedMsg](t, cmd))
 	model = next.(Model)
 
 	if got, want := model.state.Status, "/wat failed: unknown slash command /wat"; got != want {

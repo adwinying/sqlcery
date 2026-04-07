@@ -14,6 +14,10 @@ func TestNewSharedAppStateDefaultsToCommandMode(t *testing.T) {
 		t.Fatalf("state.App.Current = %q, want %q", got, want)
 	}
 
+	if got, want := state.Query.Layout, LayoutCommandOnly; got != want {
+		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+	}
+
 	if got, want := state.Query.ActiveMode, ModeCommand; got != want {
 		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
 	}
@@ -34,6 +38,8 @@ func TestSharedAppStateSnapshotClonesQueryContext(t *testing.T) {
 	state.SetCurrentSQL("select * from widgets")
 	state.SetLastSubmittedSQL("select * from widgets")
 	state.SetPendingIntent(IntentSubmit, "submit", "ready")
+	state.SetRunningQueryContext(&RunningQueryContext{Label: "SQL", StartedAt: stamp, Elapsed: 1500 * time.Millisecond, SpinnerFrame: 2})
+	state.SetLayout(LayoutSplit)
 	state.SetActiveMode(ModeRecordViewer)
 	state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1", ConnectionName: "local", ExecutedAt: stamp}})
 	state.SetHistorySearchContext(&HistorySearchContext{Query: "sel", SelectedIndex: 1})
@@ -49,10 +55,10 @@ func TestSharedAppStateSnapshotClonesQueryContext(t *testing.T) {
 		InlineRowsTruncated: true,
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "payload"}},
-			Rows: []db.ResultRow{{
+			Rows: append([]db.ResultRow{{
 				Position: 1,
 				Values:   []db.ResultValue{{Kind: db.ValueKindBytes, Value: []byte("abc")}},
-			}},
+			}}, make([]db.ResultRow, 300)...),
 		},
 		InlineResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "payload"}},
@@ -62,6 +68,7 @@ func TestSharedAppStateSnapshotClonesQueryContext(t *testing.T) {
 			}},
 		},
 	})
+	state.SetViewerPage(1)
 	state.SetSlashWizardContext(&SlashCommandWizardContext{
 		Step: SlashCommandWizardStepTarget,
 		Commands: []SlashCommandWizardCommand{{
@@ -74,6 +81,8 @@ func TestSharedAppStateSnapshotClonesQueryContext(t *testing.T) {
 		Targets: []SlashCommandWizardTarget{{Value: "widgets", Display: "widgets"}},
 	})
 	state.SetPendingModeSwitch(&ModeSwitchContext{
+		FromLayout:    LayoutSplit,
+		ToLayout:      LayoutViewerOnly,
 		FromMode:      ModeCommand,
 		ToMode:        ModeRecordViewer,
 		ResultContext: state.Query.LatestResult,
@@ -89,6 +98,10 @@ func TestSharedAppStateSnapshotClonesQueryContext(t *testing.T) {
 	state.Query.CurrentSQL = "mutated"
 	state.Query.LastSubmittedSQL = "mutated"
 	state.Query.LastAction = "mutated"
+	state.Query.Running.Label = "mutated"
+	state.Query.Layout = LayoutViewerOnly
+	state.Query.Running.Elapsed = 9 * time.Second
+	state.Query.Running.SpinnerFrame = 1
 	state.Query.SessionHistory[0].SQL = "mutated history"
 	state.Query.HistorySearch.Query = "mutated search"
 	state.App.Current = StateError
@@ -131,6 +144,30 @@ func TestSharedAppStateSnapshotClonesQueryContext(t *testing.T) {
 
 	if got, want := snapshot.Query.LastAction, "submit"; got != want {
 		t.Fatalf("snapshot.Query.LastAction = %q, want %q", got, want)
+	}
+
+	if snapshot.Query.Running == nil {
+		t.Fatal("snapshot.Query.Running = nil, want running context")
+	}
+
+	if got, want := snapshot.Query.Layout, LayoutSplit; got != want {
+		t.Fatalf("snapshot.Query.Layout = %q, want %q", got, want)
+	}
+
+	if got, want := snapshot.Query.ViewerPage, 1; got != want {
+		t.Fatalf("snapshot.Query.ViewerPage = %d, want %d", got, want)
+	}
+
+	if got, want := snapshot.Query.Running.Label, "SQL"; got != want {
+		t.Fatalf("snapshot.Query.Running.Label = %q, want %q", got, want)
+	}
+
+	if got, want := snapshot.Query.Running.Elapsed, 1500*time.Millisecond; got != want {
+		t.Fatalf("snapshot.Query.Running.Elapsed = %v, want %v", got, want)
+	}
+
+	if got, want := snapshot.Query.Running.SpinnerFrame, 2; got != want {
+		t.Fatalf("snapshot.Query.Running.SpinnerFrame = %d, want %d", got, want)
 	}
 
 	if got, want := snapshot.Query.SessionHistory[0].SQL, "select 1"; got != want {
@@ -252,5 +289,50 @@ func TestSharedAppStateTransitions(t *testing.T) {
 
 	if got := state.App.Reconnect; got != nil {
 		t.Fatalf("state.App.Reconnect = %#v, want nil", got)
+	}
+}
+
+func TestSharedAppStateSetLatestResultContextResetsViewerPage(t *testing.T) {
+	state := NewSharedAppState()
+	state.SetViewerPage(3)
+	state.SetLatestResultContext(&LatestResultContext{PreservedResult: &db.ResultSet{Rows: []db.ResultRow{{}}}})
+
+	if got, want := state.Query.ViewerPage, 0; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	}
+}
+
+func TestSharedAppStateSetViewerPageClampsToAvailableRows(t *testing.T) {
+	state := NewSharedAppState()
+	state.SetLatestResultContext(&LatestResultContext{PreservedResult: &db.ResultSet{Rows: make([]db.ResultRow, 305)}})
+	state.SetViewerPage(9)
+
+	if got, want := state.Query.ViewerPage, 1; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	}
+
+	state.SetViewerPage(-2)
+	if got, want := state.Query.ViewerPage, 0; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	}
+}
+
+func TestSharedAppStateChangeViewerPageClampsToAvailableRows(t *testing.T) {
+	state := NewSharedAppState()
+	state.SetLatestResultContext(&LatestResultContext{PreservedResult: &db.ResultSet{Rows: make([]db.ResultRow, 605)}})
+
+	state.ChangeViewerPage(1)
+	if got, want := state.Query.ViewerPage, 1; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	}
+
+	state.ChangeViewerPage(10)
+	if got, want := state.Query.ViewerPage, 2; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	}
+
+	state.ChangeViewerPage(-10)
+	if got, want := state.Query.ViewerPage, 0; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
 	}
 }

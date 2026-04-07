@@ -325,6 +325,66 @@ func TestCommandModeViewRendersInlineExecResult(t *testing.T) {
 	}
 }
 
+func TestCommandModeFooterShowsRunningIndicator(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 20)
+	footer := mode.Footer("local", "sqlite", QueryContext{
+		Layout:  LayoutCommandOnly,
+		Running: &RunningQueryContext{Label: "SQL", Elapsed: 1500 * time.Millisecond},
+	})
+
+	for _, want := range []string{"Command mode", "layout command only", "connection local", "dialect sqlite", "ctrl+1 split", "ctrl+2 command", "ctrl+3 viewer", "- SQL 1.5s"} {
+		if !strings.Contains(footer, want) {
+			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
+		}
+	}
+}
+
+func TestCommandModeFooterShowsViewerPagingWhenViewerFocusedInSplit(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 20)
+	footer := mode.Footer("local", "sqlite", QueryContext{
+		Layout:     LayoutSplit,
+		ActiveMode: ModeRecordViewer,
+	})
+
+	for _, want := range []string{"Command line hidden focus", "layout split", "ctrl+u prev page", "ctrl+d next page"} {
+		if !strings.Contains(footer, want) {
+			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
+		}
+	}
+}
+
+func TestIsCompleteSQLStatement(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{name: "single statement", input: "SELECT 1;", want: true},
+		{name: "multiline statement", input: "SELECT\n  1;", want: true},
+		{name: "trailing whitespace", input: "SELECT 1;   \n\t", want: true},
+		{name: "trailing line comment", input: "SELECT 1; -- done", want: true},
+		{name: "trailing block comment", input: "SELECT 1; /* done */", want: true},
+		{name: "multiple statements ending with semicolon", input: "SELECT 1;\nSELECT 2;", want: true},
+		{name: "semicolon in string", input: "SELECT ';' AS value;", want: true},
+		{name: "leading comments", input: "-- hello\n/* world */\nSELECT 1;", want: true},
+		{name: "missing semicolon", input: "SELECT 1", want: false},
+		{name: "incomplete after semicolon", input: "SELECT 1;\nSELECT 2", want: false},
+		{name: "unterminated block comment", input: "SELECT 1; /* done", want: false},
+		{name: "unterminated string", input: "SELECT 'oops;", want: false},
+		{name: "only semicolon", input: ";", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isCompleteSQLStatement(tt.input); got != tt.want {
+				t.Fatalf("isCompleteSQLStatement(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 type styledSegment struct {
 	text string
 	kind sqlTokenKind

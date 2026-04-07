@@ -47,6 +47,10 @@ type historyIntentMsg struct{}
 
 type switchModeIntentMsg struct{}
 
+type switchLayoutIntentMsg struct {
+	Layout AppLayout
+}
+
 type clearInputIntentMsg struct{}
 
 type statementExecutedMsg struct {
@@ -78,6 +82,11 @@ type reconnectStateMsg struct {
 type appErrorMsg struct {
 	Err    error
 	Status string
+}
+
+type runningTickMsg struct {
+	StartedAt time.Time
+	Now       time.Time
 }
 
 func NewModel(session Session, adapter *db.SQLAdapter) Model {
@@ -132,7 +141,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.state.Query.ActiveMode == ModeHistorySearch {
+			if cmd := m.handleLayoutKey(msg); cmd != nil {
+				return m, cmd
+			}
 			return m, m.handleHistorySearchKey(msg)
+		}
+
+		if m.handleRecordViewerPagingKey(msg) {
+			return m, nil
 		}
 
 		if cmd := m.handleKey(msg); cmd != nil {
@@ -154,8 +170,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.syncCurrentSQL()
 		submittedSQL := m.state.Query.CurrentSQL
-		m.state.SetLastSubmittedSQL(submittedSQL)
 		if strings.TrimSpace(submittedSQL) == "" {
+			m.state.SetRunningQueryContext(nil)
 			m.state.SetReady("")
 			m.state.SetPendingIntent(IntentSubmit, "submit", "Submit requested with empty input.")
 			return m, nil
@@ -163,6 +179,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		parsedSlash, err := parseSlashCommand(submittedSQL)
 		if err != nil {
+			m.state.SetRunningQueryContext(nil)
 			m.state.SetReady("")
 			m.state.SetPendingIntent(IntentNone, "submit", fmt.Sprintf("Slash command parse failed: %v", err))
 			m.state.SetLatestResultContext(nil)
@@ -170,21 +187,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if parsedSlash != nil {
+			m.state.SetLastSubmittedSQL(submittedSQL)
+			startedAt := time.Now()
+			m.state.SetRunningQueryContext(newRunningQueryContext(parsedSlash.DisplayName, startedAt))
 			m.state.SetReady("")
 			m.state.SetPendingIntent(IntentSubmit, "submit", fmt.Sprintf("Dispatching %s.", parsedSlash.DisplayName))
-			return m, executeSlashCommandCmd(slashCommandContext{
+			return m, tea.Batch(executeSlashCommandCmd(slashCommandContext{
 				Session: m.session,
 				Adapter: m.adapter,
 				Dialect: m.adapterDialect(),
 				Query:   m.state.Query.snapshot(),
-			}, *parsedSlash)
+			}, *parsedSlash), runningTickCmd(startedAt))
 		}
 
+		if !isCompleteSQLStatement(submittedSQL) {
+			m.state.SetRunningQueryContext(nil)
+			m.state.SetPendingIntent(IntentNone, "submit", "SQL is incomplete. End the statement with ';' to run it.")
+			return m, nil
+		}
+
+		m.state.SetLastSubmittedSQL(submittedSQL)
+		startedAt := time.Now()
+		m.state.SetRunningQueryContext(newRunningQueryContext("SQL", startedAt))
 		m.state.SetReady("")
 		m.state.SetPendingIntent(IntentSubmit, "submit", fmt.Sprintf("Executing %d characters of SQL.", len(submittedSQL)))
-		return m, executeStatementCmd(m.adapter, submittedSQL)
+		return m, tea.Batch(executeStatementCmd(m.adapter, submittedSQL), runningTickCmd(startedAt))
 	case statementExecutedMsg:
 		historyErr := m.appendSessionHistory(msg.Query, msg.ResultSummary)
+		m.state.SetRunningQueryContext(nil)
 		m.state.Query.PendingIntent = IntentNone
 		m.state.Query.LastAction = "submit"
 		m.state.SetPendingModeSwitch(nil)
@@ -195,10 +225,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.state.SetReady(withHistoryWarning(describeStatementStatus(msg.Result), historyErr))
-		m.state.SetLatestResultContext(buildLatestResultContext(msg.Query, m.state.Query.ActiveMode, msg.Result))
+		m.state.SetLatestResultContext(buildLatestResultContext(msg.Query, m.resultOriginMode(), msg.Result))
 		return m, nil
 	case slashCommandExecutedMsg:
 		historyErr := m.appendSessionHistory(msg.Command.RawInput, msg.ResultSummary)
+		m.state.SetRunningQueryContext(nil)
 		m.state.Query.PendingIntent = IntentNone
 		m.state.Query.LastAction = "slash:" + msg.Command.DisplayName
 		m.state.SetPendingModeSwitch(nil)
@@ -221,7 +252,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if msg.Result.Statement != nil {
-			m.state.SetLatestResultContext(buildLatestResultContext(msg.Command.RawInput, m.state.Query.ActiveMode, msg.Result.Statement))
+			m.state.SetLatestResultContext(buildLatestResultContext(msg.Command.RawInput, m.resultOriginMode(), msg.Result.Statement))
 		} else if !msg.Result.PreserveResult && !msg.Result.ShouldReplace {
 			m.state.SetLatestResultContext(nil)
 		}
@@ -254,8 +285,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case switchModeIntentMsg:
 		m.syncCurrentSQL()
-		switchContext := buildModeSwitchContext(m.state.Query.ActiveMode, nextModeForIntent(m.state.Query.ActiveMode), m.state.Query.LatestResult)
+		switchContext := buildModeSwitchContext(m.state.Query.Layout, nextLayoutForModeIntent(m.state.Query.Layout, m.state.Query.ActiveMode), m.state.Query.ActiveMode, nextModeForIntent(m.state.Query.ActiveMode), m.state.Query.LatestResult)
 		m.applyModeSwitch(switchContext)
+		return m, nil
+	case switchLayoutIntentMsg:
+		m.syncCurrentSQL()
+		m.applyLayoutSwitch(msg.Layout)
 		return m, nil
 	case startupCompleteMsg:
 		m.state.SetReady("")
@@ -274,14 +309,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			message = msg.Err.Error()
 		}
+		m.state.SetRunningQueryContext(nil)
 		m.state.SetError(message, msg.Status)
 		return m, nil
+	case runningTickMsg:
+		running := m.state.Query.Running
+		if running == nil || !running.StartedAt.Equal(msg.StartedAt) {
+			return m, nil
+		}
+
+		updated := *running
+		if msg.Now.After(updated.StartedAt) {
+			updated.Elapsed = msg.Now.Sub(updated.StartedAt)
+		}
+		updated.SpinnerFrame = (updated.SpinnerFrame + 1) % len(runningSpinnerFrames)
+		m.state.SetRunningQueryContext(&updated)
+		return m, runningTickCmd(updated.StartedAt)
 	case tea.WindowSizeMsg:
 		m.command.SetSize(msg.Width, msg.Height)
 		m.viewer.SetSize(msg.Width, msg.Height)
 	}
 
-	if m.state.Query.ActiveMode == ModeRecordViewer {
+	if m.state.Query.ActiveMode == ModeRecordViewer && !layoutShowsCommand(m.state.Query.Layout) {
 		return m, nil
 	}
 
@@ -292,10 +341,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	if m.state.App.Current == StateReady && m.state.Query.ActiveMode == ModeRecordViewer {
-		return strings.Join([]string{m.stateView(), "", m.footerView()}, "\n")
-	}
-
 	lines := []string{"SQLcery", ""}
 
 	if name := strings.TrimSpace(m.session.ConnectionName); name != "" {
@@ -307,9 +352,13 @@ func (m Model) View() string {
 	}
 
 	lines = append(lines, fmt.Sprintf("App state: %s", m.state.App.Current))
+	lines = append(lines, fmt.Sprintf("Layout: %s", layoutLabel(m.state.Query.Layout)))
 	lines = append(lines, fmt.Sprintf("Mode: %s", m.state.Query.ActiveMode))
 	if pending := strings.TrimSpace(string(m.state.Query.PendingIntent)); pending != "" {
 		lines = append(lines, fmt.Sprintf("Pending: %s", pending))
+	}
+	if running := m.state.Query.Running; running != nil {
+		lines = append(lines, fmt.Sprintf("Running: %s", formatRunningIndicator(running)))
 	}
 	if action := strings.TrimSpace(m.state.Query.LastAction); action != "" {
 		lines = append(lines, fmt.Sprintf("Last action: %s", action))
@@ -362,6 +411,12 @@ func (m Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	keys := m.command.KeyMap()
 
 	switch {
+	case key.Matches(msg, keys.LayoutSplit):
+		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutSplit} }
+	case key.Matches(msg, keys.LayoutCommandOnly):
+		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
+	case key.Matches(msg, keys.LayoutViewerOnly):
+		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutViewerOnly} }
 	case key.Matches(msg, keys.Submit):
 		return func() tea.Msg { return submitIntentMsg{} }
 	case key.Matches(msg, keys.NextSuggestion):
@@ -386,9 +441,65 @@ func (m Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return func() tea.Msg { return historyIntentMsg{} }
 	case key.Matches(msg, keys.SwitchMode):
 		return func() tea.Msg { return switchModeIntentMsg{} }
+	case msg.String() == "ctrl+1", msg.String() == "alt+1":
+		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutSplit} }
+	case msg.String() == "ctrl+2", msg.String() == "alt+2":
+		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
+	case msg.String() == "ctrl+3", msg.String() == "alt+3":
+		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutViewerOnly} }
 	default:
 		return nil
 	}
+}
+
+func (m Model) handleLayoutKey(msg tea.KeyMsg) tea.Cmd {
+	keys := m.command.KeyMap()
+
+	switch {
+	case key.Matches(msg, keys.LayoutSplit), msg.String() == "ctrl+1", msg.String() == "alt+1":
+		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutSplit} }
+	case key.Matches(msg, keys.LayoutCommandOnly), msg.String() == "ctrl+2", msg.String() == "alt+2":
+		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
+	case key.Matches(msg, keys.LayoutViewerOnly), msg.String() == "ctrl+3", msg.String() == "alt+3":
+		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutViewerOnly} }
+	default:
+		return nil
+	}
+}
+
+func (m *Model) handleRecordViewerPagingKey(msg tea.KeyMsg) bool {
+	if msg.String() != "ctrl+u" && msg.String() != "ctrl+d" {
+		return false
+	}
+	if m.state.Query.ActiveMode != ModeRecordViewer {
+		return false
+	}
+
+	latest := m.state.Query.LatestResult
+	if latest == nil || latest.PreservedResult == nil {
+		m.state.SetPendingIntent(IntentNone, "viewer-page", "Record viewer has no rows to page.")
+		return true
+	}
+
+	previous := m.state.Query.ViewerPage
+	if msg.String() == "ctrl+u" {
+		m.state.ChangeViewerPage(-1)
+	} else {
+		m.state.ChangeViewerPage(1)
+	}
+
+	page := recordViewerPageContextFor(m.state.Query.ViewerPage, len(latest.PreservedResult.Rows))
+	if m.state.Query.ViewerPage == previous {
+		if previous == 0 {
+			m.state.SetPendingIntent(IntentNone, "viewer-page", fmt.Sprintf("Already at the first record viewer page (%s).", formatRecordViewerRowRange(page)))
+			return true
+		}
+		m.state.SetPendingIntent(IntentNone, "viewer-page", fmt.Sprintf("Already at the last record viewer page (%s).", formatRecordViewerRowRange(page)))
+		return true
+	}
+
+	m.state.SetPendingIntent(IntentNone, "viewer-page", fmt.Sprintf("Showing record viewer page %d/%d (%s).", page.Number, page.TotalPages, formatRecordViewerRowRange(page)))
+	return true
 }
 
 func (m *Model) syncCurrentSQL() {
@@ -485,10 +596,7 @@ func (m Model) stateView() string {
 
 		return strings.Join(lines, "\n")
 	case StateReady:
-		if m.state.Query.ActiveMode == ModeRecordViewer {
-			return m.viewer.View(m.state.Query)
-		}
-		return m.command.View(m.state.Query)
+		return m.readyStateView()
 	default:
 		return m.command.View(m.state.Query)
 	}
@@ -496,7 +604,7 @@ func (m Model) stateView() string {
 
 func (m Model) footerView() string {
 	if m.state.App.Current == StateReady {
-		if m.state.Query.ActiveMode == ModeRecordViewer {
+		if m.state.Query.ActiveMode == ModeRecordViewer && !layoutShowsCommand(m.state.Query.Layout) {
 			return m.viewer.Footer(m.session.ConnectionName, m.dialectName(), m.state.Query)
 		}
 		return m.command.Footer(m.session.ConnectionName, m.dialectName(), m.state.Query)
@@ -639,25 +747,29 @@ func (m *Model) submitSlashWizard(wizard *SlashCommandWizardContext) (Model, tea
 		}
 
 		parsed := buildSlashWizardCommand(selectedCommand, &selectedTarget)
+		startedAt := time.Now()
+		m.state.SetRunningQueryContext(newRunningQueryContext(parsed.DisplayName, startedAt))
 		m.state.SetReady("")
 		m.state.SetPendingIntent(IntentSubmit, "submit", fmt.Sprintf("Dispatching %s from wizard.", parsed.DisplayName))
-		return *m, executeSlashCommandCmd(slashCommandContext{
+		return *m, tea.Batch(executeSlashCommandCmd(slashCommandContext{
 			Session: m.session,
 			Adapter: m.adapter,
 			Dialect: m.adapterDialect(),
 			Query:   m.state.Query.snapshot(),
-		}, parsed)
+		}, parsed), runningTickCmd(startedAt))
 	}
 
 	parsed := buildSlashWizardCommand(selectedCommand, nil)
+	startedAt := time.Now()
+	m.state.SetRunningQueryContext(newRunningQueryContext(parsed.DisplayName, startedAt))
 	m.state.SetReady("")
 	m.state.SetPendingIntent(IntentSubmit, "submit", fmt.Sprintf("Dispatching %s from wizard.", parsed.DisplayName))
-	return *m, executeSlashCommandCmd(slashCommandContext{
+	return *m, tea.Batch(executeSlashCommandCmd(slashCommandContext{
 		Session: m.session,
 		Adapter: m.adapter,
 		Dialect: m.adapterDialect(),
 		Query:   m.state.Query.snapshot(),
-	}, parsed)
+	}, parsed), runningTickCmd(startedAt))
 }
 
 func (m *Model) moveSlashWizardSelection(delta int) {
@@ -721,6 +833,16 @@ func executeStatementCmd(adapter *db.SQLAdapter, query string) tea.Cmd {
 	}
 }
 
+func runningTickCmd(startedAt time.Time) tea.Cmd {
+	if startedAt.IsZero() {
+		return nil
+	}
+
+	return tea.Tick(100*time.Millisecond, func(now time.Time) tea.Msg {
+		return runningTickMsg{StartedAt: startedAt, Now: now}
+	})
+}
+
 func summarizeStatementResult(result *db.StatementResult, err error) string {
 	if err != nil {
 		return fmt.Sprintf("error: %v", err)
@@ -735,6 +857,16 @@ func (m Model) adapterDialect() db.Dialect {
 	}
 
 	return m.adapter.Dialect()
+}
+
+func (m Model) resultOriginMode() AppMode {
+	if m.state.Query.ActiveMode == ModeHistorySearch {
+		return ModeCommand
+	}
+	if layoutShowsCommand(m.state.Query.Layout) {
+		return ModeCommand
+	}
+	return m.state.Query.ActiveMode
 }
 
 func buildLatestResultContext(query string, originMode AppMode, result *db.StatementResult) *LatestResultContext {
@@ -759,8 +891,10 @@ func buildLatestResultContext(query string, originMode AppMode, result *db.State
 	return context
 }
 
-func buildModeSwitchContext(fromMode, toMode AppMode, latest *LatestResultContext) *ModeSwitchContext {
+func buildModeSwitchContext(fromLayout, toLayout AppLayout, fromMode, toMode AppMode, latest *LatestResultContext) *ModeSwitchContext {
 	return &ModeSwitchContext{
+		FromLayout:    fromLayout,
+		ToLayout:      toLayout,
 		FromMode:      fromMode,
 		ToMode:        toMode,
 		ResultContext: cloneLatestResultContext(latest),
@@ -776,20 +910,43 @@ func nextModeForIntent(current AppMode) AppMode {
 	}
 }
 
+func nextLayoutForModeIntent(currentLayout AppLayout, currentMode AppMode) AppLayout {
+	switch currentLayout {
+	case LayoutSplit:
+		return LayoutSplit
+	case LayoutViewerOnly:
+		return LayoutCommandOnly
+	default:
+		if currentMode == ModeRecordViewer {
+			return LayoutCommandOnly
+		}
+		return LayoutViewerOnly
+	}
+}
+
 func describeModeSwitchStatus(context *ModeSwitchContext) string {
 	if context == nil {
 		return "Mode switch requested."
 	}
 
 	if context.ToMode == ModeCommand {
-		return "Returned to command mode."
+		if context.ToLayout == LayoutSplit {
+			return "Focused the command line in split layout."
+		}
+		return "Returned to command line."
 	}
 
 	if context.ResultContext == nil || context.ResultContext.PreservedResult == nil {
+		if context.ToLayout == LayoutSplit {
+			return "Focused the record viewer in split layout. Run a query that returns rows to populate it."
+		}
 		return "Record viewer is available after running a query that returns tabular results."
 	}
 
 	result := context.ResultContext.PreservedResult
+	if context.ToLayout == LayoutSplit {
+		return fmt.Sprintf("Focused the record viewer in split layout for %d row(s) across %d column(s).", len(result.Rows), len(result.Columns))
+	}
 	return fmt.Sprintf("Opened record viewer for %d row(s) across %d column(s).", len(result.Rows), len(result.Columns))
 }
 
@@ -803,6 +960,8 @@ func (m *Model) applyModeSwitch(context *ModeSwitchContext) {
 	}
 
 	if context.ToMode == ModeCommand {
+		m.closeHistorySearch()
+		m.state.SetLayout(context.ToLayout)
 		m.state.SetActiveMode(ModeCommand)
 		m.state.SetPendingModeSwitch(nil)
 		m.state.SetPendingIntent(IntentNone, "switch-mode", describeModeSwitchStatus(context))
@@ -810,13 +969,106 @@ func (m *Model) applyModeSwitch(context *ModeSwitchContext) {
 	}
 
 	if context.ResultContext == nil || context.ResultContext.PreservedResult == nil {
+		if context.ToLayout == LayoutSplit {
+			m.closeHistorySearch()
+			m.state.SetLayout(context.ToLayout)
+			m.state.SetActiveMode(context.ToMode)
+			m.state.SetPendingModeSwitch(nil)
+			m.state.SetPendingIntent(IntentNone, "switch-mode", describeModeSwitchStatus(context))
+			return
+		}
 		m.state.SetPendingIntent(IntentSwitchMode, "switch-mode", describeModeSwitchStatus(context))
 		return
 	}
-
+	m.closeHistorySearch()
+	m.state.SetLayout(context.ToLayout)
 	m.state.SetActiveMode(context.ToMode)
 	m.state.SetPendingModeSwitch(nil)
 	m.state.SetPendingIntent(IntentNone, "switch-mode", describeModeSwitchStatus(context))
+}
+
+func (m *Model) applyLayoutSwitch(layout AppLayout) {
+	current := m.state.Query.Layout
+	if layout == "" {
+		layout = LayoutCommandOnly
+	}
+	m.state.SetPendingModeSwitch(nil)
+
+	if layout == current {
+		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Layout already set to %s.", layoutLabel(layout)))
+		return
+	}
+
+	m.state.SetReady("")
+	m.state.SetLayout(layout)
+
+	switch layout {
+	case LayoutViewerOnly:
+		if m.state.Query.ActiveMode == ModeHistorySearch {
+			m.closeHistorySearch()
+		}
+		m.state.SetActiveMode(ModeRecordViewer)
+		if latest := m.state.Query.LatestResult; latest != nil && latest.PreservedResult != nil {
+			m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s with %d row(s) visible.", layoutLabel(layout), len(latest.PreservedResult.Rows)))
+			return
+		}
+		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s. Run a query that returns rows to populate the viewer.", layoutLabel(layout)))
+	case LayoutSplit:
+		if m.state.Query.ActiveMode == ModeHistorySearch {
+			m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s. History search stays open in the command line.", layoutLabel(layout)))
+			return
+		}
+		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s.", layoutLabel(layout)))
+	case LayoutCommandOnly:
+		if m.state.Query.ActiveMode == ModeRecordViewer {
+			m.state.SetActiveMode(ModeCommand)
+		}
+		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s.", layoutLabel(layout)))
+	default:
+		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s.", layoutLabel(m.state.Query.Layout)))
+	}
+}
+
+func (m Model) readyStateView() string {
+	query := m.state.Query
+	commandView := m.command.View(query)
+	viewerView := m.viewer.View(query)
+
+	switch query.Layout {
+	case LayoutSplit:
+		sections := []string{
+			renderLayoutSection("Record viewer", query.ActiveMode == ModeRecordViewer, viewerView),
+			renderLayoutSection("Command line", query.ActiveMode != ModeRecordViewer, commandView),
+		}
+		return strings.Join(sections, "\n\n"+strings.Repeat("-", 40)+"\n\n")
+	case LayoutViewerOnly:
+		return viewerView
+	default:
+		return commandView
+	}
+}
+
+func renderLayoutSection(label string, active bool, body string) string {
+	heading := label
+	if active {
+		heading += " [active]"
+	}
+	return heading + "\n\n" + body
+}
+
+func layoutShowsCommand(layout AppLayout) bool {
+	return layout != LayoutViewerOnly
+}
+
+func layoutLabel(layout AppLayout) string {
+	switch layout {
+	case LayoutSplit:
+		return "split"
+	case LayoutViewerOnly:
+		return "viewer only"
+	default:
+		return "command only"
+	}
 }
 
 func buildInlineResultSet(query string, result *db.ResultSet) *db.ResultSet {
