@@ -1,0 +1,17 @@
+[tools]
+go = "1.22.12"
+"npm:figlet" = "latest"
+
+[hooks]
+enter = """
+figlet SQLcery
+echo "$(go version)"
+"""
+
+[tasks.webdev]
+dir = "../webdev"
+description = "Start webdev"
+run = "docker compose up -d mysql8 pgsql"
+
+[settings]
+experimental = true
