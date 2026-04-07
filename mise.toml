@@ -21,6 +21,14 @@ run = "gofmt -w ."
 description = "Run Go tests"
 run = "go test ./..."
 
+[tasks.test-targeted]
+description = "Run targeted Go tests"
+run = "go test ./cmd/sqlcery ./internal/app"
+
+[tasks.test-db]
+description = "Run internal db package tests"
+run = "go test ./internal/db"
+
 [tasks.lint]
 description = "Run golangci-lint"
 run = "go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run ./..."

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/adwinying/sqlcery/internal/app"
 	"github.com/adwinying/sqlcery/internal/config"
 	"github.com/adwinying/sqlcery/internal/db"
 )
@@ -17,6 +18,20 @@ func main() {
 }
 
 func run(args []string, getwd func() (string, error)) error {
+	return runWithDependencies(args, getwd, runDependencies{
+		open: db.Open,
+		start: func(ctx context.Context, session app.Session, adapter *db.SQLAdapter) error {
+			return app.Run(ctx, session, adapter, app.RunOptions{})
+		},
+	})
+}
+
+type runDependencies struct {
+	open  func(context.Context, config.Connection) (*db.SQLAdapter, error)
+	start func(context.Context, app.Session, *db.SQLAdapter) error
+}
+
+func runWithDependencies(args []string, getwd func() (string, error), deps runDependencies) (err error) {
 	cwd, err := getwd()
 	if err != nil {
 		return fmt.Errorf("resolve working directory: %w", err)
@@ -31,10 +46,19 @@ func run(args []string, getwd func() (string, error)) error {
 		return nil
 	}
 
-	adapter, err := db.Open(context.Background(), resolved.Connection)
+	adapter, err := deps.open(context.Background(), resolved.Connection)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		closeErr := adapter.Close()
+		if err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
 
-	return adapter.Close()
+	return deps.start(context.Background(), app.Session{
+		ConnectionName: resolved.Name,
+		ConnectionType: resolved.Connection.Type,
+	}, adapter)
 }

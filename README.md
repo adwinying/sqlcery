@@ -24,6 +24,14 @@ It supports the following database types:
 In command line mode, SQLcery reads SQL commands and executes them. It has built-in auto-completion and syntax highlighting.
 The auto-completion is context-aware, so it will prioritize keywords and table names that are likely to be used in the current context.
 
+#### SQL Assistance Strategy
+
+SQLcery currently standardizes on `lightweight-tokenization` for command-line assistance, including autocomplete and upcoming slash-command SQL composition.
+
+- Use lightweight token scanning to identify the current statement, clause, qualifier, and referenced tables near the cursor.
+- Keep command composition schema-driven and explicit instead of parsing and rewriting arbitrary SQL entered by the user.
+- Revisit a full SQL parser only when assistance must understand nested queries or CTEs, resolve aliases and derived tables, validate dialect grammar, or preserve semantics while rewriting existing SQL.
+
 #### Slash Commands
 
 `/commands` allows you to compose SQL commands using a wizard-style interface.

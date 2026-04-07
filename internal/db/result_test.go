@@ -51,6 +51,9 @@ func TestNormalizeRowsCapturesTypedValuesAndMetadata(t *testing.T) {
 	if got, want := len(result.Rows), 1; got != want {
 		t.Fatalf("len(result.Rows) = %d, want %d", got, want)
 	}
+	if got, want := result.Rows[0].Position, 1; got != want {
+		t.Fatalf("result.Rows[0].Position = %d, want %d", got, want)
+	}
 
 	values := result.Rows[0].Values
 	assertResultValue(t, values[0], ValueKindInteger, int64(7))
@@ -78,6 +81,58 @@ func TestNormalizeRowsCapturesTypedValuesAndMetadata(t *testing.T) {
 	}
 	if values[6].Value != nil {
 		t.Fatalf("note value = %#v, want nil", values[6].Value)
+	}
+}
+
+func TestNormalizeRowsNormalizesDriverByteValuesUsingColumnMetadata(t *testing.T) {
+	amount := []byte("12.3400")
+	name := []byte("gizmo")
+	payload := []byte{0x00, 0x01, 0x02}
+	rows := &scriptedRows{
+		columns: []string{"amount", "name", "payload"},
+		values: [][]any{
+			{amount, name, payload},
+			{[]byte("9.5000"), []byte("widget"), []byte{0x03}},
+		},
+	}
+
+	result, err := NormalizeRows(rows, ResultOptions{
+		Columns: []Column{
+			{Name: "amount", Position: 1, Type: "DECIMAL(10,4)"},
+			{Name: "name", Position: 2, Type: "VARCHAR(255)"},
+			{Name: "payload", Position: 3, Type: "BLOB"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeRows() error = %v", err)
+	}
+
+	if got, want := len(result.Rows), 2; got != want {
+		t.Fatalf("len(result.Rows) = %d, want %d", got, want)
+	}
+	if got, want := result.Rows[1].Position, 2; got != want {
+		t.Fatalf("result.Rows[1].Position = %d, want %d", got, want)
+	}
+
+	assertResultValue(t, result.Rows[0].Values[0], ValueKindDecimal, "12.3400")
+	assertResultValue(t, result.Rows[0].Values[1], ValueKindString, "gizmo")
+
+	amount[0] = '9'
+	name[0] = 'w'
+	payload[0] = 0xff
+
+	assertResultValue(t, result.Rows[0].Values[0], ValueKindDecimal, "12.3400")
+	assertResultValue(t, result.Rows[0].Values[1], ValueKindString, "gizmo")
+
+	if got, want := result.Rows[0].Values[2].Kind, ValueKindBytes; got != want {
+		t.Fatalf("payload kind = %q, want %q", got, want)
+	}
+	gotPayload, ok := result.Rows[0].Values[2].Value.([]byte)
+	if !ok {
+		t.Fatalf("payload value type = %T, want []byte", result.Rows[0].Values[2].Value)
+	}
+	if got, want := gotPayload, []byte{0x00, 0x01, 0x02}; !equalBytes(got, want) {
+		t.Fatalf("payload value = %#v, want %#v", got, want)
 	}
 }
 
@@ -156,6 +211,18 @@ func assertResultValue(t *testing.T, value ResultValue, wantKind ValueKind, want
 	if got := value.Value; got != wantValue {
 		t.Fatalf("value.Value = %#v, want %#v", got, wantValue)
 	}
+}
+
+func equalBytes(got, want []byte) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }
 
 type scriptedRows struct {

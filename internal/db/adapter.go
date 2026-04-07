@@ -39,6 +39,7 @@ type MetadataProvider interface {
 type Adapter interface {
 	Runner
 	Dialect() Dialect
+	ExecuteStatementContext(ctx context.Context, query string, options ResultOptions, args ...any) (*StatementResult, error)
 	QueryResultContext(ctx context.Context, query string, options ResultOptions, args ...any) (*ResultSet, error)
 	Tables(ctx context.Context, filter TableFilter) ([]Table, error)
 	Columns(ctx context.Context, table TableRef) ([]Column, error)
@@ -46,6 +47,20 @@ type Adapter interface {
 	Types(ctx context.Context) ([]TypeInfo, error)
 	HealthCheck(ctx context.Context) error
 	Close() error
+}
+
+type StatementResultKind string
+
+const (
+	StatementResultKindQuery StatementResultKind = "query"
+	StatementResultKindExec  StatementResultKind = "exec"
+)
+
+type StatementResult struct {
+	Kind         StatementResultKind
+	ResultSet    *ResultSet
+	RowsAffected *int64
+	LastInsertID *int64
 }
 
 type TableFilter struct {
@@ -155,22 +170,57 @@ func (a *SQLAdapter) QueryRowContext(ctx context.Context, query string, args ...
 	return a.runner.QueryRowContext(ctx, query, args...)
 }
 
+func (a *SQLAdapter) ExecuteStatementContext(ctx context.Context, query string, options ResultOptions, args ...any) (*StatementResult, error) {
+	if statementReturnsRows(query) {
+		resultSet, err := a.QueryResultContext(ctx, query, options, args...)
+		if err != nil {
+			return nil, err
+		}
+
+		return &StatementResult{
+			Kind:      StatementResultKindQuery,
+			ResultSet: resultSet,
+		}, nil
+	}
+
+	execResult, err := a.ExecContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &StatementResult{Kind: StatementResultKindExec}
+	if rowsAffected, err := execResult.RowsAffected(); err == nil {
+		result.RowsAffected = int64Pointer(rowsAffected)
+	}
+	if lastInsertID, err := execResult.LastInsertId(); err == nil {
+		result.LastInsertID = int64Pointer(lastInsertID)
+	}
+
+	return result, nil
+}
+
 func (a *SQLAdapter) QueryResultContext(ctx context.Context, query string, options ResultOptions, args ...any) (*ResultSet, error) {
 	if options.Source != nil {
 		if len(options.Columns) == 0 {
 			columns, err := a.Columns(ctx, *options.Source)
 			if err != nil {
-				return nil, err
+				if !errors.Is(err, ErrMetadataUnsupported) {
+					return nil, err
+				}
+			} else {
+				options.Columns = columns
 			}
-			options.Columns = columns
 		}
 
 		if len(options.PrimaryKeys) == 0 {
 			primaryKeys, err := a.PrimaryKeys(ctx, *options.Source)
 			if err != nil {
-				return nil, err
+				if !errors.Is(err, ErrMetadataUnsupported) {
+					return nil, err
+				}
+			} else {
+				options.PrimaryKeys = primaryKeys
 			}
-			options.PrimaryKeys = primaryKeys
 		}
 	}
 
@@ -249,6 +299,60 @@ func (r sqlRows) Columns() ([]string, error) {
 
 func (r sqlRows) ColumnTypes() ([]*sql.ColumnType, error) {
 	return r.rows.ColumnTypes()
+}
+
+func statementReturnsRows(query string) bool {
+	switch statementLeadingKeyword(query) {
+	case "DESC", "DESCRIBE", "EXPLAIN", "PRAGMA", "SELECT", "SHOW", "VALUES", "WITH":
+		return true
+	default:
+		return false
+	}
+}
+
+func statementLeadingKeyword(query string) string {
+	runes := []rune(query)
+	for i := 0; i < len(runes); {
+		switch {
+		case isSpaceRune(runes[i]):
+			i++
+		case hasRunePrefix(runes, i, '-', '-'):
+			i += 2
+			for i < len(runes) && runes[i] != '\n' {
+				i++
+			}
+		case hasRunePrefix(runes, i, '/', '*'):
+			i += 2
+			for i < len(runes) && !hasRunePrefix(runes, i, '*', '/') {
+				i++
+			}
+			if i < len(runes) {
+				i += 2
+			}
+		case isKeywordRune(runes[i]):
+			start := i
+			for i < len(runes) && isKeywordRune(runes[i]) {
+				i++
+			}
+			return strings.ToUpper(string(runes[start:i]))
+		default:
+			return ""
+		}
+	}
+
+	return ""
+}
+
+func hasRunePrefix(runes []rune, index int, first, second rune) bool {
+	return index+1 < len(runes) && runes[index] == first && runes[index+1] == second
+}
+
+func isSpaceRune(value rune) bool {
+	return value == ' ' || value == '\t' || value == '\n' || value == '\r' || value == '\f'
+}
+
+func isKeywordRune(value rune) bool {
+	return value == '_' || value >= '0' && value <= '9' || value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z'
 }
 
 func (r sqlRows) Err() error {

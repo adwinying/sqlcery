@@ -189,6 +189,128 @@ func TestAdapterPrimaryKeysValidatesTableName(t *testing.T) {
 	}
 }
 
+func TestQueryResultContextContinuesWithoutMetadataSupport(t *testing.T) {
+	ctx := context.Background()
+	runner := &stubRunner{
+		queryRows: &scriptedRows{
+			columns: []string{"id", "name"},
+			values:  [][]any{{int64(7), []byte("gizmo")}},
+		},
+	}
+
+	adapter, err := newAdapter(runner, SQLiteDialect(), nil, nil, nil)
+	if err != nil {
+		t.Fatalf("newAdapter() error = %v", err)
+	}
+
+	result, err := adapter.QueryResultContext(ctx, "select id, name from widgets", ResultOptions{
+		Source: &TableRef{Schema: "main", Name: "widgets"},
+	})
+	if err != nil {
+		t.Fatalf("QueryResultContext() error = %v", err)
+	}
+
+	if result.Source == nil || *result.Source != (TableRef{Schema: "main", Name: "widgets"}) {
+		t.Fatalf("result.Source = %#v, want widgets source", result.Source)
+	}
+	if got, want := len(result.Columns), 2; got != want {
+		t.Fatalf("len(result.Columns) = %d, want %d", got, want)
+	}
+	if result.Columns[0].Schema != nil {
+		t.Fatalf("result.Columns[0].Schema = %#v, want nil without metadata support", result.Columns[0].Schema)
+	}
+	if result.Columns[0].PrimaryKey != nil {
+		t.Fatalf("result.Columns[0].PrimaryKey = %#v, want nil without metadata support", result.Columns[0].PrimaryKey)
+	}
+	if got, want := len(result.Rows), 1; got != want {
+		t.Fatalf("len(result.Rows) = %d, want %d", got, want)
+	}
+	if got, want := result.Rows[0].Position, 1; got != want {
+		t.Fatalf("result.Rows[0].Position = %d, want %d", got, want)
+	}
+	if got, want := result.Rows[0].Values[1].Kind, ValueKindBytes; got != want {
+		t.Fatalf("result.Rows[0].Values[1].Kind = %q, want %q", got, want)
+	}
+	gotName, ok := result.Rows[0].Values[1].Value.([]byte)
+	if !ok {
+		t.Fatalf("result.Rows[0].Values[1].Value type = %T, want []byte", result.Rows[0].Values[1].Value)
+	}
+	if got, want := gotName, []byte("gizmo"); !reflect.DeepEqual(got, want) {
+		t.Fatalf("result.Rows[0].Values[1].Value = %#v, want %#v", got, want)
+	}
+
+	if got, want := runner.queryCalls, []stubCall{{query: "select id, name from widgets", args: nil}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("runner.queryCalls = %#v, want %#v", got, want)
+	}
+}
+
+func TestExecuteStatementContextUsesQueryPathForSelect(t *testing.T) {
+	ctx := context.Background()
+	runner := &stubRunner{
+		queryRows: &scriptedRows{
+			columns: []string{"id"},
+			values:  [][]any{{int64(7)}},
+		},
+	}
+
+	adapter, err := newAdapter(runner, SQLiteDialect(), nil, nil, nil)
+	if err != nil {
+		t.Fatalf("newAdapter() error = %v", err)
+	}
+
+	result, err := adapter.ExecuteStatementContext(ctx, "select id from widgets", ResultOptions{})
+	if err != nil {
+		t.Fatalf("ExecuteStatementContext() error = %v", err)
+	}
+
+	if got, want := result.Kind, StatementResultKindQuery; got != want {
+		t.Fatalf("result.Kind = %q, want %q", got, want)
+	}
+	if result.ResultSet == nil {
+		t.Fatal("result.ResultSet = nil, want query result")
+	}
+	if got, want := len(result.ResultSet.Rows), 1; got != want {
+		t.Fatalf("len(result.ResultSet.Rows) = %d, want %d", got, want)
+	}
+	if got, want := runner.queryCalls, []stubCall{{query: "select id from widgets", args: nil}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("runner.queryCalls = %#v, want %#v", got, want)
+	}
+	if len(runner.execCalls) != 0 {
+		t.Fatalf("runner.execCalls = %#v, want none", runner.execCalls)
+	}
+}
+
+func TestExecuteStatementContextUsesExecPathForUpdate(t *testing.T) {
+	ctx := context.Background()
+	runner := &stubRunner{execResult: stubResult(4)}
+
+	adapter, err := newAdapter(runner, SQLiteDialect(), nil, nil, nil)
+	if err != nil {
+		t.Fatalf("newAdapter() error = %v", err)
+	}
+
+	result, err := adapter.ExecuteStatementContext(ctx, "update widgets set name = ?", ResultOptions{})
+	if err != nil {
+		t.Fatalf("ExecuteStatementContext() error = %v", err)
+	}
+
+	if got, want := result.Kind, StatementResultKindExec; got != want {
+		t.Fatalf("result.Kind = %q, want %q", got, want)
+	}
+	if result.ResultSet != nil {
+		t.Fatalf("result.ResultSet = %#v, want nil", result.ResultSet)
+	}
+	if result.RowsAffected == nil || *result.RowsAffected != 4 {
+		t.Fatalf("result.RowsAffected = %#v, want 4", result.RowsAffected)
+	}
+	if got, want := runner.execCalls, []stubCall{{query: "update widgets set name = ?", args: nil}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("runner.execCalls = %#v, want %#v", got, want)
+	}
+	if len(runner.queryCalls) != 0 {
+		t.Fatalf("runner.queryCalls = %#v, want none", runner.queryCalls)
+	}
+}
+
 func TestAdapterHealthCheck(t *testing.T) {
 	called := false
 	adapter, err := newAdapter(&stubRunner{}, SQLiteDialect(), nil, func(context.Context) error {

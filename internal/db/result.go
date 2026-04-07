@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type ResultOptions struct {
@@ -38,7 +39,8 @@ type DecimalSize struct {
 }
 
 type ResultRow struct {
-	Values []ResultValue
+	Position int
+	Values   []ResultValue
 }
 
 type ResultValue struct {
@@ -55,6 +57,7 @@ const (
 	ValueKindFloat   ValueKind = "float"
 	ValueKindString  ValueKind = "string"
 	ValueKindBytes   ValueKind = "bytes"
+	ValueKindDecimal ValueKind = "decimal"
 	ValueKindTime    ValueKind = "time"
 	ValueKindUnknown ValueKind = "unknown"
 )
@@ -101,9 +104,9 @@ func NormalizeRows(rows Rows, options ResultOptions) (_ *ResultSet, err error) {
 			return nil, fmt.Errorf("scan result row: %w", err)
 		}
 
-		row := ResultRow{Values: make([]ResultValue, len(values))}
+		row := ResultRow{Position: len(result.Rows) + 1, Values: make([]ResultValue, len(values))}
 		for i, value := range values {
-			row.Values[i] = normalizeResultValue(value)
+			row.Values[i] = normalizeResultValue(value, result.Columns[i])
 		}
 
 		result.Rows = append(result.Rows, row)
@@ -168,7 +171,7 @@ func applyColumnTypeMetadata(column ResultColumn, columnType *sql.ColumnType) Re
 	return column
 }
 
-func normalizeResultValue(value any) ResultValue {
+func normalizeResultValue(value any, column ResultColumn) ResultValue {
 	switch typed := value.(type) {
 	case nil:
 		return ResultValue{Kind: ValueKindNull}
@@ -199,14 +202,37 @@ func normalizeResultValue(value any) ResultValue {
 	case float64:
 		return ResultValue{Kind: ValueKindFloat, Value: typed}
 	case string:
+		if resultColumnLooksDecimal(column) {
+			return ResultValue{Kind: ValueKindDecimal, Value: typed}
+		}
 		return ResultValue{Kind: ValueKindString, Value: typed}
 	case []byte:
-		return ResultValue{Kind: ValueKindBytes, Value: append([]byte(nil), typed...)}
+		return normalizeByteResultValue(typed, column)
 	case time.Time:
 		return ResultValue{Kind: ValueKindTime, Value: typed}
 	default:
 		return ResultValue{Kind: classifyResultValueKind(typed), Value: typed}
 	}
+}
+
+func normalizeByteResultValue(value []byte, column ResultColumn) ResultValue {
+	copy := append([]byte(nil), value...)
+	if resultColumnLooksBinary(column) {
+		return ResultValue{Kind: ValueKindBytes, Value: copy}
+	}
+	if !utf8.Valid(copy) {
+		return ResultValue{Kind: ValueKindBytes, Value: copy}
+	}
+	if !resultColumnLooksText(column) && !resultColumnLooksDecimal(column) {
+		return ResultValue{Kind: ValueKindBytes, Value: copy}
+	}
+
+	text := string(copy)
+	if resultColumnLooksDecimal(column) {
+		return ResultValue{Kind: ValueKindDecimal, Value: text}
+	}
+
+	return ResultValue{Kind: ValueKindString, Value: text}
 }
 
 func classifyResultValueKind(value any) ValueKind {
@@ -232,6 +258,41 @@ func classifyResultValueKind(value any) ValueKind {
 	}
 
 	return ValueKindUnknown
+}
+
+func resultColumnLooksBinary(column ResultColumn) bool {
+	return resultColumnTypeMatches(column, "BINARY", "VARBINARY", "BLOB", "BYTEA")
+}
+
+func resultColumnLooksText(column ResultColumn) bool {
+	return resultColumnTypeMatches(column, "CHAR", "TEXT", "CLOB", "JSON", "XML")
+}
+
+func resultColumnLooksDecimal(column ResultColumn) bool {
+	return resultColumnTypeMatches(column, "DECIMAL", "NUMERIC")
+}
+
+func resultColumnTypeMatches(column ResultColumn, fragments ...string) bool {
+	for _, typeName := range resultColumnTypeNames(column) {
+		for _, fragment := range fragments {
+			if strings.Contains(typeName, fragment) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func resultColumnTypeNames(column ResultColumn) []string {
+	typeNames := make([]string, 0, 2)
+	if column.DatabaseType != "" {
+		typeNames = append(typeNames, strings.ToUpper(strings.TrimSpace(column.DatabaseType)))
+	}
+	if column.Schema != nil && column.Schema.Type != "" {
+		typeNames = append(typeNames, strings.ToUpper(strings.TrimSpace(column.Schema.Type)))
+	}
+	return typeNames
 }
 
 func cloneTableRef(table *TableRef) *TableRef {

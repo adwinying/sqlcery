@@ -1,0 +1,833 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+	"unicode"
+
+	"github.com/adwinying/sqlcery/internal/db"
+)
+
+type slashCommand struct {
+	RawInput     string
+	DisplayName  string
+	Name         string
+	Args         []string
+	RawArguments string
+}
+
+type slashCommandContext struct {
+	Session Session
+	Adapter *db.SQLAdapter
+	Dialect db.Dialect
+	Query   QueryContext
+}
+
+type slashCommandResult struct {
+	Action         string
+	Status         string
+	Statement      *db.StatementResult
+	ReplaceEditor  string
+	ShouldReplace  bool
+	Wizard         *SlashCommandWizardContext
+	PreserveResult bool
+}
+
+type slashCommandHandler func(context.Context, slashCommandContext, slashCommand) (slashCommandResult, error)
+
+type slashCommandSpec struct {
+	Name        string
+	Summary     string
+	Usage       string
+	Handler     slashCommandHandler
+	NeedsTarget bool
+}
+
+type slashCommandRegistry struct {
+	ordered []slashCommandSpec
+	byName  map[string]slashCommandSpec
+}
+
+type slashCommandInfo struct {
+	Name    string
+	Summary string
+	Usage   string
+}
+
+var slashCommandInfos = []slashCommandInfo{
+	{Name: "help", Summary: "show available slash commands", Usage: "/help"},
+	{Name: "commands", Summary: "open the guided slash command wizard", Usage: "/commands"},
+	{Name: "tables", Summary: "list tables in the current database", Usage: "/tables"},
+	{Name: "columns", Summary: "list columns for a table", Usage: "/columns <table>"},
+	{Name: "select", Summary: "compose a SELECT statement", Usage: "/select <table>"},
+	{Name: "insert", Summary: "compose an INSERT statement", Usage: "/insert <table>"},
+	{Name: "update", Summary: "compose an UPDATE statement", Usage: "/update <table>"},
+	{Name: "delete", Summary: "compose a DELETE statement", Usage: "/delete <table>"},
+	{Name: "create", Summary: "compose a CREATE TABLE statement", Usage: "/create <table>"},
+	{Name: "drop", Summary: "compose a DROP TABLE statement", Usage: "/drop <table>"},
+}
+
+var defaultSlashCommandRegistry = newSlashCommandRegistry()
+
+func slashCommandSpecs() []slashCommandSpec {
+	return []slashCommandSpec{
+		{Name: "help", Summary: "show available slash commands", Usage: "/help", Handler: handleSlashHelp},
+		{Name: "commands", Summary: "open the guided slash command wizard", Usage: "/commands", Handler: handleSlashCommands},
+		{Name: "tables", Summary: "list tables in the current database", Usage: "/tables", Handler: handleSlashTables},
+		{Name: "columns", Summary: "list columns for a table", Usage: "/columns <table>", Handler: handleSlashColumns, NeedsTarget: true},
+		{Name: "select", Summary: "compose a SELECT statement", Usage: "/select <table>", Handler: handleSlashSelect, NeedsTarget: true},
+		{Name: "insert", Summary: "compose an INSERT statement", Usage: "/insert <table>", Handler: handleSlashInsert, NeedsTarget: true},
+		{Name: "update", Summary: "compose an UPDATE statement", Usage: "/update <table>", Handler: handleSlashUpdate, NeedsTarget: true},
+		{Name: "delete", Summary: "compose a DELETE statement", Usage: "/delete <table>", Handler: handleSlashDelete, NeedsTarget: true},
+		{Name: "create", Summary: "compose a CREATE TABLE statement", Usage: "/create <table>", Handler: handleSlashCreate, NeedsTarget: true},
+		{Name: "drop", Summary: "compose a DROP TABLE statement", Usage: "/drop <table>", Handler: handleSlashDrop, NeedsTarget: true},
+	}
+}
+
+func newSlashCommandRegistry() slashCommandRegistry {
+	specs := slashCommandSpecs()
+
+	registry := slashCommandRegistry{
+		ordered: append([]slashCommandSpec(nil), specs...),
+		byName:  make(map[string]slashCommandSpec, len(specs)),
+	}
+	for _, spec := range specs {
+		registry.byName[spec.Name] = spec
+	}
+
+	return registry
+}
+
+func (r slashCommandRegistry) names() []string {
+	results := make([]string, 0, len(r.ordered))
+	for _, spec := range r.ordered {
+		results = append(results, "/"+spec.Name)
+	}
+	return results
+}
+
+func parseSlashCommand(input string) (*slashCommand, error) {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" || !strings.HasPrefix(trimmed, "/") {
+		return nil, nil
+	}
+
+	parts, err := splitSlashCommandInput(trimmed)
+	if err != nil {
+		return nil, err
+	}
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("slash command name is required")
+	}
+
+	name := strings.ToLower(strings.TrimPrefix(parts[0], "/"))
+	if name == "" {
+		return nil, fmt.Errorf("slash command name is required")
+	}
+
+	command := &slashCommand{
+		RawInput:    trimmed,
+		DisplayName: "/" + name,
+		Name:        name,
+		Args:        append([]string(nil), parts[1:]...),
+	}
+	if len(parts) > 1 {
+		command.RawArguments = strings.Join(parts[1:], " ")
+	}
+
+	return command, nil
+}
+
+func splitSlashCommandInput(input string) ([]string, error) {
+	runes := []rune(input)
+	parts := make([]string, 0, 4)
+
+	for i := 0; i < len(runes); {
+		for i < len(runes) && unicode.IsSpace(runes[i]) {
+			i++
+		}
+		if i >= len(runes) {
+			break
+		}
+
+		var builder strings.Builder
+		quote := rune(0)
+		started := false
+
+		for i < len(runes) {
+			r := runes[i]
+			switch {
+			case quote != 0:
+				started = true
+				switch r {
+				case '\\':
+					if i+1 >= len(runes) {
+						return nil, fmt.Errorf("slash command has an incomplete escape sequence")
+					}
+					builder.WriteRune(runes[i+1])
+					i += 2
+				case quote:
+					quote = 0
+					i++
+				default:
+					builder.WriteRune(r)
+					i++
+				}
+			case unicode.IsSpace(r):
+				if !started {
+					i++
+					continue
+				}
+				parts = append(parts, builder.String())
+				i++
+				goto nextPart
+			case r == '\'' || r == '"':
+				started = true
+				quote = r
+				i++
+			case r == '\\':
+				if i+1 >= len(runes) {
+					return nil, fmt.Errorf("slash command has an incomplete escape sequence")
+				}
+				started = true
+				builder.WriteRune(runes[i+1])
+				i += 2
+			default:
+				started = true
+				builder.WriteRune(r)
+				i++
+			}
+		}
+
+		if quote != 0 {
+			return nil, fmt.Errorf("slash command has an unterminated quoted argument")
+		}
+		if started {
+			parts = append(parts, builder.String())
+		}
+
+		continue
+
+	nextPart:
+		continue
+	}
+
+	return parts, nil
+}
+
+func dispatchSlashCommand(ctx context.Context, command slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
+	spec, ok := defaultSlashCommandRegistry.byName[parsed.Name]
+	if !ok {
+		return slashCommandResult{}, fmt.Errorf("unknown slash command %s", parsed.DisplayName)
+	}
+
+	result, err := spec.Handler(ctx, command, parsed)
+	if err != nil {
+		return slashCommandResult{}, err
+	}
+	if strings.TrimSpace(result.Action) == "" {
+		result.Action = "slash:" + parsed.DisplayName
+	}
+
+	return result, nil
+}
+
+func handleSlashHelp(_ context.Context, _ slashCommandContext, _ slashCommand) (slashCommandResult, error) {
+	rows := make([][]string, 0, len(slashCommandInfos))
+	for _, info := range slashCommandInfos {
+		rows = append(rows, []string{"/" + info.Name, info.Summary, info.Usage})
+	}
+
+	return slashCommandResult{
+		Status:    fmt.Sprintf("Listed %d slash commands.", len(rows)),
+		Statement: buildSlashQueryResult([]string{"command", "summary", "usage"}, rows),
+	}, nil
+}
+
+func handleSlashCommands(_ context.Context, _ slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
+	if err := validateSlashCommandArgs(parsed, 0); err != nil {
+		return slashCommandResult{}, err
+	}
+
+	commands := buildSlashWizardCommands()
+	if len(commands) == 0 {
+		return slashCommandResult{}, fmt.Errorf("no slash commands available")
+	}
+
+	return slashCommandResult{
+		Status: "Opened the slash command wizard. Choose a command and press ctrl+g.",
+		Wizard: &SlashCommandWizardContext{
+			Step:     SlashCommandWizardStepCommand,
+			Commands: commands,
+		},
+		PreserveResult: true,
+	}, nil
+}
+
+func handleSlashTables(ctx context.Context, command slashCommandContext, _ slashCommand) (slashCommandResult, error) {
+	adapter, err := ensureSlashAdapter(command)
+	if err != nil {
+		return slashCommandResult{}, err
+	}
+
+	tables, err := adapter.Tables(ctx, db.TableFilter{})
+	if err != nil {
+		return slashCommandResult{}, err
+	}
+
+	sort.SliceStable(tables, func(i, j int) bool {
+		left := strings.ToLower(strings.TrimSpace(tables[i].Schema) + "." + strings.TrimSpace(tables[i].Name))
+		right := strings.ToLower(strings.TrimSpace(tables[j].Schema) + "." + strings.TrimSpace(tables[j].Name))
+		return left < right
+	})
+
+	rows := make([][]string, 0, len(tables))
+	for _, table := range tables {
+		rows = append(rows, []string{table.Schema, table.Name, table.Type})
+	}
+
+	status := "No tables found."
+	if len(rows) == 1 {
+		status = "Listed 1 table."
+	} else if len(rows) > 1 {
+		status = fmt.Sprintf("Listed %d tables.", len(rows))
+	}
+
+	return slashCommandResult{
+		Status:    status,
+		Statement: buildSlashQueryResult([]string{"schema", "name", "type"}, rows),
+	}, nil
+}
+
+func handleSlashColumns(ctx context.Context, command slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
+	if err := validateSlashCommandArgs(parsed, 1); err != nil {
+		return slashCommandResult{}, err
+	}
+	adapter, err := ensureSlashAdapter(command)
+	if err != nil {
+		return slashCommandResult{}, err
+	}
+
+	table := parseSlashTableRef(parsed.Args[0])
+	columns, err := adapter.Columns(ctx, table)
+	if err != nil {
+		return slashCommandResult{}, err
+	}
+
+	sort.SliceStable(columns, func(i, j int) bool {
+		if columns[i].Position != columns[j].Position {
+			return columns[i].Position < columns[j].Position
+		}
+		return strings.ToLower(columns[i].Name) < strings.ToLower(columns[j].Name)
+	})
+
+	rows := make([][]string, 0, len(columns))
+	for _, column := range columns {
+		defaultValue := ""
+		if column.DefaultValue != nil {
+			defaultValue = *column.DefaultValue
+		}
+		rows = append(rows, []string{
+			fmt.Sprintf("%d", column.Position),
+			column.Name,
+			column.Type,
+			boolWord(column.Nullable),
+			defaultValue,
+		})
+	}
+
+	qualified := displaySlashTableRef(table)
+	status := fmt.Sprintf("Table %s has no columns.", qualified)
+	if len(rows) == 1 {
+		status = fmt.Sprintf("Listed 1 column for %s.", qualified)
+	} else if len(rows) > 1 {
+		status = fmt.Sprintf("Listed %d columns for %s.", len(rows), qualified)
+	}
+
+	return slashCommandResult{
+		Status:    status,
+		Statement: buildSlashQueryResult([]string{"position", "name", "type", "nullable", "default"}, rows),
+	}, nil
+}
+
+func handleSlashSelect(ctx context.Context, command slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
+	table, err := slashTargetTable(parsed)
+	if err != nil {
+		return slashCommandResult{}, err
+	}
+
+	columns, _ := loadSlashColumns(ctx, command.Adapter, table)
+	quotedTable := quoteSlashTableRef(command.Dialect, table)
+
+	var selectList string
+	if len(columns) == 0 {
+		selectList = "  *"
+	} else {
+		parts := make([]string, 0, len(columns))
+		for _, column := range columns {
+			parts = append(parts, "  "+quoteSlashIdentifier(command.Dialect, column.Name))
+		}
+		selectList = strings.Join(parts, ",\n")
+	}
+
+	return slashCommandResult{
+		Status:        fmt.Sprintf("Loaded %s template for %s into command mode.", parsed.DisplayName, displaySlashTableRef(table)),
+		ReplaceEditor: fmt.Sprintf("SELECT\n%s\nFROM %s\nLIMIT 50;", selectList, quotedTable),
+		ShouldReplace: true,
+	}, nil
+}
+
+func handleSlashInsert(ctx context.Context, command slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
+	table, err := slashTargetTable(parsed)
+	if err != nil {
+		return slashCommandResult{}, err
+	}
+
+	columns, _ := loadSlashColumns(ctx, command.Adapter, table)
+	quotedTable := quoteSlashTableRef(command.Dialect, table)
+	placeholderDialect := slashDialectOrFallback(command.Dialect)
+
+	columnNames := make([]string, 0, len(columns))
+	placeholders := make([]string, 0, len(columns))
+	for i, column := range columns {
+		columnNames = append(columnNames, "  "+quoteSlashIdentifier(command.Dialect, column.Name))
+		placeholders = append(placeholders, "  "+placeholderDialect.Placeholder(i+1))
+	}
+	if len(columnNames) == 0 {
+		columnNames = []string{"  column_1"}
+		placeholders = []string{"  " + placeholderDialect.Placeholder(1)}
+	}
+
+	return slashCommandResult{
+		Status: fmt.Sprintf("Loaded %s template for %s into command mode.", parsed.DisplayName, displaySlashTableRef(table)),
+		ReplaceEditor: fmt.Sprintf("INSERT INTO %s (\n%s\n) VALUES (\n%s\n);",
+			quotedTable,
+			strings.Join(columnNames, ",\n"),
+			strings.Join(placeholders, ",\n"),
+		),
+		ShouldReplace: true,
+	}, nil
+}
+
+func handleSlashUpdate(ctx context.Context, command slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
+	table, err := slashTargetTable(parsed)
+	if err != nil {
+		return slashCommandResult{}, err
+	}
+
+	columns, _ := loadSlashColumns(ctx, command.Adapter, table)
+	primaryKeys, _ := loadSlashPrimaryKeys(ctx, command.Adapter, table)
+	quotedTable := quoteSlashTableRef(command.Dialect, table)
+	placeholderDialect := slashDialectOrFallback(command.Dialect)
+
+	assignments := make([]string, 0, len(columns))
+	placeholderIndex := 1
+	for _, column := range columns {
+		if slashPrimaryKeyColumn(primaryKeys, column.Name) {
+			continue
+		}
+		assignments = append(assignments, fmt.Sprintf("  %s = %s", quoteSlashIdentifier(command.Dialect, column.Name), placeholderDialect.Placeholder(placeholderIndex)))
+		placeholderIndex++
+	}
+	if len(assignments) == 0 {
+		assignments = []string{"  column_1 = " + placeholderDialect.Placeholder(1)}
+	}
+
+	return slashCommandResult{
+		Status: fmt.Sprintf("Loaded %s template for %s into command mode.", parsed.DisplayName, displaySlashTableRef(table)),
+		ReplaceEditor: fmt.Sprintf("UPDATE %s\nSET\n%s\nWHERE condition;",
+			quotedTable,
+			strings.Join(assignments, ",\n"),
+		),
+		ShouldReplace: true,
+	}, nil
+}
+
+func handleSlashDelete(_ context.Context, command slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
+	table, err := slashTargetTable(parsed)
+	if err != nil {
+		return slashCommandResult{}, err
+	}
+
+	return slashCommandResult{
+		Status:        fmt.Sprintf("Loaded %s template for %s into command mode.", parsed.DisplayName, displaySlashTableRef(table)),
+		ReplaceEditor: fmt.Sprintf("DELETE FROM %s\nWHERE condition;", quoteSlashTableRef(command.Dialect, table)),
+		ShouldReplace: true,
+	}, nil
+}
+
+func handleSlashCreate(_ context.Context, command slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
+	table, err := slashTargetTable(parsed)
+	if err != nil {
+		return slashCommandResult{}, err
+	}
+
+	return slashCommandResult{
+		Status: fmt.Sprintf("Loaded %s template for %s into command mode.", parsed.DisplayName, displaySlashTableRef(table)),
+		ReplaceEditor: fmt.Sprintf("CREATE TABLE %s (\n  id INTEGER PRIMARY KEY,\n  name TEXT\n);",
+			quoteSlashTableRef(command.Dialect, table),
+		),
+		ShouldReplace: true,
+	}, nil
+}
+
+func handleSlashDrop(_ context.Context, command slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
+	table, err := slashTargetTable(parsed)
+	if err != nil {
+		return slashCommandResult{}, err
+	}
+
+	return slashCommandResult{
+		Status:        fmt.Sprintf("Loaded %s template for %s into command mode.", parsed.DisplayName, displaySlashTableRef(table)),
+		ReplaceEditor: fmt.Sprintf("DROP TABLE %s;", quoteSlashTableRef(command.Dialect, table)),
+		ShouldReplace: true,
+	}, nil
+}
+
+func slashTargetTable(parsed slashCommand) (db.TableRef, error) {
+	if err := validateSlashCommandArgs(parsed, 1); err != nil {
+		return db.TableRef{}, err
+	}
+
+	return parseSlashTableRef(parsed.Args[0]), nil
+}
+
+func validateSlashCommandArgs(parsed slashCommand, want int) error {
+	if len(parsed.Args) == want {
+		return nil
+	}
+
+	info, ok := lookupSlashCommandInfo(parsed.Name)
+	if !ok {
+		return fmt.Errorf("unknown slash command %s", parsed.DisplayName)
+	}
+
+	if want == 0 {
+		return fmt.Errorf("%s does not accept arguments; usage: %s", parsed.DisplayName, info.Usage)
+	}
+
+	return fmt.Errorf("%s expects %d argument(s); usage: %s", parsed.DisplayName, want, info.Usage)
+}
+
+func lookupSlashCommandInfo(name string) (slashCommandInfo, bool) {
+	for _, info := range slashCommandInfos {
+		if strings.EqualFold(info.Name, name) {
+			return info, true
+		}
+	}
+
+	return slashCommandInfo{}, false
+}
+
+func buildSlashWizardCommands() []SlashCommandWizardCommand {
+	specs := slashCommandSpecs()
+	commands := make([]SlashCommandWizardCommand, 0, len(specs))
+	for _, spec := range specs {
+		if spec.Name == "help" || spec.Name == "commands" {
+			continue
+		}
+		commands = append(commands, SlashCommandWizardCommand{
+			Name:        spec.Name,
+			DisplayName: "/" + spec.Name,
+			Summary:     spec.Summary,
+			Usage:       spec.Usage,
+			NeedsTarget: spec.NeedsTarget,
+		})
+	}
+	return commands
+}
+
+func buildSlashWizardTargets(ctx context.Context, command slashCommandContext) ([]SlashCommandWizardTarget, error) {
+	if command.Query.AutocompleteSchema != nil && len(command.Query.AutocompleteSchema.Tables) > 0 {
+		return slashWizardTargetsFromSchema(command.Query.AutocompleteSchema), nil
+	}
+
+	adapter, err := ensureSlashAdapter(command)
+	if err != nil {
+		return nil, err
+	}
+
+	tables, err := adapter.Tables(ctx, db.TableFilter{})
+	if err != nil {
+		return nil, err
+	}
+
+	sort.SliceStable(tables, func(i, j int) bool {
+		left := strings.ToLower(strings.TrimSpace(tables[i].Schema) + "." + strings.TrimSpace(tables[i].Name))
+		right := strings.ToLower(strings.TrimSpace(tables[j].Schema) + "." + strings.TrimSpace(tables[j].Name))
+		return left < right
+	})
+
+	targets := make([]SlashCommandWizardTarget, 0, len(tables))
+	for _, table := range tables {
+		ref := db.TableRef{Catalog: table.Catalog, Schema: table.Schema, Name: table.Name}
+		display := displaySlashTableRef(ref)
+		if strings.TrimSpace(display) == "" {
+			continue
+		}
+		targets = append(targets, SlashCommandWizardTarget{Value: display, Display: display})
+	}
+	return targets, nil
+}
+
+func buildSlashWizardFromCommand(ctx context.Context, command slashCommandContext, commands []SlashCommandWizardCommand, selectedCommand SlashCommandWizardCommand, selectedCommandIndex int) (*SlashCommandWizardContext, error) {
+	if len(commands) == 0 {
+		commands = buildSlashWizardCommands()
+	}
+
+	if !selectedCommand.NeedsTarget {
+		return &SlashCommandWizardContext{
+			Step:            SlashCommandWizardStepCommand,
+			Commands:        append([]SlashCommandWizardCommand(nil), commands...),
+			SelectedCommand: selectedCommandIndex,
+		}, nil
+	}
+
+	targets, err := buildSlashWizardTargets(ctx, command)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SlashCommandWizardContext{
+		Step:            SlashCommandWizardStepTarget,
+		Commands:        append([]SlashCommandWizardCommand(nil), commands...),
+		SelectedCommand: selectedCommandIndex,
+		Targets:         targets,
+		SelectedTarget:  0,
+	}, nil
+}
+
+func slashWizardTargetsFromSchema(schema *AutocompleteSchemaContext) []SlashCommandWizardTarget {
+	if schema == nil {
+		return nil
+	}
+
+	targets := make([]SlashCommandWizardTarget, 0, len(schema.Tables))
+	for _, table := range schema.Tables {
+		ref := db.TableRef{Schema: table.Schema, Name: table.Name}
+		display := displaySlashTableRef(ref)
+		if strings.TrimSpace(display) == "" {
+			continue
+		}
+		targets = append(targets, SlashCommandWizardTarget{Value: display, Display: display})
+	}
+	sort.SliceStable(targets, func(i, j int) bool {
+		return strings.ToLower(targets[i].Display) < strings.ToLower(targets[j].Display)
+	})
+	return targets
+}
+
+func slashWizardCommandByIndex(wizard *SlashCommandWizardContext) (SlashCommandWizardCommand, bool) {
+	if wizard == nil || len(wizard.Commands) == 0 {
+		return SlashCommandWizardCommand{}, false
+	}
+	index := wizard.SelectedCommand
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(wizard.Commands) {
+		index = len(wizard.Commands) - 1
+	}
+	return wizard.Commands[index], true
+}
+
+func slashWizardTargetByIndex(wizard *SlashCommandWizardContext) (SlashCommandWizardTarget, bool) {
+	if wizard == nil || len(wizard.Targets) == 0 {
+		return SlashCommandWizardTarget{}, false
+	}
+	index := wizard.SelectedTarget
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(wizard.Targets) {
+		index = len(wizard.Targets) - 1
+	}
+	return wizard.Targets[index], true
+}
+
+func buildSlashWizardCommand(command SlashCommandWizardCommand, target *SlashCommandWizardTarget) slashCommand {
+	parsed := slashCommand{
+		RawInput:    command.DisplayName,
+		DisplayName: command.DisplayName,
+		Name:        command.Name,
+	}
+	if target != nil {
+		parsed.Args = []string{target.Value}
+		parsed.RawArguments = target.Value
+		parsed.RawInput = command.DisplayName + " " + target.Value
+	}
+	return parsed
+}
+
+func ensureSlashAdapter(command slashCommandContext) (*db.SQLAdapter, error) {
+	if command.Adapter == nil {
+		return nil, fmt.Errorf("adapter is required")
+	}
+
+	return command.Adapter, nil
+}
+
+func loadSlashColumns(ctx context.Context, adapter *db.SQLAdapter, table db.TableRef) ([]db.Column, error) {
+	if adapter == nil {
+		return nil, nil
+	}
+
+	columns, err := adapter.Columns(ctx, table)
+	if err != nil && !errors.Is(err, db.ErrMetadataUnsupported) {
+		return nil, err
+	}
+	if err != nil {
+		return nil, nil
+	}
+
+	return columns, nil
+}
+
+func loadSlashPrimaryKeys(ctx context.Context, adapter *db.SQLAdapter, table db.TableRef) ([]db.PrimaryKey, error) {
+	if adapter == nil {
+		return nil, nil
+	}
+
+	keys, err := adapter.PrimaryKeys(ctx, table)
+	if err != nil && !errors.Is(err, db.ErrMetadataUnsupported) {
+		return nil, err
+	}
+	if err != nil {
+		return nil, nil
+	}
+
+	return keys, nil
+}
+
+func parseSlashTableRef(value string) db.TableRef {
+	parts := strings.Split(strings.TrimSpace(value), ".")
+	clean := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		clean = append(clean, unquoteSlashIdentifier(trimmed))
+	}
+
+	ref := db.TableRef{}
+	switch len(clean) {
+	case 0:
+		return ref
+	case 1:
+		ref.Name = clean[0]
+	case 2:
+		ref.Schema = clean[0]
+		ref.Name = clean[1]
+	default:
+		ref.Catalog = clean[len(clean)-3]
+		ref.Schema = clean[len(clean)-2]
+		ref.Name = clean[len(clean)-1]
+	}
+
+	return ref
+}
+
+func unquoteSlashIdentifier(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if len(trimmed) >= 2 {
+		switch {
+		case trimmed[0] == '"' && trimmed[len(trimmed)-1] == '"':
+			return trimmed[1 : len(trimmed)-1]
+		case trimmed[0] == '`' && trimmed[len(trimmed)-1] == '`':
+			return trimmed[1 : len(trimmed)-1]
+		case trimmed[0] == '[' && trimmed[len(trimmed)-1] == ']':
+			return trimmed[1 : len(trimmed)-1]
+		}
+	}
+
+	return trimmed
+}
+
+func displaySlashTableRef(table db.TableRef) string {
+	parts := make([]string, 0, 3)
+	if strings.TrimSpace(table.Catalog) != "" {
+		parts = append(parts, table.Catalog)
+	}
+	if strings.TrimSpace(table.Schema) != "" {
+		parts = append(parts, table.Schema)
+	}
+	if strings.TrimSpace(table.Name) != "" {
+		parts = append(parts, table.Name)
+	}
+	return strings.Join(parts, ".")
+}
+
+func quoteSlashTableRef(dialect db.Dialect, table db.TableRef) string {
+	parts := make([]string, 0, 3)
+	if strings.TrimSpace(table.Catalog) != "" {
+		parts = append(parts, table.Catalog)
+	}
+	if strings.TrimSpace(table.Schema) != "" {
+		parts = append(parts, table.Schema)
+	}
+	if strings.TrimSpace(table.Name) != "" {
+		parts = append(parts, table.Name)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+
+	dialect = slashDialectOrFallback(dialect)
+	return dialect.QuoteIdentifier(parts...)
+}
+
+func quoteSlashIdentifier(dialect db.Dialect, value string) string {
+	dialect = slashDialectOrFallback(dialect)
+	return dialect.QuoteIdentifier(value)
+}
+
+func slashDialectOrFallback(dialect db.Dialect) db.Dialect {
+	if dialect != nil {
+		return dialect
+	}
+
+	return db.SQLiteDialect()
+}
+
+func slashPrimaryKeyColumn(keys []db.PrimaryKey, name string) bool {
+	for _, key := range keys {
+		if strings.EqualFold(key.Column, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func boolWord(value bool) string {
+	if value {
+		return "yes"
+	}
+	return "no"
+}
+
+func buildSlashQueryResult(columns []string, rows [][]string) *db.StatementResult {
+	result := &db.ResultSet{Columns: make([]db.ResultColumn, len(columns))}
+	for i, column := range columns {
+		result.Columns[i] = db.ResultColumn{Name: column, Position: i + 1}
+	}
+	for rowIndex, row := range rows {
+		entry := db.ResultRow{Position: rowIndex + 1, Values: make([]db.ResultValue, len(columns))}
+		for i := range columns {
+			value := ""
+			if i < len(row) {
+				value = row[i]
+			}
+			entry.Values[i] = db.ResultValue{Kind: db.ValueKindString, Value: value}
+		}
+		result.Rows = append(result.Rows, entry)
+	}
+
+	return &db.StatementResult{
+		Kind:      db.StatementResultKindQuery,
+		ResultSet: result,
+	}
+}

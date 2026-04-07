@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/adwinying/sqlcery/internal/app"
 	"github.com/adwinying/sqlcery/internal/config"
+	"github.com/adwinying/sqlcery/internal/db"
 )
 
 func TestRunReturnsWorkingDirectoryErrors(t *testing.T) {
@@ -25,7 +28,7 @@ func TestRunReturnsWorkingDirectoryErrors(t *testing.T) {
 	}
 }
 
-func TestRunOpensSQLiteConnection(t *testing.T) {
+func TestRunOpensSQLiteConnectionAndStartsApp(t *testing.T) {
 	configHome := t.TempDir()
 	workingDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", configHome)
@@ -42,12 +45,62 @@ func TestRunOpensSQLiteConnection(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	if err := run(nil, func() (string, error) { return workingDir, nil }); err != nil {
+	started := false
+	var session app.Session
+
+	err := runWithDependencies(nil, func() (string, error) { return workingDir, nil }, runDependencies{
+		open: db.Open,
+		start: func(ctx context.Context, gotSession app.Session, adapter *db.SQLAdapter) error {
+			started = true
+			session = gotSession
+
+			var value int
+			if err := adapter.QueryRowContext(ctx, "select 1").Scan(&value); err != nil {
+				return err
+			}
+
+			if got, want := value, 1; got != want {
+				t.Fatalf("QueryRowContext() value = %d, want %d", got, want)
+			}
+
+			return nil
+		},
+	})
+	if err != nil {
 		t.Fatalf("run() error = %v", err)
+	}
+
+	if !started {
+		t.Fatal("run() did not start app")
+	}
+
+	if got, want := session.ConnectionType, "sqlite"; got != want {
+		t.Fatalf("session.ConnectionType = %q, want %q", got, want)
 	}
 
 	if _, err := os.Stat(databasePath); err != nil {
 		t.Fatalf("Stat() error = %v", err)
+	}
+}
+
+func TestRunWithoutConfiguredConnectionDoesNotStartApp(t *testing.T) {
+	workingDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	started := false
+	err := runWithDependencies(nil, func() (string, error) { return workingDir, nil }, runDependencies{
+		open: db.Open,
+		start: func(context.Context, app.Session, *db.SQLAdapter) error {
+			started = true
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+
+	if started {
+		t.Fatal("run() started app without a resolved connection")
 	}
 }
 

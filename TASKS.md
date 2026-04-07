@@ -1,0 +1,85 @@
+- [x] Initialize the Go module and pin a target Go version.
+- [x] Create a Go-first layout such as `cmd/sqlcery`, `internal/app`, `internal/config`, `internal/db`, `internal/tui`, `internal/history`, `internal/export`, and `testdata`.
+- [x] Choose the core stack: `bubbletea`/`bubbles`/`lipgloss` for TUI, `database/sql` for DB access, and a TOML parser such as `BurntSushi/toml` or `go-toml/v2`.
+- [x] Add developer tooling with `gofmt`, `go test`, `golangci-lint`
+- [x] Set up release automation with `goreleaser` for cross-platform `sqlcery` binaries.
+- [x] Implement config discovery using Go's XDG-friendly path handling for `$XDG_CONFIG_HOME/sqlcery/sqlcery.toml` and local `sqlcery.toml` overrides.
+- [x] Implement connection discovery for `$XDG_CONFIG_HOME/sqlcery/connections.toml` and local `connections.toml` overrides.
+- [x] Define Go structs for config and connection files with validation tags or explicit validation methods.
+- [x] Support both named connections and direct connection strings from the CLI entrypoint.
+- [x] Model SQLite, PostgreSQL, and MySQL connection options in typed Go structs.
+- [x] Add SSH tunnel support using `golang.org/x/crypto/ssh` plus `~/.ssh/config` parsing.
+- [x] Return clear Go errors for invalid config, unknown connection names, and authentication failures.
+- [x] Build a common adapter interface around `database/sql` for query execution, metadata lookup, and SQL dialect behavior.
+- [x] Add SQLite support, preferably with `modernc.org/sqlite` if CGO-free builds are desired.
+- [x] Add PostgreSQL support with `github.com/jackc/pgx/v5/stdlib`.
+- [x] Add MySQL support with `github.com/go-sql-driver/mysql`.
+- [x] Implement connection lifecycle management, timeouts, pooling, and health checks.
+- [x] Add schema introspection helpers for tables, columns, primary keys, and types per dialect.
+- [x] Normalize `sql.Rows` into an internal result model usable by both prompt mode and record viewer mode.
+- [x] Build the main event loop in Go and launch the app from `cmd/sqlcery`.
+- [x] Implement command mode with `bubbletea`, using `textarea` or a custom input model for multiline SQL editing.
+- [x] Add keyboard handling for submit, cancel, history, and mode switching.
+- [x] Define shared application state so the prompt, history search, and record viewer can exchange query context safely.
+- [x] Add startup, reconnect, and error states that render cleanly in the terminal.
+- [x] Add SQL syntax highlighting, using a lexer such as `chroma` or a custom token highlighter if needed.
+- [x] Implement context-aware autocomplete for keywords, tables, columns, and slash commands.
+- [x] Cache schema metadata in memory to keep completions responsive.
+- [x] Rank suggestions based on cursor position and SQL context.
+- [x] Define whether to use a SQL parser library or lightweight tokenization for completion and command composition.
+- [x] Execute SQL and render inline results, limiting `SELECT` output to the first 5 rows in command mode.
+- [x] Preserve the full result context so `Ctrl-x` can open the same dataset in record viewer mode.
+- [x] Implement slash-command parsing and dispatch in Go.
+- [x] Build a wizard-style `/commands` flow, potentially with `huh` or custom Bubble Tea steps.
+- [ ] Implement `/tables` using adapter-level schema introspection.
+- [ ] Implement `/columns` for a selected table.
+- [ ] Implement `/select`, `/insert`, `/update`, `/delete`, `/create`, and `/drop` as SQL composers that return editable SQL to command mode.
+- [ ] Keep SQL generation dialect-aware where SQLite, PostgreSQL, and MySQL differ.
+- [ ] Maintain in-memory session history for fast navigation.
+- [ ] Persist executed commands to `$XDG_DATA_HOME/sqlcery/history.log`.
+- [ ] Implement `Ctrl-r` reverse search with fuzzy filtering in Go.
+- [ ] Restore selected history entries back into the active input buffer.
+- [ ] Log every executed command as JSON using `encoding/json`.
+- [ ] Include `connection`, `command`, `time`, and `result` fields in each audit entry.
+- [ ] Define bounded result summaries so log files stay useful without growing uncontrollably.
+- [ ] Handle log directory creation, file growth strategy, and write failures gracefully.
+- [ ] Build a full-screen result viewer with `bubbletea` and either `bubbles/table` or a custom grid model.
+- [ ] Display all rows for the active result set.
+- [ ] Freeze the primary key column, even if this requires custom rendering beyond the stock table component.
+- [ ] Highlight primary keys distinctly with `lipgloss` styling.
+- [ ] Support navigation with arrow keys and `hjkl`.
+- [ ] Support paging with `Ctrl-d` and `Ctrl-u`.
+- [ ] Implement row selection toggling with `space` and maintain multi-row selection state.
+- [ ] Support `Ctrl-x` to switch cleanly between record viewer mode and command mode.
+- [ ] Ensure large result sets render efficiently without blocking the UI thread.
+- [ ] Implement `cc` to generate an `UPDATE` statement for the selected row.
+- [ ] Implement `dd` to generate a `DELETE` statement for the selected row.
+- [ ] Implement `yy` to generate an `INSERT` statement that duplicates the selected row.
+- [ ] Use primary keys or safe row-identifying predicates when composing mutation SQL.
+- [ ] Return generated SQL to command mode for review before execution.
+- [ ] Implement `:w [filename]` in record viewer mode.
+- [ ] Export selected rows, with a defined fallback when no rows are selected.
+- [ ] Add CSV and TSV export using Go's `encoding/csv`.
+- [ ] Add JSON export using `encoding/json`.
+- [ ] Add Markdown table export with deterministic column ordering.
+- [ ] Validate write paths and keep exports scoped to the current working directory.
+- [ ] Normalize database and network errors into user-friendly terminal messages.
+- [ ] Add status lines or footer hints for current mode, active connection, selection count, and shortcuts.
+- [ ] Make destructive generated commands visually obvious before execution.
+- [ ] Add help surfaces for keybindings and slash commands.
+- [ ] Define cancellation and timeout behavior for long-running queries.
+- [ ] Add unit tests with Go's `testing` package for config loading, connection parsing, SQL generation, and audit logging.
+- [ ] Add table-driven tests for dialect-specific behavior.
+- [ ] Add integration tests for SQLite, PostgreSQL, and MySQL adapters, using `testcontainers-go` for external databases.
+- [ ] Add tests for autocomplete ranking and schema-aware suggestions.
+- [ ] Add UI-model tests for Bubble Tea update logic, key handling, and mode switching.
+- [ ] Add export tests for CSV, TSV, JSON, and Markdown output.
+- [ ] Run `go test ./...` and `go test -race ./...` in CI.
+- [ ] Document the chosen Go architecture and package layout.
+- [ ] Add installation instructions for `go install`, prebuilt binaries, and package-manager distribution.
+- [ ] Document config files, connection definitions, and SSH usage.
+- [ ] Add usage docs for command mode, record viewer mode, keyboard shortcuts, and slash commands.
+- [ ] Provide sample `sqlcery.toml` and `connections.toml` files.
+- [ ] Prepare `goreleaser` config, release notes template, and an initial release checklist.
+- [ ] Apply terminal color scheme to the UI
+- [x] Set namespace to `github.com/adwinying/sqlcery`
