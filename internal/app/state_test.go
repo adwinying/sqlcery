@@ -35,6 +35,8 @@ func TestSharedAppStateSnapshotClonesQueryContext(t *testing.T) {
 	state.SetLastSubmittedSQL("select * from widgets")
 	state.SetPendingIntent(IntentSubmit, "submit", "ready")
 	state.SetActiveMode(ModeRecordViewer)
+	state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1", ConnectionName: "local", ExecutedAt: stamp}})
+	state.SetHistorySearchContext(&HistorySearchContext{Query: "sel", SelectedIndex: 1})
 	state.SetAutocompleteSchema(&AutocompleteSchemaContext{
 		Tables: []AutocompleteTableContext{{Schema: "main", Name: "widgets", Columns: []string{"id", "payload"}}},
 	})
@@ -87,6 +89,8 @@ func TestSharedAppStateSnapshotClonesQueryContext(t *testing.T) {
 	state.Query.CurrentSQL = "mutated"
 	state.Query.LastSubmittedSQL = "mutated"
 	state.Query.LastAction = "mutated"
+	state.Query.SessionHistory[0].SQL = "mutated history"
+	state.Query.HistorySearch.Query = "mutated search"
 	state.App.Current = StateError
 	state.App.Reconnect.Attempt = 99
 	state.App.Reconnect.Reason = "changed"
@@ -127,6 +131,14 @@ func TestSharedAppStateSnapshotClonesQueryContext(t *testing.T) {
 
 	if got, want := snapshot.Query.LastAction, "submit"; got != want {
 		t.Fatalf("snapshot.Query.LastAction = %q, want %q", got, want)
+	}
+
+	if got, want := snapshot.Query.SessionHistory[0].SQL, "select 1"; got != want {
+		t.Fatalf("snapshot.Query.SessionHistory[0].SQL = %q, want %q", got, want)
+	}
+
+	if got, want := snapshot.Query.HistorySearch.Query, "sel"; got != want {
+		t.Fatalf("snapshot.Query.HistorySearch.Query = %q, want %q", got, want)
 	}
 
 	if got, want := snapshot.Query.AutocompleteSchema.Tables[0].Name, "widgets"; got != want {

@@ -5,17 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/adwinying/sqlcery/internal/db"
+	apphistory "github.com/adwinying/sqlcery/internal/history"
 )
 
 type Model struct {
 	session Session
 	adapter *db.SQLAdapter
+	history *apphistory.Session
 	command commandModeModel
+	viewer  recordViewerModeModel
 	state   SharedAppState
 	cache   *autocompleteSchemaCache
 	loader  autocompleteSchemaLoader
@@ -24,8 +28,9 @@ type Model struct {
 type autocompleteSchemaLoader func(context.Context, *db.SQLAdapter) (*AutocompleteSchemaContext, error)
 
 type modelDependencies struct {
-	cache  *autocompleteSchemaCache
-	loader autocompleteSchemaLoader
+	cache   *autocompleteSchemaCache
+	loader  autocompleteSchemaLoader
+	history *apphistory.Session
 }
 
 type submitIntentMsg struct{}
@@ -45,15 +50,17 @@ type switchModeIntentMsg struct{}
 type clearInputIntentMsg struct{}
 
 type statementExecutedMsg struct {
-	Query  string
-	Result *db.StatementResult
-	Err    error
+	Query         string
+	Result        *db.StatementResult
+	ResultSummary string
+	Err           error
 }
 
 type slashCommandExecutedMsg struct {
-	Command slashCommand
-	Result  slashCommandResult
-	Err     error
+	Command       slashCommand
+	Result        slashCommandResult
+	ResultSummary string
+	Err           error
 }
 
 type startupCompleteMsg struct{}
@@ -88,15 +95,23 @@ func newModelWithDependencies(session Session, adapter *db.SQLAdapter, deps mode
 		loader = loadAutocompleteSchema
 	}
 
+	sessionHistory := deps.history
+	if sessionHistory == nil {
+		sessionHistory = apphistory.NewSession()
+	}
+
 	model := Model{
 		session: session,
 		adapter: adapter,
+		history: sessionHistory,
 		command: newCommandModeModel(),
+		viewer:  newRecordViewerModeModel(),
 		state:   NewSharedAppState(),
 		cache:   cache,
 		loader:  loader,
 	}
 	model.syncAutocompleteSchemaSnapshot()
+	model.syncSessionHistorySnapshot()
 
 	return model
 }
@@ -114,6 +129,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			return m, nil
+		}
+
+		if m.state.Query.ActiveMode == ModeHistorySearch {
+			return m, m.handleHistorySearchKey(msg)
 		}
 
 		if cmd := m.handleKey(msg); cmd != nil {
@@ -165,25 +184,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.SetPendingIntent(IntentSubmit, "submit", fmt.Sprintf("Executing %d characters of SQL.", len(submittedSQL)))
 		return m, executeStatementCmd(m.adapter, submittedSQL)
 	case statementExecutedMsg:
+		historyErr := m.appendSessionHistory(msg.Query, msg.ResultSummary)
 		m.state.Query.PendingIntent = IntentNone
 		m.state.Query.LastAction = "submit"
 		m.state.SetPendingModeSwitch(nil)
 		if msg.Err != nil {
-			m.state.SetReady(fmt.Sprintf("Execution failed: %v", msg.Err))
+			m.state.SetReady(withHistoryWarning(fmt.Sprintf("Execution failed: %v", msg.Err), historyErr))
 			m.state.SetLatestResultContext(nil)
 			return m, nil
 		}
 
-		m.state.SetReady(describeStatementStatus(msg.Result))
+		m.state.SetReady(withHistoryWarning(describeStatementStatus(msg.Result), historyErr))
 		m.state.SetLatestResultContext(buildLatestResultContext(msg.Query, m.state.Query.ActiveMode, msg.Result))
 		return m, nil
 	case slashCommandExecutedMsg:
+		historyErr := m.appendSessionHistory(msg.Command.RawInput, msg.ResultSummary)
 		m.state.Query.PendingIntent = IntentNone
 		m.state.Query.LastAction = "slash:" + msg.Command.DisplayName
 		m.state.SetPendingModeSwitch(nil)
 		if msg.Err != nil {
 			m.state.SetSlashWizardContext(nil)
-			m.state.SetReady(fmt.Sprintf("%s failed: %v", msg.Command.DisplayName, msg.Err))
+			m.state.SetReady(withHistoryWarning(fmt.Sprintf("%s failed: %v", msg.Command.DisplayName, msg.Err), historyErr))
 			m.state.SetLatestResultContext(nil)
 			return m, nil
 		}
@@ -205,7 +226,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state.SetLatestResultContext(nil)
 		}
 
-		m.state.SetReady(defaultStatus(msg.Result.Status, fmt.Sprintf("%s completed.", msg.Command.DisplayName)))
+		m.state.SetReady(withHistoryWarning(defaultStatus(msg.Result.Status, fmt.Sprintf("%s completed.", msg.Command.DisplayName)), historyErr))
 		return m, nil
 	case slashWizardMoveIntentMsg:
 		m.moveSlashWizardSelection(msg.Delta)
@@ -229,14 +250,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case historyIntentMsg:
 		m.syncCurrentSQL()
 		m.state.SetReady("")
-		m.state.SetPendingIntent(IntentHistory, "history", "History requested; search UI not implemented yet.")
+		m.openHistorySearch()
 		return m, nil
 	case switchModeIntentMsg:
 		m.syncCurrentSQL()
-		m.state.SetReady("")
 		switchContext := buildModeSwitchContext(m.state.Query.ActiveMode, nextModeForIntent(m.state.Query.ActiveMode), m.state.Query.LatestResult)
-		m.state.SetPendingModeSwitch(switchContext)
-		m.state.SetPendingIntent(IntentSwitchMode, "switch-mode", describeModeSwitchStatus(switchContext))
+		m.applyModeSwitch(switchContext)
 		return m, nil
 	case startupCompleteMsg:
 		m.state.SetReady("")
@@ -259,6 +278,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.WindowSizeMsg:
 		m.command.SetSize(msg.Width, msg.Height)
+		m.viewer.SetSize(msg.Width, msg.Height)
+	}
+
+	if m.state.Query.ActiveMode == ModeRecordViewer {
+		return m, nil
 	}
 
 	var cmd tea.Cmd
@@ -268,6 +292,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
+	if m.state.App.Current == StateReady && m.state.Query.ActiveMode == ModeRecordViewer {
+		return strings.Join([]string{m.stateView(), "", m.footerView()}, "\n")
+	}
+
 	lines := []string{"SQLcery", ""}
 
 	if name := strings.TrimSpace(m.session.ConnectionName); name != "" {
@@ -315,8 +343,14 @@ func (m Model) View() string {
 	if m.state.Query.PendingModeSwitch != nil {
 		lines = append(lines, "Pending mode switch: available")
 	}
+	if count := len(m.state.Query.SessionHistory); count > 0 {
+		lines = append(lines, fmt.Sprintf("Session history: %d entries", count))
+	}
 	if m.state.Query.SelectedHistoryEntry != nil {
 		lines = append(lines, "Selected history entry: available")
+	}
+	if m.state.Query.HistorySearch != nil {
+		lines = append(lines, "History search: active")
 	}
 
 	lines = append(lines, "", m.stateView(), "", m.footerView())
@@ -361,6 +395,56 @@ func (m *Model) syncCurrentSQL() {
 	m.state.SetCurrentSQL(m.command.Value())
 }
 
+func (m *Model) syncSessionHistorySnapshot() {
+	if m.history == nil {
+		m.state.SetSessionHistory(nil)
+		return
+	}
+
+	entries := m.history.Entries()
+	contexts := make([]HistoryEntryContext, 0, len(entries))
+	for _, entry := range entries {
+		contexts = append(contexts, HistoryEntryContext{
+			SQL:            entry.Command,
+			ConnectionName: entry.ConnectionName,
+			ExecutedAt:     entry.ExecutedAt,
+		})
+	}
+	m.state.SetSessionHistory(contexts)
+}
+
+func (m *Model) appendSessionHistory(command, resultSummary string) error {
+	if m.history == nil || strings.TrimSpace(command) == "" {
+		return nil
+	}
+
+	err := m.history.Append(apphistory.Entry{
+		Command:        command,
+		ConnectionName: m.session.ConnectionName,
+		ExecutedAt:     time.Now().UTC(),
+		ResultSummary:  resultSummary,
+	})
+	m.syncSessionHistorySnapshot()
+	return err
+}
+
+func withHistoryWarning(status string, err error) string {
+	if err == nil {
+		return status
+	}
+
+	return fmt.Sprintf("%s History was not persisted: %v", status, err)
+}
+
+func latestHistoryEntry(entries []HistoryEntryContext) *HistoryEntryContext {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	entry := entries[len(entries)-1]
+	return &entry
+}
+
 func (m Model) stateView() string {
 	switch m.state.App.Current {
 	case StateStartup:
@@ -401,6 +485,9 @@ func (m Model) stateView() string {
 
 		return strings.Join(lines, "\n")
 	case StateReady:
+		if m.state.Query.ActiveMode == ModeRecordViewer {
+			return m.viewer.View(m.state.Query)
+		}
 		return m.command.View(m.state.Query)
 	default:
 		return m.command.View(m.state.Query)
@@ -409,6 +496,9 @@ func (m Model) stateView() string {
 
 func (m Model) footerView() string {
 	if m.state.App.Current == StateReady {
+		if m.state.Query.ActiveMode == ModeRecordViewer {
+			return m.viewer.Footer(m.session.ConnectionName, m.dialectName(), m.state.Query)
+		}
 		return m.command.Footer(m.session.ConnectionName, m.dialectName(), m.state.Query)
 	}
 
@@ -490,8 +580,24 @@ func loadAutocompleteSchema(ctx context.Context, adapter *db.SQLAdapter) (*Autoc
 func executeSlashCommandCmd(commandContext slashCommandContext, parsed slashCommand) tea.Cmd {
 	return func() tea.Msg {
 		result, err := dispatchSlashCommand(context.Background(), commandContext, parsed)
-		return slashCommandExecutedMsg{Command: parsed, Result: result, Err: err}
+		return slashCommandExecutedMsg{Command: parsed, Result: result, ResultSummary: summarizeSlashCommandResult(parsed, result, err), Err: err}
 	}
+}
+
+func summarizeSlashCommandResult(command slashCommand, result slashCommandResult, err error) string {
+	if err != nil {
+		return fmt.Sprintf("error: %v", err)
+	}
+
+	status := defaultStatus(result.Status, fmt.Sprintf("%s completed.", command.DisplayName))
+	if strings.TrimSpace(result.Status) != "" {
+		return status
+	}
+	if result.Statement != nil {
+		return describeStatementStatus(result.Statement)
+	}
+
+	return status
 }
 
 func (m *Model) submitSlashWizard(wizard *SlashCommandWizardContext) (Model, tea.Cmd) {
@@ -607,12 +713,20 @@ func wrapSelection(index, size int) int {
 func executeStatementCmd(adapter *db.SQLAdapter, query string) tea.Cmd {
 	return func() tea.Msg {
 		if adapter == nil {
-			return statementExecutedMsg{Query: query, Err: fmt.Errorf("adapter is required")}
+			return statementExecutedMsg{Query: query, ResultSummary: "error: adapter is required", Err: fmt.Errorf("adapter is required")}
 		}
 
 		result, err := adapter.ExecuteStatementContext(context.Background(), query, db.ResultOptions{})
-		return statementExecutedMsg{Query: query, Result: result, Err: err}
+		return statementExecutedMsg{Query: query, Result: result, ResultSummary: summarizeStatementResult(result, err), Err: err}
 	}
+}
+
+func summarizeStatementResult(result *db.StatementResult, err error) string {
+	if err != nil {
+		return fmt.Sprintf("error: %v", err)
+	}
+
+	return describeStatementStatus(result)
 }
 
 func (m Model) adapterDialect() db.Dialect {
@@ -664,14 +778,45 @@ func nextModeForIntent(current AppMode) AppMode {
 
 func describeModeSwitchStatus(context *ModeSwitchContext) string {
 	if context == nil {
-		return "Mode switch requested; alternate mode not implemented yet."
+		return "Mode switch requested."
 	}
 
-	if context.ResultContext != nil && context.ResultContext.PreservedResult != nil {
-		return fmt.Sprintf("Mode switch requested to %s with preserved result context; record viewer UI not implemented yet.", context.ToMode)
+	if context.ToMode == ModeCommand {
+		return "Returned to command mode."
 	}
 
-	return fmt.Sprintf("Mode switch requested to %s without preserved result context; record viewer UI not implemented yet.", context.ToMode)
+	if context.ResultContext == nil || context.ResultContext.PreservedResult == nil {
+		return "Record viewer is available after running a query that returns tabular results."
+	}
+
+	result := context.ResultContext.PreservedResult
+	return fmt.Sprintf("Opened record viewer for %d row(s) across %d column(s).", len(result.Rows), len(result.Columns))
+}
+
+func (m *Model) applyModeSwitch(context *ModeSwitchContext) {
+	m.state.SetReady("")
+	m.state.SetPendingModeSwitch(context)
+
+	if context == nil {
+		m.state.SetPendingIntent(IntentSwitchMode, "switch-mode", describeModeSwitchStatus(nil))
+		return
+	}
+
+	if context.ToMode == ModeCommand {
+		m.state.SetActiveMode(ModeCommand)
+		m.state.SetPendingModeSwitch(nil)
+		m.state.SetPendingIntent(IntentNone, "switch-mode", describeModeSwitchStatus(context))
+		return
+	}
+
+	if context.ResultContext == nil || context.ResultContext.PreservedResult == nil {
+		m.state.SetPendingIntent(IntentSwitchMode, "switch-mode", describeModeSwitchStatus(context))
+		return
+	}
+
+	m.state.SetActiveMode(context.ToMode)
+	m.state.SetPendingModeSwitch(nil)
+	m.state.SetPendingIntent(IntentNone, "switch-mode", describeModeSwitchStatus(context))
 }
 
 func buildInlineResultSet(query string, result *db.ResultSet) *db.ResultSet {

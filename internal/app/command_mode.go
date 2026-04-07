@@ -34,6 +34,7 @@ type commandModeKeyMap struct {
 	Submit           key.Binding
 	Cancel           key.Binding
 	History          key.Binding
+	RestoreHistory   key.Binding
 	SwitchMode       key.Binding
 	AcceptSuggestion key.Binding
 	NextSuggestion   key.Binding
@@ -57,6 +58,7 @@ func newCommandModeModel() commandModeModel {
 			Submit:           key.NewBinding(key.WithKeys("ctrl+g"), key.WithHelp("ctrl+g", "submit")),
 			Cancel:           key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear")),
 			History:          key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "history")),
+			RestoreHistory:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restore")),
 			SwitchMode:       key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "mode")),
 			AcceptSuggestion: key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("ctrl+y", "accept")),
 			NextSuggestion:   key.NewBinding(key.WithKeys("alt+n"), key.WithHelp("alt+n", "next suggestion")),
@@ -134,7 +136,11 @@ func (m commandModeModel) View(query QueryContext) string {
 }
 
 func (m commandModeModel) Footer(connectionName, dialect string, query QueryContext) string {
-	parts := []string{"Command mode"}
+	modeLabel := "Command mode"
+	if query.ActiveMode == ModeHistorySearch {
+		modeLabel = "History search"
+	}
+	parts := []string{modeLabel}
 
 	if label := strings.TrimSpace(connectionName); label != "" {
 		parts = append(parts, fmt.Sprintf("connection %s", label))
@@ -146,6 +152,9 @@ func (m commandModeModel) Footer(connectionName, dialect string, query QueryCont
 
 	parts = append(parts, fmt.Sprintf("line %d col %d", m.editor.Line()+1, m.editor.LineInfo().ColumnOffset+1))
 	parts = append(parts, bindingSummary(m.keys.Submit), bindingSummary(m.keys.Cancel), bindingSummary(m.keys.History), bindingSummary(m.keys.SwitchMode))
+	if query.ActiveMode == ModeHistorySearch {
+		parts = append(parts, bindingSummary(m.keys.RestoreHistory), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
+	}
 	if query.SlashWizard != nil {
 		parts = append(parts, "wizard /commands")
 	}
@@ -203,6 +212,10 @@ func adjustedScrollTop(current, cursorRow, totalRows, height int) int {
 func (m commandModeModel) renderView(query QueryContext) string {
 	sections := make([]string, 0, 3)
 
+	if historySearch := renderHistorySearch(query); historySearch != "" {
+		sections = append(sections, historySearch)
+	}
+
 	if wizard := renderSlashWizard(query); wizard != "" {
 		sections = append(sections, wizard)
 	}
@@ -221,7 +234,10 @@ func (m commandModeModel) renderView(query QueryContext) string {
 		sections = append(sections, inline)
 	}
 
-	panel := m.renderAutocompletePanel(query)
+	panel := ""
+	if query.ActiveMode != ModeHistorySearch {
+		panel = m.renderAutocompletePanel(query)
+	}
 	if panel != "" {
 		sections = append(sections, panel)
 	}

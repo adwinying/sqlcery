@@ -31,21 +31,25 @@
 - [x] Preserve the full result context so `Ctrl-x` can open the same dataset in record viewer mode.
 - [x] Implement slash-command parsing and dispatch in Go.
 - [x] Build a wizard-style `/commands` flow, potentially with `huh` or custom Bubble Tea steps.
-- [ ] Implement `/tables` using adapter-level schema introspection.
-- [ ] Implement `/columns` for a selected table.
-- [ ] Implement `/select`, `/insert`, `/update`, `/delete`, `/create`, and `/drop` as SQL composers that return editable SQL to command mode.
-- [ ] Keep SQL generation dialect-aware where SQLite, PostgreSQL, and MySQL differ.
-- [ ] Maintain in-memory session history for fast navigation.
-- [ ] Persist executed commands to `$XDG_DATA_HOME/sqlcery/history.log`.
-- [ ] Implement `Ctrl-r` reverse search with fuzzy filtering in Go.
-- [ ] Restore selected history entries back into the active input buffer.
-- [ ] Log every executed command as JSON using `encoding/json`.
-- [ ] Include `connection`, `command`, `time`, and `result` fields in each audit entry.
-- [ ] Define bounded result summaries so log files stay useful without growing uncontrollably.
-- [ ] Handle log directory creation, file growth strategy, and write failures gracefully.
-- [ ] Build a full-screen result viewer with `bubbletea` and either `bubbles/table` or a custom grid model.
-- [ ] Display all rows for the active result set.
-- [ ] Freeze the primary key column, even if this requires custom rendering beyond the stock table component.
+- [x] Implement `/tables` using adapter-level schema introspection.
+- [x] Implement `/columns` for a selected table.
+- [x] Implement `/select`, `/insert`, `/update`, `/delete`, `/create`, and `/drop` as SQL composers that return editable SQL to command mode.
+- [x] Keep SQL generation dialect-aware where SQLite, PostgreSQL, and MySQL differ.
+- [x] Maintain in-memory session history for fast navigation.
+- [x] Persist executed commands to `$XDG_DATA_HOME/sqlcery/history.log`.
+- [x] Implement `Ctrl-r` reverse search with fuzzy filtering in Go.
+- [x] Restore selected history entries back into the active input buffer.
+- [x] Log every executed command as JSON using `encoding/json`.
+- [x] Include `connection`, `command`, `time` fields in each audit entry.
+- [x] Define bounded result summaries so log files stay useful without growing uncontrollably.
+- [x] Handle log directory creation, file growth strategy, and write failures gracefully.
+- [x] Build a full-screen result viewer with `bubbletea` and either `bubbles/table` or a custom grid model.
+- [x] Display all rows for the active result set.
+- [ ] Add multiple layouts: record viewer on top + command line on bottom; command line only; record viewer only. Switch between them with Ctrl-1, Ctrl-2, Ctrl-3.
+- [ ] Add pagination to record viewer mode; show max 300 row at a time
+- [ ] Add spinner and elapsed time to UI when running queries
+- [ ] Allow for multiline input in command mode, only running query when semicolon is inserted
+- [ ] (skip for now) Freeze the primary key column, even if this requires custom rendering beyond the stock table component.
 - [ ] Highlight primary keys distinctly with `lipgloss` styling.
 - [ ] Support navigation with arrow keys and `hjkl`.
 - [ ] Support paging with `Ctrl-d` and `Ctrl-u`.
@@ -74,12 +78,12 @@
 - [ ] Add tests for autocomplete ranking and schema-aware suggestions.
 - [ ] Add UI-model tests for Bubble Tea update logic, key handling, and mode switching.
 - [ ] Add export tests for CSV, TSV, JSON, and Markdown output.
-- [ ] Run `go test ./...` and `go test -race ./...` in CI.
+- [ ] (Skip for now) Run `go test ./...` and `go test -race ./...` in CI.
 - [ ] Document the chosen Go architecture and package layout.
 - [ ] Add installation instructions for `go install`, prebuilt binaries, and package-manager distribution.
 - [ ] Document config files, connection definitions, and SSH usage.
 - [ ] Add usage docs for command mode, record viewer mode, keyboard shortcuts, and slash commands.
-- [ ] Provide sample `sqlcery.toml` and `connections.toml` files.
+- [ ] Provide sample `sqlcery.toml` and `connections.toml` files. (kitchen sink)
 - [ ] Prepare `goreleaser` config, release notes template, and an initial release checklist.
 - [ ] Apply terminal color scheme to the UI
 - [x] Set namespace to `github.com/adwinying/sqlcery`

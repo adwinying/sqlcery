@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/adwinying/sqlcery/internal/db"
+	apphistory "github.com/adwinying/sqlcery/internal/history"
 )
 
 type Session struct {
@@ -23,6 +24,7 @@ type ProgramFactory func(model tea.Model, opts ...tea.ProgramOption) Program
 type RunOptions struct {
 	NewProgram     ProgramFactory
 	ProgramOptions []tea.ProgramOption
+	History        *apphistory.Session
 }
 
 func Run(ctx context.Context, session Session, adapter *db.SQLAdapter, options RunOptions) error {
@@ -45,6 +47,7 @@ func Run(ctx context.Context, session Session, adapter *db.SQLAdapter, options R
 	programOptions = append(programOptions, tea.WithContext(ctx))
 	programOptions = append(programOptions, options.ProgramOptions...)
 
-	_, err := newProgram(NewModel(session, adapter), programOptions...).Run()
+	model := newModelWithDependencies(session, adapter, modelDependencies{history: options.History})
+	_, err := newProgram(model, programOptions...).Run()
 	return err
 }

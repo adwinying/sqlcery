@@ -58,11 +58,18 @@ type QueryContext struct {
 	PendingIntent        PendingIntent
 	LastAction           string
 	ActiveMode           AppMode
+	SessionHistory       []HistoryEntryContext
+	HistorySearch        *HistorySearchContext
 	AutocompleteSchema   *AutocompleteSchemaContext
 	LatestResult         *LatestResultContext
 	SlashWizard          *SlashCommandWizardContext
 	PendingModeSwitch    *ModeSwitchContext
 	SelectedHistoryEntry *HistoryEntryContext
+}
+
+type HistorySearchContext struct {
+	Query         string
+	SelectedIndex int
 }
 
 type SlashCommandWizardStep string
@@ -195,6 +202,14 @@ func (s *SharedAppState) SetActiveMode(mode AppMode) {
 	s.Query.ActiveMode = mode
 }
 
+func (s *SharedAppState) SetSessionHistory(entries []HistoryEntryContext) {
+	s.Query.SessionHistory = cloneHistoryEntries(entries)
+}
+
+func (s *SharedAppState) SetHistorySearchContext(context *HistorySearchContext) {
+	s.Query.HistorySearch = cloneHistorySearchContext(context)
+}
+
 func (s *SharedAppState) SetLatestResultContext(context *LatestResultContext) {
 	s.Query.LatestResult = cloneLatestResultContext(context)
 }
@@ -217,6 +232,8 @@ func (s *SharedAppState) SetSelectedHistoryEntry(entry *HistoryEntryContext) {
 
 func (q QueryContext) snapshot() QueryContext {
 	clone := q
+	clone.SessionHistory = cloneHistoryEntries(q.SessionHistory)
+	clone.HistorySearch = cloneHistorySearchContext(q.HistorySearch)
 	clone.AutocompleteSchema = cloneAutocompleteSchemaContext(q.AutocompleteSchema)
 	clone.LatestResult = cloneLatestResultContext(q.LatestResult)
 	clone.SlashWizard = cloneSlashCommandWizardContext(q.SlashWizard)
@@ -294,6 +311,25 @@ func cloneHistoryEntryContext(entry *HistoryEntryContext) *HistoryEntryContext {
 	}
 
 	clone := *entry
+	return &clone
+}
+
+func cloneHistoryEntries(entries []HistoryEntryContext) []HistoryEntryContext {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	clone := make([]HistoryEntryContext, len(entries))
+	copy(clone, entries)
+	return clone
+}
+
+func cloneHistorySearchContext(context *HistorySearchContext) *HistorySearchContext {
+	if context == nil {
+		return nil
+	}
+
+	clone := *context
 	return &clone
 }
 

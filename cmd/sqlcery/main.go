@@ -8,6 +8,7 @@ import (
 	"github.com/adwinying/sqlcery/internal/app"
 	"github.com/adwinying/sqlcery/internal/config"
 	"github.com/adwinying/sqlcery/internal/db"
+	apphistory "github.com/adwinying/sqlcery/internal/history"
 )
 
 func main() {
@@ -21,7 +22,11 @@ func run(args []string, getwd func() (string, error)) error {
 	return runWithDependencies(args, getwd, runDependencies{
 		open: db.Open,
 		start: func(ctx context.Context, session app.Session, adapter *db.SQLAdapter) error {
-			return app.Run(ctx, session, adapter, app.RunOptions{})
+			history, err := apphistory.NewPersistentSession()
+			if err != nil {
+				return err
+			}
+			return app.Run(ctx, session, adapter, app.RunOptions{History: history})
 		},
 	})
 }

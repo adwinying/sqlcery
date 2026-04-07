@@ -258,6 +258,25 @@ func TestCommandModeViewRendersSlashWizard(t *testing.T) {
 	}
 }
 
+func TestCommandModeViewRendersHistorySearch(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 20)
+	view := mode.View(QueryContext{
+		ActiveMode: ModeHistorySearch,
+		HistorySearch: &HistorySearchContext{
+			Query:         "su",
+			SelectedIndex: 0,
+		},
+		SessionHistory: []HistoryEntryContext{{SQL: "select * from user_sessions"}, {SQL: "select * from users"}},
+	})
+
+	for _, want := range []string{"Reverse search:", "query> su", "2 match(es); newest first.", "> select * from users", "enter restore | ctrl+r older | alt+p newer | esc close"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() = %q, want to contain %q", view, want)
+		}
+	}
+}
+
 func TestCommandModeViewRendersInlineSelectResult(t *testing.T) {
 	mode := newCommandModeModel()
 	mode.SetSize(80, 20)
