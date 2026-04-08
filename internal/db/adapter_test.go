@@ -348,6 +348,24 @@ func TestAdapterHealthCheckWrapsErrors(t *testing.T) {
 	}
 }
 
+func TestAdapterHealthCheckPreservesDriverErrors(t *testing.T) {
+	adapter, err := newAdapter(&stubRunner{}, PostgresDialect(), nil, func(context.Context) error {
+		return &pgconn.PgError{Code: "28P01", Message: "password authentication failed for user \"app\""}
+	}, nil)
+	if err != nil {
+		t.Fatalf("newAdapter() error = %v", err)
+	}
+
+	err = adapter.HealthCheck(context.Background())
+	if err == nil {
+		t.Fatal("HealthCheck() error = nil, want error")
+	}
+
+	if got, want := err.Error(), "password authentication failed for user \"app\""; !strings.Contains(got, want) {
+		t.Fatalf("HealthCheck() error = %q, want to contain %q", got, want)
+	}
+}
+
 func TestWrapUsesDatabaseSQL(t *testing.T) {
 	driverName := registerStubDriver(t)
 	db, err := sql.Open(driverName, "")

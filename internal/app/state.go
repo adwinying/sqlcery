@@ -65,6 +65,7 @@ type QueryContext struct {
 	LastSubmittedSQL     string
 	PendingIntent        PendingIntent
 	LastAction           string
+	HelpVisible          bool
 	Running              *RunningQueryContext
 	Layout               AppLayout
 	ActiveMode           AppMode
@@ -133,6 +134,7 @@ type LatestResultContext struct {
 	OriginMode          AppMode
 	PreservedResult     *db.ResultSet
 	InlineResult        *db.ResultSet
+	SelectedRows        []int
 	StatementKind       db.StatementResultKind
 	RowsAffected        *int64
 	LastInsertID        *int64
@@ -268,6 +270,10 @@ func (s *SharedAppState) SetPendingModeSwitch(context *ModeSwitchContext) {
 	s.Query.PendingModeSwitch = cloneModeSwitchContext(context)
 }
 
+func (s *SharedAppState) SetHelpVisible(visible bool) {
+	s.Query.HelpVisible = visible
+}
+
 func (s *SharedAppState) SetAutocompleteSchema(schema *AutocompleteSchemaContext) {
 	s.Query.AutocompleteSchema = cloneAutocompleteSchemaContext(schema)
 }
@@ -312,6 +318,7 @@ func cloneLatestResultContext(context *LatestResultContext) *LatestResultContext
 	clone := *context
 	clone.PreservedResult = cloneResultSet(context.PreservedResult)
 	clone.InlineResult = cloneResultSet(context.InlineResult)
+	clone.SelectedRows = append([]int(nil), context.SelectedRows...)
 	clone.RowsAffected = cloneInt64Pointer(context.RowsAffected)
 	clone.LastInsertID = cloneInt64Pointer(context.LastInsertID)
 	return &clone

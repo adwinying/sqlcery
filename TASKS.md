@@ -51,33 +51,33 @@
 - [x] Allow for multiline input in command mode, only running query when semicolon is inserted
 - [ ] (skip for now) Freeze the primary key column, even if this requires custom rendering beyond the stock table component.
 - [x] Highlight primary keys distinctly with `lipgloss` styling.
-- [ ] Support navigation with arrow keys and `hjkl`.
+- [x] Support navigation with arrow keys and `hjkl`.
 - [x] Support paging with `Ctrl-d` and `Ctrl-u`.
-- [ ] Implement row selection toggling with `space` and maintain multi-row selection state.
-- [ ] Support `Ctrl-x` to switch cleanly between record viewer mode and command mode.
-- [ ] Ensure large result sets render efficiently without blocking the UI thread.
-- [ ] Implement `cc` to generate an `UPDATE` statement for the selected row.
-- [ ] Implement `dd` to generate a `DELETE` statement for the selected row.
-- [ ] Implement `yy` to generate an `INSERT` statement that duplicates the selected row.
-- [ ] Use primary keys or safe row-identifying predicates when composing mutation SQL.
-- [ ] Return generated SQL to command mode for review before execution.
-- [ ] Implement `:w [filename]` in record viewer mode.
-- [ ] Export selected rows, with a defined fallback when no rows are selected.
-- [ ] Add CSV and TSV export using Go's `encoding/csv`.
-- [ ] Add JSON export using `encoding/json`.
-- [ ] Add Markdown table export with deterministic column ordering.
-- [ ] Validate write paths and keep exports scoped to the current working directory.
-- [ ] Normalize database and network errors into user-friendly terminal messages.
-- [ ] Add status lines or footer hints for current mode, active connection, selection count, and shortcuts.
-- [ ] Make destructive generated commands visually obvious before execution.
-- [ ] Add help surfaces for keybindings and slash commands.
-- [ ] Define cancellation and timeout behavior for long-running queries.
-- [ ] Add unit tests with Go's `testing` package for config loading, connection parsing, SQL generation, and audit logging.
-- [ ] Add table-driven tests for dialect-specific behavior.
+- [x] Implement row selection toggling with `space` and maintain multi-row selection state.
+- [x] Support `Ctrl-x` to switch cleanly between record viewer mode and command mode.
+- [x] Ensure large result sets render efficiently without blocking the UI thread.
+- [x] Implement `cc` to generate an `UPDATE` statement for the selected row.
+- [x] Implement `dd` to generate a `DELETE` statement for the selected row.
+- [x] Implement `yy` to generate an `INSERT` statement that duplicates the selected row.
+- [x] Use primary keys or safe row-identifying predicates when composing mutation SQL.
+- [x] Return generated SQL to command mode for review before execution.
+- [x] Implement `:w [filename]` in record viewer mode.
+- [x] Export selected rows, with a defined fallback when no rows are selected.
+- [x] Add CSV and TSV export using Go's `encoding/csv`.
+- [x] Add JSON export using `encoding/json`.
+- [x] Add Markdown table export with deterministic column ordering.
+- [x] Validate write paths and keep exports scoped to the current working directory.
+- [x] Normalize database and network errors into user-friendly terminal messages.
+- [x] Add status lines or footer hints for current mode, active connection, selection count, and shortcuts.
+- [x] Make destructive generated commands visually obvious before execution.
+- [x] Add help surfaces for keybindings and slash commands.
+- [x] Define cancellation and timeout behavior for long-running queries.
+- [x] Add unit tests with Go's `testing` package for config loading, connection parsing, SQL generation, and audit logging.
+- [x] Add table-driven tests for dialect-specific behavior.
 - [ ] Add integration tests for SQLite, PostgreSQL, and MySQL adapters, using `testcontainers-go` for external databases.
-- [ ] Add tests for autocomplete ranking and schema-aware suggestions.
-- [ ] Add UI-model tests for Bubble Tea update logic, key handling, and mode switching.
-- [ ] Add export tests for CSV, TSV, JSON, and Markdown output.
+- [x] Add tests for autocomplete ranking and schema-aware suggestions.
+- [x] Add UI-model tests for Bubble Tea update logic, key handling, and mode switching.
+- [x] Add export tests for CSV, TSV, JSON, and Markdown output.
 - [ ] (Skip for now) Run `go test ./...` and `go test -race ./...` in CI.
 - [ ] Document the chosen Go architecture and package layout.
 - [ ] Add installation instructions for `go install`, prebuilt binaries, and package-manager distribution.
@@ -87,3 +87,4 @@
 - [ ] Prepare `goreleaser` config, release notes template, and an initial release checklist.
 - [ ] Apply terminal color scheme to the UI
 - [x] Set namespace to `github.com/adwinying/sqlcery`
+- [x] Slash commands should be expanded to a full command in the editor for the user to inspect and execute manually

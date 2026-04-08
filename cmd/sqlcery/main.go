@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -53,7 +54,7 @@ func runWithDependencies(args []string, getwd func() (string, error), deps runDe
 
 	adapter, err := deps.open(context.Background(), resolved.Connection)
 	if err != nil {
-		return err
+		return errors.New(app.FormatTerminalError(err))
 	}
 	defer func() {
 		closeErr := adapter.Close()
@@ -65,5 +66,6 @@ func runWithDependencies(args []string, getwd func() (string, error), deps runDe
 	return deps.start(context.Background(), app.Session{
 		ConnectionName: resolved.Name,
 		ConnectionType: resolved.Connection.Type,
+		WorkingDir:     cwd,
 	}, adapter)
 }

@@ -111,6 +111,8 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) tea.Cmd {
 	switch {
 	case msg.String() == "ctrl+c":
 		return tea.Quit
+	case key.Matches(msg, keys.Help):
+		return func() tea.Msg { return toggleHelpIntentMsg{} }
 	case key.Matches(msg, keys.RestoreHistory):
 		m.restoreSelectedHistoryEntry()
 		return nil

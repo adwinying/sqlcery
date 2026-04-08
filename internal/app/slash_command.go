@@ -57,6 +57,11 @@ type slashCommandInfo struct {
 	Usage   string
 }
 
+type helpSection struct {
+	Title string
+	Lines []string
+}
+
 var slashCommandInfos = []slashCommandInfo{
 	{Name: "help", Summary: "show available slash commands", Usage: "/help"},
 	{Name: "commands", Summary: "open the guided slash command wizard", Usage: "/commands"},
@@ -247,6 +252,14 @@ func handleSlashHelp(_ context.Context, _ slashCommandContext, _ slashCommand) (
 	}, nil
 }
 
+func slashCommandHelpLines() []string {
+	lines := make([]string, 0, len(slashCommandInfos))
+	for _, info := range slashCommandInfos {
+		lines = append(lines, fmt.Sprintf("%s - %s (%s)", "/"+info.Name, info.Summary, info.Usage))
+	}
+	return lines
+}
+
 func handleSlashCommands(_ context.Context, _ slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
 	if err := validateSlashCommandArgs(parsed, 0); err != nil {
 		return slashCommandResult{}, err
@@ -374,7 +387,7 @@ func handleSlashSelect(ctx context.Context, command slashCommandContext, parsed 
 	}
 
 	return slashCommandResult{
-		Status:        fmt.Sprintf("Loaded %s template for %s into command mode.", parsed.DisplayName, displaySlashTableRef(table)),
+		Status:        slashTemplateStatus(parsed.DisplayName, displaySlashTableRef(table)),
 		ReplaceEditor: fmt.Sprintf("SELECT\n%s\nFROM %s\nLIMIT 50;", selectList, quotedTable),
 		ShouldReplace: true,
 	}, nil
@@ -402,7 +415,7 @@ func handleSlashInsert(ctx context.Context, command slashCommandContext, parsed 
 	}
 
 	return slashCommandResult{
-		Status: fmt.Sprintf("Loaded %s template for %s into command mode.", parsed.DisplayName, displaySlashTableRef(table)),
+		Status: slashTemplateStatus(parsed.DisplayName, displaySlashTableRef(table)),
 		ReplaceEditor: fmt.Sprintf("INSERT INTO %s (\n%s\n) VALUES (\n%s\n);",
 			quotedTable,
 			strings.Join(columnNames, ",\n"),
@@ -437,7 +450,7 @@ func handleSlashUpdate(ctx context.Context, command slashCommandContext, parsed 
 	}
 
 	return slashCommandResult{
-		Status: fmt.Sprintf("Loaded %s template for %s into command mode.", parsed.DisplayName, displaySlashTableRef(table)),
+		Status: slashTemplateStatus(parsed.DisplayName, displaySlashTableRef(table)),
 		ReplaceEditor: fmt.Sprintf("UPDATE %s\nSET\n%s\nWHERE condition;",
 			quotedTable,
 			strings.Join(assignments, ",\n"),
@@ -453,7 +466,7 @@ func handleSlashDelete(_ context.Context, command slashCommandContext, parsed sl
 	}
 
 	return slashCommandResult{
-		Status:        fmt.Sprintf("Loaded %s template for %s into command mode.", parsed.DisplayName, displaySlashTableRef(table)),
+		Status:        slashTemplateStatus(parsed.DisplayName, displaySlashTableRef(table)),
 		ReplaceEditor: fmt.Sprintf("DELETE FROM %s\nWHERE condition;", quoteSlashTableRef(command.Dialect, table)),
 		ShouldReplace: true,
 	}, nil
@@ -468,7 +481,7 @@ func handleSlashCreate(_ context.Context, command slashCommandContext, parsed sl
 	columnDefinitions := slashCreateColumnDefinitions(command.Dialect)
 
 	return slashCommandResult{
-		Status: fmt.Sprintf("Loaded %s template for %s into command mode.", parsed.DisplayName, displaySlashTableRef(table)),
+		Status: slashTemplateStatus(parsed.DisplayName, displaySlashTableRef(table)),
 		ReplaceEditor: fmt.Sprintf("CREATE TABLE %s (\n%s\n);",
 			quoteSlashTableRef(command.Dialect, table),
 			strings.Join(columnDefinitions, ",\n"),
@@ -484,10 +497,14 @@ func handleSlashDrop(_ context.Context, command slashCommandContext, parsed slas
 	}
 
 	return slashCommandResult{
-		Status:        fmt.Sprintf("Loaded %s template for %s into command mode.", parsed.DisplayName, displaySlashTableRef(table)),
+		Status:        slashTemplateStatus(parsed.DisplayName, displaySlashTableRef(table)),
 		ReplaceEditor: fmt.Sprintf("DROP TABLE %s;", quoteSlashTableRef(command.Dialect, table)),
 		ShouldReplace: true,
 	}, nil
+}
+
+func slashTemplateStatus(displayName, target string) string {
+	return fmt.Sprintf("Expanded %s for %s into command mode. Review it, then press ctrl+g to run.", displayName, target)
 }
 
 func slashTargetTable(parsed slashCommand) (db.TableRef, error) {

@@ -171,6 +171,30 @@ func TestBuildAutocompleteItemsRanksActiveTableColumnsBeforeFallbackColumns(t *t
 	assertAutocompleteLabelBefore(t, items, "id", "archived_at")
 }
 
+func TestBuildAutocompleteItemsRanksUnqualifiedTablesBeforeSchemaQualifiedMatches(t *testing.T) {
+	items := buildAutocompleteItems("SELECT * FROM us", len([]rune("SELECT * FROM us")), QueryContext{
+		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}, {Schema: "public", Name: "users"}}},
+	})
+
+	assertAutocompleteLabelsPrefix(t, items, []string{"users", "public.users"})
+}
+
+func TestBuildAutocompleteItemsUsesSchemaQualifiedActiveTableColumns(t *testing.T) {
+	items := buildAutocompleteItems("SELECT * FROM warehouse.users WHERE ", len([]rune("SELECT * FROM warehouse.users WHERE ")), QueryContext{
+		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{
+			{Schema: "warehouse", Name: "users", Columns: []string{"id", "name"}},
+			{Schema: "public", Name: "users", Columns: []string{"id", "public_name"}},
+		}},
+	})
+
+	assertAutocompleteLabelsPrefix(t, items, []string{"id", "name"})
+	for _, item := range items {
+		if item.Label == "public_name" {
+			t.Fatalf("items contained column from wrong schema: %#v", items)
+		}
+	}
+}
+
 func TestBuildAutocompleteItemsResetsContextAfterSemicolon(t *testing.T) {
 	items := buildAutocompleteItems("SELECT * FROM users; DE", len([]rune("SELECT * FROM users; DE")), QueryContext{})
 
@@ -325,6 +349,19 @@ func TestCommandModeViewRendersInlineExecResult(t *testing.T) {
 	}
 }
 
+func TestCommandModeViewShowsWarningForDestructiveGeneratedCommands(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 20)
+	mode.editor.SetValue("DELETE FROM \"users\"\nWHERE\n  \"id\" = 7;")
+	mode.editor.CursorEnd()
+
+	view := mode.View(QueryContext{})
+
+	if !strings.Contains(view, "Warning: generated DELETE statement. Review carefully before submitting.") {
+		t.Fatalf("View() = %q, want destructive warning", view)
+	}
+}
+
 func TestCommandModeFooterShowsRunningIndicator(t *testing.T) {
 	mode := newCommandModeModel()
 	mode.SetSize(80, 20)
@@ -333,7 +370,7 @@ func TestCommandModeFooterShowsRunningIndicator(t *testing.T) {
 		Running: &RunningQueryContext{Label: "SQL", Elapsed: 1500 * time.Millisecond},
 	})
 
-	for _, want := range []string{"Command mode", "layout command only", "connection local", "dialect sqlite", "ctrl+1 split", "ctrl+2 command", "ctrl+3 viewer", "- SQL 1.5s"} {
+	for _, want := range []string{"Command mode", "layout command only", "connection local", "dialect sqlite", "alt+h help", "ctrl+1 split", "ctrl+2 command", "ctrl+3 viewer", "- SQL 1.5s", "esc cancel query"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
 		}
@@ -348,7 +385,23 @@ func TestCommandModeFooterShowsViewerPagingWhenViewerFocusedInSplit(t *testing.T
 		ActiveMode: ModeRecordViewer,
 	})
 
-	for _, want := range []string{"Command line hidden focus", "layout split", "ctrl+u prev page", "ctrl+d next page"} {
+	for _, want := range []string{"Command line hidden focus", "layout split", "alt+h help", "ctrl+u prev page", "ctrl+d next page"} {
+		if !strings.Contains(footer, want) {
+			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
+		}
+	}
+}
+
+func TestCommandModeFooterShowsSelectionCountFromViewerResult(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 20)
+	footer := mode.Footer("local", "sqlite", QueryContext{
+		Layout:       LayoutSplit,
+		ActiveMode:   ModeCommand,
+		LatestResult: &LatestResultContext{SelectedRows: []int{0, 2}},
+	})
+
+	for _, want := range []string{"Command mode", "connection local", "dialect sqlite", "2 selected"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
 		}

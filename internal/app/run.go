@@ -13,6 +13,7 @@ import (
 type Session struct {
 	ConnectionName string
 	ConnectionType string
+	WorkingDir     string
 }
 
 type Program interface {

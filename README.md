@@ -36,14 +36,14 @@ SQLcery currently standardizes on `lightweight-tokenization` for command-line as
 
 `/commands` allows you to compose SQL commands using a wizard-style interface.
 
-- `/tables` to list tables in the current database
-- `/columns` to list columns in a table
-- `/select` to select columns from a table
-- `/insert` to insert rows into a table
-- `/update` to update rows in a table
-- `/delete` to delete rows from a table
-- `/create` to create a table
-- `/drop` to drop a table
+- `/tables` to list tables in the current database immediately
+- `/columns` to list columns in a table immediately
+- `/select` to expand a SELECT statement into the editor for review
+- `/insert` to expand an INSERT statement into the editor for review
+- `/update` to expand an UPDATE statement into the editor for review
+- `/delete` to expand a DELETE statement into the editor for review
+- `/create` to expand a CREATE TABLE statement into the editor for review
+- `/drop` to expand a DROP TABLE statement into the editor for review
 
 #### History
 

@@ -2,10 +2,13 @@ package db
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/adwinying/sqlcery/internal/config"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestResolveLifecycleSettingsDefaults(t *testing.T) {
@@ -120,6 +123,29 @@ func TestWrapPingWithTimeoutAppliesDeadline(t *testing.T) {
 
 	if until <= 0 || until > 50*time.Millisecond {
 		t.Fatalf("healthCheck() deadline window = %s, want between 0 and 50ms", until)
+	}
+}
+
+func TestHealthCheckErrorWrapsGenericErrors(t *testing.T) {
+	err := healthCheckError("postgres", errors.New("ping failed"))
+	if err == nil {
+		t.Fatal("healthCheckError() error = nil, want error")
+	}
+	if got, want := err.Error(), "health check postgres connection: ping failed"; got != want {
+		t.Fatalf("healthCheckError() error = %q, want %q", got, want)
+	}
+}
+
+func TestHealthCheckErrorKeepsDriverDetails(t *testing.T) {
+	err := healthCheckError("postgres", &pgconn.PgError{Code: "28P01", Message: "password authentication failed for user \"app\""})
+	if err == nil {
+		t.Fatal("healthCheckError() error = nil, want error")
+	}
+	if got, want := err.Error(), "health check postgres connection:"; !strings.Contains(got, want) {
+		t.Fatalf("healthCheckError() error = %q, want to contain %q", got, want)
+	}
+	if got, want := err.Error(), "password authentication failed for user \"app\""; !strings.Contains(got, want) {
+		t.Fatalf("healthCheckError() error = %q, want to contain %q", got, want)
 	}
 }
 

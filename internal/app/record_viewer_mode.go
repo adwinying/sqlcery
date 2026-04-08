@@ -6,17 +6,19 @@ import (
 	"time"
 
 	"github.com/adwinying/sqlcery/internal/db"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
 const (
-	defaultRecordViewerWidth  = 80
-	defaultRecordViewerHeight = 24
-	minimumRecordViewerWidth  = 20
-	minimumRecordViewerHeight = 8
-	recordViewerPageSize      = 300
-	recordViewerPrimaryKeyTag = "[pk] "
+	defaultRecordViewerWidth          = 80
+	defaultRecordViewerHeight         = 24
+	minimumRecordViewerWidth          = 20
+	minimumRecordViewerHeight         = 8
+	recordViewerPageSize              = 300
+	recordViewerViewportClipThreshold = 20
+	recordViewerPrimaryKeyTag         = "[pk] "
 )
 
 var (
@@ -38,9 +40,40 @@ type recordViewerPageContext struct {
 	TotalRows  int
 }
 
+type recordViewerSelection struct {
+	Row    int
+	Column int
+	Active bool
+}
+
+type recordViewerRenderState struct {
+	Active       recordViewerSelection
+	SelectedRows map[int]struct{}
+}
+
+type recordViewerPreparedPageKey struct {
+	Result              *db.ResultSet
+	Page                int
+	ShowSelectionMarker bool
+}
+
+type recordViewerPreparedPage struct {
+	Key     recordViewerPreparedPageKey
+	Context recordViewerPageContext
+	Headers []string
+	Widths  []int
+	Rows    [][]string
+}
+
 type recordViewerModeModel struct {
-	width  int
-	height int
+	width           int
+	height          int
+	selectedRow     int
+	selectedColumn  int
+	selectionActive bool
+	pendingAction   recordViewerPendingAction
+	writeBuffer     string
+	cachedPage      *recordViewerPreparedPage
 }
 
 func newRecordViewerModeModel() recordViewerModeModel {
@@ -55,11 +88,13 @@ func (m *recordViewerModeModel) SetSize(width, height int) {
 	m.height = clampEditorSize(height, minimumRecordViewerHeight)
 }
 
-func (m recordViewerModeModel) View(query QueryContext) string {
+func (m *recordViewerModeModel) View(query QueryContext) string {
 	latest := query.LatestResult
 	if latest == nil || latest.PreservedResult == nil {
 		return "Record viewer\n\nRun a query that returns rows, then press ctrl+x or ctrl+3."
 	}
+
+	m.syncSelection(query)
 
 	result := latest.PreservedResult
 	page := recordViewerPageContextFor(query.ViewerPage, len(result.Rows))
@@ -69,8 +104,18 @@ func (m recordViewerModeModel) View(query QueryContext) string {
 		fmt.Sprintf("Rows: %d  Columns: %d", len(result.Rows), len(result.Columns)),
 		fmt.Sprintf("Page: %d/%d  Showing rows %s", page.Number, page.TotalPages, formatRecordViewerRowRange(page)),
 	}
+	if m.pendingAction == recordViewerPendingActionWrite {
+		header = append(header, fmt.Sprintf("Command: %s", m.writeBuffer))
+	}
+	if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
+		header = append(header, fmt.Sprintf("Selected: %d", selectedCount))
+	}
 
-	body := renderRecordViewerTable(result, query.ViewerPage, m.width, m.height-len(header)-2)
+	preparedPage := m.preparePage(result, query.ViewerPage, len(latest.SelectedRows) > 0)
+	body := renderPreparedRecordViewerPage(preparedPage, m.width, m.height-len(header)-2, recordViewerRenderState{
+		Active:       recordViewerSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
+		SelectedRows: selectedRowSet(latest.SelectedRows),
+	})
 	if body == "" {
 		body = "(no visible rows)"
 	}
@@ -89,23 +134,176 @@ func (m recordViewerModeModel) Footer(connectionName, dialect string, query Quer
 	if latest := query.LatestResult; latest != nil && latest.PreservedResult != nil {
 		page := recordViewerPageContextFor(query.ViewerPage, len(latest.PreservedResult.Rows))
 		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
+		if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
+			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
+		}
 	}
 	if running := formatRunningIndicator(query.Running); running != "" {
 		parts = append(parts, running)
 	}
-	parts = append(parts, "ctrl+u prev page", "ctrl+d next page", "ctrl+x focus", "ctrl+1 split", "ctrl+2 command", "ctrl+3 viewer", "ctrl+c quit")
+	if m.pendingAction == recordViewerPendingActionWrite {
+		parts = append(parts, ":w [file] export", "enter save", "esc cancel")
+	}
+	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u prev page", "ctrl+d next page", "ctrl+x focus", "ctrl+1 split", "ctrl+2 command", "ctrl+3 viewer", "ctrl+c quit")
 	return strings.Join(parts, " | ")
 }
 
-func renderRecordViewerTable(result *db.ResultSet, page, width, _ int) string {
-	if result == nil {
+func (m *recordViewerModeModel) syncSelection(query QueryContext) {
+	latest := query.LatestResult
+	if latest == nil || latest.PreservedResult == nil {
+		m.selectedRow = 0
+		m.selectedColumn = 0
+		m.selectionActive = false
+		return
+	}
+
+	result := latest.PreservedResult
+	if len(result.Rows) == 0 || len(result.Columns) == 0 {
+		m.selectedRow = 0
+		m.selectedColumn = 0
+		m.selectionActive = false
+		return
+	}
+
+	page := recordViewerPageContextFor(query.ViewerPage, len(result.Rows))
+	if m.selectedRow < page.StartRow-1 || m.selectedRow >= page.EndRow {
+		m.selectedRow = max(0, page.StartRow-1)
+	}
+	if m.selectedRow >= len(result.Rows) {
+		m.selectedRow = len(result.Rows) - 1
+	}
+	if m.selectedColumn >= len(result.Columns) {
+		m.selectedColumn = len(result.Columns) - 1
+	}
+	if m.selectedColumn < 0 {
+		m.selectedColumn = 0
+	}
+}
+
+func (m *recordViewerModeModel) preparePage(result *db.ResultSet, page int, showSelectionMarker bool) *recordViewerPreparedPage {
+	key := recordViewerPreparedPageKey{Result: result, Page: page, ShowSelectionMarker: showSelectionMarker}
+	if m.cachedPage != nil && m.cachedPage.Key == key {
+		return m.cachedPage
+	}
+
+	prepared := prepareRecordViewerPage(result, page, showSelectionMarker)
+	m.cachedPage = prepared
+	return prepared
+}
+
+func (m *recordViewerModeModel) Navigate(msg tea.KeyMsg, query QueryContext) (int, bool) {
+	deltaRow, deltaColumn, ok := recordViewerNavigationDelta(msg)
+	if !ok {
+		return query.ViewerPage, false
+	}
+
+	latest := query.LatestResult
+	if latest == nil || latest.PreservedResult == nil || len(latest.PreservedResult.Rows) == 0 || len(latest.PreservedResult.Columns) == 0 {
+		m.selectedRow = 0
+		m.selectedColumn = 0
+		m.selectionActive = false
+		return query.ViewerPage, true
+	}
+
+	m.syncSelection(query)
+	result := latest.PreservedResult
+	m.selectedRow = min(max(m.selectedRow+deltaRow, 0), len(result.Rows)-1)
+	m.selectedColumn = min(max(m.selectedColumn+deltaColumn, 0), len(result.Columns)-1)
+	m.selectionActive = true
+
+	return clampRecordViewerPage(m.selectedRow/recordViewerPageSize, len(result.Rows)), true
+}
+
+func (m *recordViewerModeModel) ToggleSelectedRow(query *QueryContext) (int, bool, bool) {
+	if query == nil || query.LatestResult == nil || query.LatestResult.PreservedResult == nil {
+		m.selectedRow = 0
+		m.selectedColumn = 0
+		m.selectionActive = false
+		return 0, false, false
+	}
+
+	result := query.LatestResult.PreservedResult
+	if len(result.Rows) == 0 || len(result.Columns) == 0 {
+		m.selectedRow = 0
+		m.selectedColumn = 0
+		m.selectionActive = false
+		return 0, false, false
+	}
+
+	m.syncSelection(*query)
+	query.LatestResult.SelectedRows = toggleSelectedRowIndices(query.LatestResult.SelectedRows, m.selectedRow)
+	m.selectionActive = true
+	return m.selectedRow, rowIndexSelected(query.LatestResult.SelectedRows, m.selectedRow), true
+}
+
+func renderRecordViewerTable(result *db.ResultSet, page, width, height int, state recordViewerRenderState) string {
+	prepared := prepareRecordViewerPage(result, page, len(state.SelectedRows) > 0)
+	return renderPreparedRecordViewerPage(prepared, width, recordViewerPageHeightHint(height), state)
+}
+
+func renderPreparedRecordViewerPage(prepared *recordViewerPreparedPage, width, height int, state recordViewerRenderState) string {
+	if prepared == nil {
 		return ""
 	}
 
+	lines := []string{
+		renderInlineResultLine(prepared.Headers, prepared.Widths),
+		renderInlineSeparator(prepared.Widths),
+	}
+
+	if len(prepared.Rows) == 0 {
+		lines = append(lines, "(no rows)")
+		return trimRenderedWidth(strings.Join(lines, "\n"), width)
+	}
+
+	start, end := recordViewerVisibleRowWindow(prepared.Context, len(prepared.Rows), height, state.Active)
+	for rowIndex := start; rowIndex < end; rowIndex++ {
+		absoluteRowIndex := prepared.Context.StartRow - 1 + rowIndex
+		values := append([]string(nil), prepared.Rows[rowIndex]...)
+		for columnIndex := range values {
+			if columnIndex == 0 && rowIndexSelectedSet(state.SelectedRows, absoluteRowIndex) {
+				values[columnIndex] = "* " + values[columnIndex]
+			}
+			if state.Active.Active && state.Active.Row == absoluteRowIndex && state.Active.Column == columnIndex {
+				values[columnIndex] = renderRecordViewerActiveCell(values[columnIndex])
+			}
+		}
+		lines = append(lines, renderInlineResultLine(values, prepared.Widths))
+	}
+
+	if end-start < len(prepared.Rows) {
+		lines = append(lines, fmt.Sprintf("Viewport rows %s of %d on this page.", formatRecordViewerViewportRange(start+1, end), len(prepared.Rows)))
+	}
+
+	return trimRenderedWidth(strings.Join(lines, "\n"), width)
+}
+
+func prepareRecordViewerPage(result *db.ResultSet, page int, showSelectionMarker bool) *recordViewerPreparedPage {
+	if result == nil {
+		return &recordViewerPreparedPage{}
+	}
+
 	columns := viewerColumns(result.Columns)
-	pageRows, _ := recordViewerRowsForPage(result.Rows, page)
-	widths := viewerColumnWidths(columns, pageRows)
-	viewerRows := make([][]string, 0, len(pageRows))
+	pageRows, context := recordViewerRowsForPage(result.Rows, page)
+	prepared := &recordViewerPreparedPage{
+		Key:     recordViewerPreparedPageKey{Result: result, Page: page, ShowSelectionMarker: showSelectionMarker},
+		Context: context,
+		Headers: make([]string, len(columns)),
+		Widths:  make([]int, len(columns)),
+		Rows:    make([][]string, 0, len(pageRows)),
+	}
+
+	for i, column := range columns {
+		prepared.Headers[i] = column.Header
+		if column.PrimaryKey {
+			prepared.Headers[i] = recordViewerPrimaryKeyHeaderStyle.Render(column.Header)
+		}
+		prepared.Widths[i] = ansi.StringWidth(column.Header)
+	}
+	if showSelectionMarker && len(prepared.Widths) > 0 {
+		prepared.Widths[0] += 2
+	}
+
 	for _, row := range pageRows {
 		values := make([]string, len(columns))
 		for i := range columns {
@@ -115,35 +313,122 @@ func renderRecordViewerTable(result *db.ResultSet, page, width, _ int) string {
 			}
 			if columns[i].PrimaryKey {
 				values[i] = recordViewerPrimaryKeyValueStyle.Render(formatted)
-				continue
+			} else {
+				values[i] = formatted
 			}
-			values[i] = formatted
+
+			widthValue := formatted
+			if showSelectionMarker && i == 0 {
+				widthValue = "  " + widthValue
+			}
+			if width := runeWidth(widthValue); width > prepared.Widths[i] {
+				prepared.Widths[i] = width
+			}
 		}
-		viewerRows = append(viewerRows, values)
+		prepared.Rows = append(prepared.Rows, values)
 	}
 
-	headers := make([]string, len(columns))
-	for i, column := range columns {
-		headers[i] = column.Header
-		if column.PrimaryKey {
-			headers[i] = recordViewerPrimaryKeyHeaderStyle.Render(column.Header)
+	return prepared
+}
+
+func recordViewerVisibleRowWindow(context recordViewerPageContext, totalRows, height int, active recordViewerSelection) (int, int) {
+	if totalRows <= 0 {
+		return 0, 0
+	}
+
+	visibleRows := totalRows
+	if height > 0 {
+		visibleRows = max(1, height-2)
+		if totalRows > visibleRows && height > 3 {
+			visibleRows = max(1, height-3)
+		}
+		visibleRows = min(visibleRows, totalRows)
+	}
+
+	if visibleRows >= totalRows {
+		return 0, totalRows
+	}
+	if totalRows <= recordViewerViewportClipThreshold {
+		return 0, totalRows
+	}
+
+	start := 0
+	if active.Active && context.TotalRows > 0 && active.Row >= context.StartRow-1 && active.Row < context.EndRow {
+		pageRow := active.Row - (context.StartRow - 1)
+		start = pageRow - visibleRows/2
+	}
+	start = max(0, min(start, totalRows-visibleRows))
+	return start, start + visibleRows
+}
+
+func formatRecordViewerViewportRange(start, end int) string {
+	if start == end {
+		return fmt.Sprintf("%d", start)
+	}
+	return fmt.Sprintf("%d-%d", start, end)
+}
+
+func recordViewerPageHeightHint(height int) int {
+	return height
+}
+
+func recordViewerNavigationDelta(msg tea.KeyMsg) (int, int, bool) {
+	switch msg.String() {
+	case "up", "k":
+		return -1, 0, true
+	case "down", "j":
+		return 1, 0, true
+	case "left", "h":
+		return 0, -1, true
+	case "right", "l":
+		return 0, 1, true
+	default:
+		return 0, 0, false
+	}
+}
+
+func renderRecordViewerActiveCell(value string) string {
+	return "\x1b[7m" + value + "\x1b[0m"
+}
+
+func selectedRowSet(rows []int) map[int]struct{} {
+	if len(rows) == 0 {
+		return nil
+	}
+
+	selected := make(map[int]struct{}, len(rows))
+	for _, row := range rows {
+		selected[row] = struct{}{}
+	}
+	return selected
+}
+
+func toggleSelectedRowIndices(rows []int, row int) []int {
+	for i, selected := range rows {
+		if selected != row {
+			continue
+		}
+		updated := append([]int(nil), rows[:i]...)
+		return append(updated, rows[i+1:]...)
+	}
+	return append(append([]int(nil), rows...), row)
+}
+
+func rowIndexSelected(rows []int, row int) bool {
+	for _, selected := range rows {
+		if selected == row {
+			return true
 		}
 	}
+	return false
+}
 
-	lines := []string{
-		renderInlineResultLine(headers, widths),
-		renderInlineSeparator(widths),
+func rowIndexSelectedSet(rows map[int]struct{}, row int) bool {
+	if len(rows) == 0 {
+		return false
 	}
-
-	for i := range viewerRows {
-		lines = append(lines, renderInlineResultLine(viewerRows[i], widths))
-	}
-
-	if len(viewerRows) == 0 {
-		lines = append(lines, "(no rows)")
-	}
-
-	return trimRenderedWidth(strings.Join(lines, "\n"), width)
+	_, ok := rows[row]
+	return ok
 }
 
 func viewerColumns(columns []db.ResultColumn) []recordViewerColumn {
@@ -160,25 +445,6 @@ func viewerColumns(columns []db.ResultColumn) []recordViewerColumn {
 		names = append(names, recordViewerColumn{Header: header, PrimaryKey: column.PrimaryKey != nil})
 	}
 	return names
-}
-
-func viewerColumnWidths(columns []recordViewerColumn, rows []db.ResultRow) []int {
-	widths := make([]int, len(columns))
-	for i, column := range columns {
-		widths[i] = ansi.StringWidth(column.Header)
-	}
-	for _, row := range rows {
-		for i := range columns {
-			if i >= len(row.Values) {
-				continue
-			}
-			formatted := formatRecordViewerValue(row.Values[i])
-			if width := runeWidth(formatted); width > widths[i] {
-				widths[i] = width
-			}
-		}
-	}
-	return widths
 }
 
 func formatRecordViewerValue(value db.ResultValue) string {

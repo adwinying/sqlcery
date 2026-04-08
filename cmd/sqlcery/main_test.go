@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,30 @@ func TestRunReturnsWorkingDirectoryErrors(t *testing.T) {
 	}
 
 	if got, want := err.Error(), "resolve working directory: boom"; !strings.Contains(got, want) {
+		t.Fatalf("run() error = %q, want to contain %q", got, want)
+	}
+}
+
+func TestRunFormatsOpenErrorsForTerminalUsers(t *testing.T) {
+	workingDir := t.TempDir()
+	err := runWithDependencies([]string{"postgres://app:secret@db.example.com:5432/warehouse"}, func() (string, error) { return workingDir, nil }, runDependencies{
+		open: func(context.Context, config.Connection) (*db.SQLAdapter, error) {
+			return nil, &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}
+		},
+		start: func(context.Context, app.Session, *db.SQLAdapter) error {
+			t.Fatal("run() started app, want open error")
+			return nil
+		},
+	})
+	if err == nil {
+		t.Fatal("run() error = nil, want error")
+	}
+
+	if got, want := err.Error(), "Network error while reaching the database. Check the host, port, SSH tunnel, or VPN."; !strings.Contains(got, want) {
+		t.Fatalf("run() error = %q, want to contain %q", got, want)
+	}
+
+	if got, want := err.Error(), "connection refused"; !strings.Contains(got, want) {
 		t.Fatalf("run() error = %q, want to contain %q", got, want)
 	}
 }

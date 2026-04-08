@@ -49,6 +49,7 @@ func TestSharedAppStateSnapshotClonesQueryContext(t *testing.T) {
 	state.SetLatestResultContext(&LatestResultContext{
 		Query:               "select * from widgets",
 		OriginMode:          ModeCommand,
+		SelectedRows:        []int{1, 301},
 		StatementKind:       db.StatementResultKindQuery,
 		RowsAffected:        cloneInt64Pointer(int64PointerForTest(3)),
 		LastInsertID:        cloneInt64Pointer(int64PointerForTest(9)),
@@ -110,6 +111,7 @@ func TestSharedAppStateSnapshotClonesQueryContext(t *testing.T) {
 	state.Query.AutocompleteSchema.Tables[0].Name = "changed"
 	state.Query.AutocompleteSchema.Tables[0].Columns[0] = "changed"
 	state.Query.LatestResult.Query = "mutated"
+	state.Query.LatestResult.SelectedRows[0] = 999
 	state.Query.SlashWizard.Commands[0].DisplayName = "/mutated"
 	state.Query.SlashWizard.Targets[0].Display = "changed"
 	state.Query.PendingModeSwitch.ToMode = ModeCommand
@@ -190,6 +192,10 @@ func TestSharedAppStateSnapshotClonesQueryContext(t *testing.T) {
 		t.Fatalf("snapshot.Query.LatestResult.Query = %q, want %q", got, want)
 	}
 
+	if got, want := snapshot.Query.LatestResult.SelectedRows, []int{1, 301}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("snapshot.Query.LatestResult.SelectedRows = %#v, want %#v", got, want)
+	}
+
 	if got, want := snapshot.Query.SlashWizard.Commands[0].DisplayName, "/select"; got != want {
 		t.Fatalf("snapshot.Query.SlashWizard.Commands[0].DisplayName = %q, want %q", got, want)
 	}
@@ -265,12 +271,12 @@ func TestSharedAppStateTransitions(t *testing.T) {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
-	state.SetError("dial tcp failed", "Connection failed.")
+	state.SetError("Network error while reaching the database. Check the host, port, SSH tunnel, or VPN. Details: dial tcp failed", "Connection failed.")
 	if got, want := state.App.Current, StateError; got != want {
 		t.Fatalf("state.App.Current = %q, want %q", got, want)
 	}
 
-	if got, want := state.App.Error, "dial tcp failed"; got != want {
+	if got, want := state.App.Error, "Network error while reaching the database. Check the host, port, SSH tunnel, or VPN. Details: dial tcp failed"; got != want {
 		t.Fatalf("state.App.Error = %q, want %q", got, want)
 	}
 

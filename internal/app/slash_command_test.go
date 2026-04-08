@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/adwinying/sqlcery/internal/db"
 	apphistory "github.com/adwinying/sqlcery/internal/history"
@@ -59,6 +60,28 @@ func TestDispatchSlashCommandHelpReturnsSyntheticResult(t *testing.T) {
 	}
 	if got, want := result.Statement.ResultSet.Rows[0].Values[0].Value, "/help"; got != want {
 		t.Fatalf("rows[0][0] = %#v, want %q", got, want)
+	}
+}
+
+func TestSlashCommandHelpLinesIncludeWizardAndTemplates(t *testing.T) {
+	lines := slashCommandHelpLines()
+
+	for _, want := range []string{
+		"/help - show available slash commands (/help)",
+		"/commands - open the guided slash command wizard (/commands)",
+		"/select - compose a SELECT statement (/select <table>)",
+		"/drop - compose a DROP TABLE statement (/drop <table>)",
+	} {
+		found := false
+		for _, line := range lines {
+			if line == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("slashCommandHelpLines() = %#v, want to contain %q", lines, want)
+		}
 	}
 }
 
@@ -355,7 +378,7 @@ func TestModelSubmitDispatchesSlashTablesWithoutRunningRawSQL(t *testing.T) {
 	}
 	model = next.(Model)
 
-	if got, want := model.state.Status, "Dispatching /tables."; got != want {
+	if got, want := model.state.Status, "Dispatching /tables. Press esc to cancel; timeout after 30s."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if model.state.Query.Running == nil {
@@ -486,13 +509,16 @@ func TestModelSubmitDispatchesSlashSelectIntoEditor(t *testing.T) {
 	next, _ = model.Update(firstCommandMessageForTest[slashCommandExecutedMsg](t, cmd))
 	model = next.(Model)
 
-	if got, want := model.state.Query.LastSubmittedSQL, "/select widgets"; got != want {
+	if got, want := model.state.Query.LastSubmittedSQL, ""; got != want {
 		t.Fatalf("state.Query.LastSubmittedSQL = %q, want %q", got, want)
+	}
+	if got, want := len(model.state.Query.SessionHistory), 0; got != want {
+		t.Fatalf("len(state.Query.SessionHistory) = %d, want %d", got, want)
 	}
 	if model.state.Query.LatestResult != nil {
 		t.Fatalf("state.Query.LatestResult = %#v, want nil", model.state.Query.LatestResult)
 	}
-	if got, want := model.state.Status, "Loaded /select template for widgets into command mode."; got != want {
+	if got, want := model.state.Status, "Expanded /select for widgets into command mode. Review it, then press ctrl+g to run."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	for _, want := range []string{"SELECT", `FROM "widgets"`, `"id"`, `"name"`, "LIMIT 50;"} {
@@ -566,7 +592,7 @@ func TestModelSubmitCommandsWizardDispatchesResultCommand(t *testing.T) {
 		t.Fatal("Update(submitIntentMsg{}) cmd = nil, want slash dispatch command")
 	}
 	model = next.(Model)
-	if got, want := model.state.Status, "Dispatching /tables from wizard."; got != want {
+	if got, want := model.state.Status, "Dispatching /tables from wizard. Press esc to cancel; timeout after 30s."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if model.state.Query.Running == nil {
@@ -609,7 +635,7 @@ func TestModelSubmitCommandsWizardLoadsTargetedTemplate(t *testing.T) {
 		t.Fatal("Update(submitIntentMsg{}) cmd = nil, want slash dispatch command")
 	}
 	model = next.(Model)
-	if got, want := model.state.Status, "Dispatching /select from wizard."; got != want {
+	if got, want := model.state.Status, "Dispatching /select from wizard. Press esc to cancel; timeout after 30s."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if model.state.Query.Running == nil {
@@ -763,6 +789,23 @@ func TestModelSubmitUnknownSlashCommandShowsErrorAndSkipsSQLExecution(t *testing
 	}
 	if count != 0 {
 		t.Fatalf("table named /wat exists; slash command was executed as SQL")
+	}
+}
+
+func TestSlashCommandCancellationUsesFriendlyStatus(t *testing.T) {
+	model := NewModel(Session{}, nil)
+	model.state.SetReady("")
+	model.state.SetRunningQueryContext(&RunningQueryContext{Label: "/tables", Elapsed: 1200 * time.Millisecond})
+
+	next, _ := model.Update(slashCommandExecutedMsg{
+		Command:       slashCommand{RawInput: "/tables", DisplayName: "/tables", Name: "tables"},
+		ResultSummary: "error: context canceled",
+		Err:           context.Canceled,
+	})
+	model = next.(Model)
+
+	if got, want := model.state.Status, "Cancelled /tables after 1.2s."; got != want {
+		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
 

@@ -34,6 +34,7 @@ type commandModeModel struct {
 type commandModeKeyMap struct {
 	Submit            key.Binding
 	Cancel            key.Binding
+	Help              key.Binding
 	History           key.Binding
 	RestoreHistory    key.Binding
 	SwitchMode        key.Binding
@@ -60,7 +61,8 @@ func newCommandModeModel() commandModeModel {
 		selectedSuggestion: 0,
 		keys: commandModeKeyMap{
 			Submit:            key.NewBinding(key.WithKeys("ctrl+g"), key.WithHelp("ctrl+g", "submit")),
-			Cancel:            key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear")),
+			Cancel:            key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear/cancel")),
+			Help:              key.NewBinding(key.WithKeys("alt+h"), key.WithHelp("alt+h", "help")),
 			History:           key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "history")),
 			RestoreHistory:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restore")),
 			SwitchMode:        key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "focus")),
@@ -117,6 +119,14 @@ func (m *commandModeModel) Clear() {
 	m.selectedSuggestion = 0
 }
 
+func (m *commandModeModel) Focus() {
+	m.editor.Focus()
+}
+
+func (m *commandModeModel) Blur() {
+	m.editor.Blur()
+}
+
 func (m commandModeModel) KeyMap() commandModeKeyMap {
 	return m.keys
 }
@@ -159,8 +169,14 @@ func (m commandModeModel) Footer(connectionName, dialect string, query QueryCont
 		parts = append(parts, fmt.Sprintf("dialect %s", label))
 	}
 
+	if latest := query.LatestResult; latest != nil {
+		if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
+			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
+		}
+	}
+
 	parts = append(parts, fmt.Sprintf("line %d col %d", m.editor.Line()+1, m.editor.LineInfo().ColumnOffset+1))
-	parts = append(parts, bindingSummary(m.keys.Submit), bindingSummary(m.keys.Cancel), bindingSummary(m.keys.History), bindingSummary(m.keys.SwitchMode), bindingSummary(m.keys.LayoutSplit), bindingSummary(m.keys.LayoutCommandOnly), bindingSummary(m.keys.LayoutViewerOnly))
+	parts = append(parts, bindingSummary(m.keys.Submit), bindingSummary(m.keys.Cancel), bindingSummary(m.keys.Help), bindingSummary(m.keys.History), bindingSummary(m.keys.SwitchMode), bindingSummary(m.keys.LayoutSplit), bindingSummary(m.keys.LayoutCommandOnly), bindingSummary(m.keys.LayoutViewerOnly))
 	if query.ActiveMode == ModeRecordViewer {
 		parts = append(parts, "ctrl+u prev page", "ctrl+d next page")
 	}
@@ -172,6 +188,7 @@ func (m commandModeModel) Footer(connectionName, dialect string, query QueryCont
 	}
 	if running := formatRunningIndicator(query.Running); running != "" {
 		parts = append(parts, running)
+		parts = append(parts, "esc cancel query")
 	}
 	if len(m.autocompleteItems(query)) > 0 {
 		parts = append(parts, bindingSummary(m.keys.AcceptSuggestion), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
@@ -227,6 +244,10 @@ func adjustedScrollTop(current, cursorRow, totalRows, height int) int {
 func (m commandModeModel) renderView(query QueryContext) string {
 	sections := make([]string, 0, 3)
 
+	if warning := renderGeneratedCommandWarning(m.editor.Value()); warning != "" {
+		sections = append(sections, warning)
+	}
+
 	if historySearch := renderHistorySearch(query); historySearch != "" {
 		sections = append(sections, historySearch)
 	}
@@ -258,6 +279,17 @@ func (m commandModeModel) renderView(query QueryContext) string {
 	}
 
 	return strings.Join(sections, "\n\n")
+}
+
+func renderGeneratedCommandWarning(sql string) string {
+	switch leadingSQLKeyword(sql) {
+	case "DELETE":
+		return "Warning: generated DELETE statement. Review carefully before submitting."
+	case "DROP":
+		return "Warning: generated DROP statement. Review carefully before submitting."
+	default:
+		return ""
+	}
 }
 
 func (m commandModeModel) renderPlaceholderView() string {
