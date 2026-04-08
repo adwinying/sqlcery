@@ -2,6 +2,13 @@ version: 2
 
 project_name: sqlcery
 
+snapshot:
+  version_template: "{{ .Version }}-next"
+
+before:
+  hooks:
+    - mise run check-go-version
+
 builds:
   - id: sqlcery
     main: ./cmd/sqlcery
@@ -10,6 +17,7 @@ builds:
       - CGO_ENABLED=0
     flags:
       - -trimpath
+    mod_timestamp: "{{ .CommitTimestamp }}"
     goos:
       - darwin
       - linux
@@ -19,5 +27,48 @@ builds:
       - arm64
 
 archives:
-  - formats:
-      - binary
+  - id: release-bundles
+    ids:
+      - sqlcery
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "^build:"
+      - "^Merge"
+  groups:
+    - title: Features
+      regexp: "^.*feat(\\(.+\\))?!?:.+$"
+      order: 0
+    - title: Fixes
+      regexp: "^.*fix(\\(.+\\))?!?:.+$"
+      order: 1
+    - title: Maintenance
+      order: 999
+
+release:
+  github:
+    owner: adwinying
+    name: sqlcery
+  draft: true
+  replace_existing_draft: true
+  prerelease: auto
+  name_template: "{{ .ProjectName }} v{{ .Version }}"

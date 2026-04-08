@@ -369,6 +369,10 @@ func TestModelSubmitDispatchesSlashTablesWithoutRunningRawSQL(t *testing.T) {
 
 	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
 	model.state.SetReady("")
+	{
+		m, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+		model = m.(Model)
+	}
 	model.command.editor.SetValue("/tables")
 	model.syncCurrentSQL()
 
@@ -422,7 +426,7 @@ func TestModelSubmitDispatchesSlashTablesWithoutRunningRawSQL(t *testing.T) {
 	}
 
 	view := model.View()
-	for _, want := range []string{"Results:", "schema", "name", "type", "widgets", "table", "Status: Listed 1 table."} {
+	for _, want := range []string{"Results:", "schema", "name", "type", "widgets", "table"} {
 		if !containsLine(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
 		}
@@ -537,6 +541,10 @@ func TestModelSubmitDispatchesSlashSelectIntoEditor(t *testing.T) {
 func TestModelSubmitCommandsOpensWizard(t *testing.T) {
 	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
 	model.state.SetReady("")
+	{
+		m, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+		model = m.(Model)
+	}
 	model.command.editor.SetValue("/commands")
 	model.syncCurrentSQL()
 
@@ -672,6 +680,10 @@ func TestModelSubmitCommandsWizardAdvancesToTargetSelection(t *testing.T) {
 
 	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
 	model.state.SetReady("")
+	{
+		m, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+		model = m.(Model)
+	}
 	model.state.SetSlashWizardContext(&SlashCommandWizardContext{
 		Step: SlashCommandWizardStepCommand,
 		Commands: []SlashCommandWizardCommand{{

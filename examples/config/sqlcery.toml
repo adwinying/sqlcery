@@ -1,0 +1,19 @@
+# Example SQLcery app config.
+#
+# Supported locations:
+# - $XDG_CONFIG_HOME/sqlcery/sqlcery.toml
+# - ./sqlcery.toml
+#
+# SQLcery currently supports one app setting: `connection`.
+# It can point at a named connection from connections.toml or a direct
+# connection string.
+
+# Preferred: use a named connection defined in connections.toml.
+connection = "analytics"
+
+# Direct connection string examples:
+# connection = "postgres://app:secret@127.0.0.1:5432/warehouse"
+# connection = "postgresql://app:secret@127.0.0.1:5432/warehouse"
+# connection = "mysql://root:secret@127.0.0.1:3306/reporting"
+# connection = "sqlite:tmp/sqlcery.db"
+# connection = "sqlite:///:memory:"

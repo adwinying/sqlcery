@@ -58,19 +58,19 @@ type renderedEditorLine struct {
 
 func newSQLSyntaxHighlighter() sqlSyntaxHighlighter {
 	return sqlSyntaxHighlighter{
-		keywordStyle:          lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "26", Dark: "117"}).Bold(true),
-		stringStyle:           lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "28", Dark: "114"}),
-		numberStyle:           lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "31", Dark: "81"}),
-		commentStyle:          lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "244", Dark: "243"}).Italic(true),
-		quotedIdentifierStyle: lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "25", Dark: "110"}),
-		parameterStyle:        lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "130", Dark: "222"}),
-		operatorStyle:         lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "94", Dark: "179"}),
-		promptStyle:           lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "240", Dark: "250"}),
-		lineNumberStyle:       lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "246", Dark: "243"}),
-		cursorLineNumberStyle: lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "239", Dark: "252"}).Bold(true),
-		placeholderStyle:      lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "243", Dark: "241"}),
-		cursorLineStyle:       lipgloss.NewStyle().Background(lipgloss.AdaptiveColor{Light: "255", Dark: "236"}),
-		cursorStyle:           lipgloss.NewStyle().Reverse(true),
+		keywordStyle:          appTheme.keywordStyle,
+		stringStyle:           appTheme.stringStyle,
+		numberStyle:           appTheme.numberStyle,
+		commentStyle:          appTheme.commentStyle,
+		quotedIdentifierStyle: appTheme.quotedIdentifierStyle,
+		parameterStyle:        appTheme.parameterStyle,
+		operatorStyle:         appTheme.operatorStyle,
+		promptStyle:           appTheme.promptStyle,
+		lineNumberStyle:       appTheme.lineNumberStyle,
+		cursorLineNumberStyle: appTheme.cursorLineNumberStyle,
+		placeholderStyle:      appTheme.placeholderStyle,
+		cursorLineStyle:       appTheme.cursorLineStyle,
+		cursorStyle:           appTheme.cursorStyle,
 	}
 }
 

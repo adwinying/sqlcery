@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/adwinying/sqlcery/internal/db"
@@ -23,12 +22,19 @@ const (
 	autocompletePanelRows = 4
 )
 
+type replTranscriptEntry struct {
+	Prompt string
+	SQL    string
+	Output string
+}
+
 type commandModeModel struct {
 	editor             textarea.Model
 	keys               commandModeKeyMap
 	scrollTop          int
 	highlighter        sqlSyntaxHighlighter
 	selectedSuggestion int
+	replTranscript     []replTranscriptEntry
 }
 
 type commandModeKeyMap struct {
@@ -48,9 +54,9 @@ type commandModeKeyMap struct {
 
 func newCommandModeModel() commandModeModel {
 	editor := textarea.New()
-	editor.Prompt = "sql> "
+	editor.Prompt = "> "
 	editor.Placeholder = "Write SQL here"
-	editor.ShowLineNumbers = true
+	editor.ShowLineNumbers = false
 	editor.SetWidth(defaultEditorWidth)
 	editor.SetHeight(defaultEditorHeight)
 	editor.Focus()
@@ -67,8 +73,8 @@ func newCommandModeModel() commandModeModel {
 			RestoreHistory:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restore")),
 			SwitchMode:        key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "focus")),
 			LayoutSplit:       key.NewBinding(key.WithKeys("ctrl+1"), key.WithHelp("ctrl+1", "split")),
-			LayoutCommandOnly: key.NewBinding(key.WithKeys("ctrl+2"), key.WithHelp("ctrl+2", "command")),
-			LayoutViewerOnly:  key.NewBinding(key.WithKeys("ctrl+3"), key.WithHelp("ctrl+3", "viewer")),
+			LayoutViewerOnly:  key.NewBinding(key.WithKeys("ctrl+2"), key.WithHelp("ctrl+2", "viewer")),
+			LayoutCommandOnly: key.NewBinding(key.WithKeys("ctrl+3"), key.WithHelp("ctrl+3", "command")),
 			AcceptSuggestion:  key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("ctrl+y", "accept")),
 			NextSuggestion:    key.NewBinding(key.WithKeys("alt+n"), key.WithHelp("alt+n", "next suggestion")),
 			PrevSuggestion:    key.NewBinding(key.WithKeys("alt+p"), key.WithHelp("alt+p", "prev suggestion")),
@@ -135,9 +141,11 @@ func (m commandModeModel) Value() string {
 	return m.editor.Value()
 }
 
-func (m *commandModeModel) SetSize(width, height int) {
-	editorWidth := clampEditorSize(width-2, minimumEditorWidth)
-	editorHeight := clampEditorSize(height-7-autocompletePanelRows, minimumEditorHeight)
+func (m *commandModeModel) SetSize(innerWidth, innerHeight int) {
+	// innerWidth and innerHeight are already the content dimensions (border excluded).
+	// Reserve fixed rows: autocomplete panel (autocompletePanelRows+1) + transcript margin
+	editorWidth := clampEditorSize(innerWidth, minimumEditorWidth)
+	editorHeight := clampEditorSize(innerHeight-autocompletePanelRows-1, minimumEditorHeight)
 
 	m.editor.SetWidth(editorWidth)
 	m.editor.SetHeight(editorHeight)
@@ -150,6 +158,37 @@ func (m commandModeModel) Focused() bool {
 
 func (m commandModeModel) View(query QueryContext) string {
 	return m.renderView(query)
+}
+
+func (m commandModeModel) FooterHints(query QueryContext) string {
+	parts := []string{
+		fmt.Sprintf("line %d col %d", m.editor.Line()+1, m.editor.LineInfo().ColumnOffset+1),
+		bindingSummary(m.keys.Submit),
+		bindingSummary(m.keys.Cancel),
+		bindingSummary(m.keys.Help),
+		bindingSummary(m.keys.History),
+		bindingSummary(m.keys.SwitchMode),
+		bindingSummary(m.keys.LayoutSplit),
+		bindingSummary(m.keys.LayoutCommandOnly),
+		bindingSummary(m.keys.LayoutViewerOnly),
+	}
+	if query.ActiveMode == ModeRecordViewer {
+		parts = append(parts, "ctrl+u prev page", "ctrl+d next page")
+	}
+	if query.ActiveMode == ModeHistorySearch {
+		parts = append(parts, bindingSummary(m.keys.RestoreHistory), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
+	}
+	if query.SlashWizard != nil {
+		parts = append(parts, "wizard /commands")
+	}
+	if running := formatRunningIndicator(query.Running); running != "" {
+		parts = append(parts, "esc cancel query")
+	}
+	if len(m.autocompleteItems(query)) > 0 {
+		parts = append(parts, bindingSummary(m.keys.AcceptSuggestion), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
+	}
+	parts = append(parts, "ctrl+c quit")
+	return strings.Join(parts, " | ")
 }
 
 func (m commandModeModel) Footer(connectionName, dialect string, query QueryContext) string {
@@ -195,7 +234,15 @@ func (m commandModeModel) Footer(connectionName, dialect string, query QueryCont
 	}
 	parts = append(parts, "ctrl+c quit")
 
-	return strings.Join(parts, " | ")
+	return appTheme.footer.Render(strings.Join(parts, " | "))
+}
+
+func (m *commandModeModel) AppendReplEntry(prompt, sql, output string) {
+	m.replTranscript = append(m.replTranscript, replTranscriptEntry{
+		Prompt: prompt,
+		SQL:    sql,
+		Output: output,
+	})
 }
 
 func bindingSummary(binding key.Binding) string {
@@ -242,7 +289,7 @@ func adjustedScrollTop(current, cursorRow, totalRows, height int) int {
 }
 
 func (m commandModeModel) renderView(query QueryContext) string {
-	sections := make([]string, 0, 3)
+	sections := make([]string, 0, 6)
 
 	if warning := renderGeneratedCommandWarning(m.editor.Value()); warning != "" {
 		sections = append(sections, warning)
@@ -254,6 +301,11 @@ func (m commandModeModel) renderView(query QueryContext) string {
 
 	if wizard := renderSlashWizard(query); wizard != "" {
 		sections = append(sections, wizard)
+	}
+
+	// REPL transcript — show last few entries above the editor
+	if transcript := m.renderReplTranscript(); transcript != "" {
+		sections = append(sections, transcript)
 	}
 
 	var editorView string
@@ -270,23 +322,49 @@ func (m commandModeModel) renderView(query QueryContext) string {
 		sections = append(sections, inline)
 	}
 
-	panel := ""
+	// Autocomplete panel is always rendered (fixed height to prevent layout shift)
 	if query.ActiveMode != ModeHistorySearch {
-		panel = m.renderAutocompletePanel(query)
-	}
-	if panel != "" {
-		sections = append(sections, panel)
+		sections = append(sections, m.renderAutocompletePanel(query))
 	}
 
 	return strings.Join(sections, "\n\n")
 }
 
+func (m commandModeModel) renderReplTranscript() string {
+	if len(m.replTranscript) == 0 {
+		return ""
+	}
+	lines := make([]string, 0)
+	for _, entry := range m.replTranscript {
+		prompt := entry.Prompt
+		if prompt == "" {
+			prompt = "> "
+		}
+		// Show prompt + first line of SQL
+		sqlLines := strings.Split(strings.TrimRight(entry.SQL, "\n"), "\n")
+		for i, sl := range sqlLines {
+			if i == 0 {
+				lines = append(lines, appTheme.promptStyle.Render(prompt)+appTheme.panelText.Render(sl))
+			} else {
+				continuation := strings.Repeat(" ", len([]rune(prompt)))
+				lines = append(lines, appTheme.panelMuted.Render(continuation+sl))
+			}
+		}
+		if entry.Output != "" {
+			for _, ol := range strings.Split(strings.TrimRight(entry.Output, "\n"), "\n") {
+				lines = append(lines, appTheme.panelMuted.Render(ol))
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 func renderGeneratedCommandWarning(sql string) string {
 	switch leadingSQLKeyword(sql) {
 	case "DELETE":
-		return "Warning: generated DELETE statement. Review carefully before submitting."
+		return appTheme.warningNotice.Render("Warning: generated DELETE statement. Review carefully before submitting.")
 	case "DROP":
-		return "Warning: generated DROP statement. Review carefully before submitting."
+		return appTheme.warningNotice.Render("Warning: generated DROP statement. Review carefully before submitting.")
 	default:
 		return ""
 	}
@@ -390,7 +468,7 @@ func (m commandModeModel) renderVisibleLines(lines []renderedEditorLine, scrollT
 }
 
 func (m commandModeModel) renderLine(line renderedEditorLine) string {
-	lineStyle := lipgloss.NewStyle()
+	lineStyle := appTheme.panelText
 	lineNumberStyle := m.highlighter.lineNumberStyle
 	content := m.highlighter.renderLineContent(line.runes, line.cursorCol, m.editor.Width(), false)
 
@@ -521,29 +599,36 @@ func (m commandModeModel) cursorOffset() int {
 
 func (m commandModeModel) renderAutocompletePanel(query QueryContext) string {
 	suggestions := m.autocompleteItems(query)
-	if len(suggestions) == 0 {
-		return ""
-	}
-
-	visible := min(len(suggestions), autocompletePanelRows)
 	selected := m.selectedSuggestionIndex(len(suggestions))
+	visible := min(len(suggestions), autocompletePanelRows)
 	start := 0
 	if selected >= visible {
 		start = selected - visible + 1
 	}
-	lines := make([]string, 0, visible+1)
-	lines = append(lines, "Suggestions:")
-	for i := start; i < min(len(suggestions), start+visible); i++ {
-		prefix := "  "
-		if i == selected {
-			prefix = "> "
+
+	lines := make([]string, 0, autocompletePanelRows+1)
+	if len(suggestions) > 0 {
+		lines = append(lines, appTheme.panelTitle.Render("Suggestions:"))
+	} else {
+		lines = append(lines, appTheme.panelMuted.Render("Suggestions:"))
+	}
+
+	for i := start; i < start+autocompletePanelRows; i++ {
+		if i < len(suggestions) {
+			item := suggestions[i]
+			line := fmt.Sprintf("  [%s] %s", item.Kind, item.Label)
+			if detail := strings.TrimSpace(item.Detail); detail != "" {
+				line += " - " + detail
+			}
+			if i == selected {
+				lines = append(lines, appTheme.panelSelected.Render("> "+strings.TrimPrefix(line, "  ")))
+			} else {
+				lines = append(lines, appTheme.panelText.Render(line))
+			}
+		} else {
+			// Empty row to preserve fixed height
+			lines = append(lines, "")
 		}
-		item := suggestions[i]
-		line := fmt.Sprintf("%s[%s] %s", prefix, item.Kind, item.Label)
-		if detail := strings.TrimSpace(item.Detail); detail != "" {
-			line += " - " + detail
-		}
-		lines = append(lines, line)
 	}
 
 	return strings.Join(lines, "\n")
@@ -572,36 +657,36 @@ func renderSlashWizard(query QueryContext) string {
 		return ""
 	}
 
-	lines := []string{"Command wizard:"}
+	lines := []string{appTheme.panelTitle.Render("Command wizard:")}
 	switch wizard.Step {
 	case SlashCommandWizardStepTarget:
 		selectedCommand, _ := slashWizardCommandByIndex(wizard)
 		lines = append(lines,
-			fmt.Sprintf("Step 1/2 complete: %s", selectedCommand.DisplayName),
-			fmt.Sprintf("Step 2/2: choose a table for %s", selectedCommand.DisplayName),
+			appTheme.panelMuted.Render(fmt.Sprintf("Step 1/2 complete: %s", selectedCommand.DisplayName)),
+			appTheme.panelText.Render(fmt.Sprintf("Step 2/2: choose a table for %s", selectedCommand.DisplayName)),
 		)
 		for i, target := range wizard.Targets {
-			prefix := "  "
 			if i == clampWizardIndex(wizard.SelectedTarget, len(wizard.Targets)) {
-				prefix = "> "
+				lines = append(lines, appTheme.panelSelected.Render("> "+target.Display))
+				continue
 			}
-			lines = append(lines, prefix+target.Display)
+			lines = append(lines, appTheme.panelText.Render("  "+target.Display))
 		}
-		lines = append(lines, "ctrl+g confirm | alt+n next | alt+p prev | esc back")
+		lines = append(lines, appTheme.panelHint.Render("ctrl+g confirm | alt+n next | alt+p prev | esc back"))
 	default:
-		lines = append(lines, "Step 1/2: choose a slash command")
+		lines = append(lines, appTheme.panelText.Render("Step 1/2: choose a slash command"))
 		for i, command := range wizard.Commands {
-			prefix := "  "
-			if i == clampWizardIndex(wizard.SelectedCommand, len(wizard.Commands)) {
-				prefix = "> "
-			}
-			line := fmt.Sprintf("%s%s - %s", prefix, command.DisplayName, command.Summary)
+			line := fmt.Sprintf("  %s - %s", command.DisplayName, command.Summary)
 			if command.NeedsTarget {
 				line += " (choose table next)"
 			}
-			lines = append(lines, line)
+			if i == clampWizardIndex(wizard.SelectedCommand, len(wizard.Commands)) {
+				lines = append(lines, appTheme.panelSelected.Render("> "+strings.TrimPrefix(line, "  ")))
+				continue
+			}
+			lines = append(lines, appTheme.panelText.Render(line))
 		}
-		lines = append(lines, "ctrl+g confirm | alt+n next | alt+p prev | esc close")
+		lines = append(lines, appTheme.panelHint.Render("ctrl+g confirm | alt+n next | alt+p prev | esc close"))
 	}
 
 	return strings.Join(lines, "\n")
@@ -618,18 +703,18 @@ func clampWizardIndex(index, size int) int {
 }
 
 func renderInlineExecResult(latest *LatestResultContext) string {
-	parts := []string{"Results:"}
+	parts := []string{appTheme.resultTitle.Render("Results:")}
 	if latest.RowsAffected != nil {
 		label := "rows"
 		if *latest.RowsAffected == 1 {
 			label = "row"
 		}
-		parts = append(parts, fmt.Sprintf("%d %s affected", *latest.RowsAffected, label))
+		parts = append(parts, appTheme.resultSummary.Render(fmt.Sprintf("%d %s affected", *latest.RowsAffected, label)))
 	} else {
-		parts = append(parts, "Statement executed successfully")
+		parts = append(parts, appTheme.resultSummary.Render("Statement executed successfully"))
 	}
 	if latest.LastInsertID != nil && *latest.LastInsertID != 0 {
-		parts = append(parts, fmt.Sprintf("last insert id %d", *latest.LastInsertID))
+		parts = append(parts, appTheme.resultSummary.Render(fmt.Sprintf("last insert id %d", *latest.LastInsertID)))
 	}
 	return strings.Join(parts, "\n")
 }
@@ -657,7 +742,8 @@ func renderInlineQueryResult(latest *LatestResultContext) string {
 		}
 	}
 
-	lines := []string{"Results:", renderInlineResultLine(columns, widths), renderInlineSeparator(widths)}
+	headerLine := appTheme.resultHeader.Render(renderInlineResultLine(columns, widths))
+	lines := []string{appTheme.resultTitle.Render("Results:"), headerLine, renderInlineSeparator(widths)}
 	for _, row := range result.Rows {
 		values := make([]string, len(row.Values))
 		for i, value := range row.Values {
@@ -667,19 +753,19 @@ func renderInlineQueryResult(latest *LatestResultContext) string {
 	}
 
 	if len(result.Rows) == 0 {
-		lines = append(lines, "(no rows)")
+		lines = append(lines, appTheme.viewerEmpty.Render("(no rows)"))
 	}
 
 	rowCount := len(result.Rows)
 	if latest.InlineRowsTruncated && latest.PreservedResult != nil {
-		lines = append(lines, fmt.Sprintf("Showing first %d of %d rows.", rowCount, len(latest.PreservedResult.Rows)))
+		lines = append(lines, appTheme.panelHint.Render(fmt.Sprintf("Showing first %d of %d rows.", rowCount, len(latest.PreservedResult.Rows))))
 		return strings.Join(lines, "\n")
 	}
 
 	if rowCount == 1 {
-		lines = append(lines, "1 row.")
+		lines = append(lines, appTheme.resultSummary.Render("1 row."))
 	} else {
-		lines = append(lines, fmt.Sprintf("%d rows.", rowCount))
+		lines = append(lines, appTheme.resultSummary.Render(fmt.Sprintf("%d rows.", rowCount)))
 	}
 
 	return strings.Join(lines, "\n")
@@ -699,7 +785,7 @@ func renderInlineSeparator(widths []int) string {
 	for _, width := range widths {
 		parts = append(parts, strings.Repeat("-", max(3, width)))
 	}
-	return strings.Join(parts, "-+-")
+	return appTheme.resultSeparator.Render(strings.Join(parts, "-+-"))
 }
 
 func formatInlineResultValue(value db.ResultValue) string {

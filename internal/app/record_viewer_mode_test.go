@@ -127,7 +127,7 @@ func TestRecordViewerModeFooterIncludesModeDetails(t *testing.T) {
 		Running:      &RunningQueryContext{Label: "/tables", Elapsed: 2*time.Second + 300*time.Millisecond},
 	})
 
-	for _, want := range []string{"Record viewer", "layout viewer only", "connection local", "dialect sqlite", "2 rows", "page 1/1", "1 selected", "- /tables 2.3s", "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u prev page", "ctrl+d next page", "ctrl+x focus", "ctrl+1 split", "ctrl+2 command", "ctrl+3 viewer", "ctrl+c quit"} {
+	for _, want := range []string{"Record viewer", "layout viewer only", "connection local", "dialect sqlite", "2 rows", "page 1/1", "1 selected", "- /tables 2.3s", "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u prev page", "ctrl+d next page", "ctrl+x focus", "ctrl+1 split", "ctrl+3 command", "ctrl+2 viewer", "ctrl+c quit"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
 		}

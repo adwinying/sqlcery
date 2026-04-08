@@ -7,7 +7,6 @@ import (
 
 	"github.com/adwinying/sqlcery/internal/db"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -19,11 +18,6 @@ const (
 	recordViewerPageSize              = 300
 	recordViewerViewportClipThreshold = 20
 	recordViewerPrimaryKeyTag         = "[pk] "
-)
-
-var (
-	recordViewerPrimaryKeyHeaderStyle = lipgloss.NewStyle().Bold(true).Underline(true).Foreground(lipgloss.AdaptiveColor{Light: "166", Dark: "214"})
-	recordViewerPrimaryKeyValueStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.AdaptiveColor{Light: "166", Dark: "214"})
 )
 
 type recordViewerColumn struct {
@@ -91,7 +85,11 @@ func (m *recordViewerModeModel) SetSize(width, height int) {
 func (m *recordViewerModeModel) View(query QueryContext) string {
 	latest := query.LatestResult
 	if latest == nil || latest.PreservedResult == nil {
-		return "Record viewer\n\nRun a query that returns rows, then press ctrl+x or ctrl+3."
+		return strings.Join([]string{
+			appTheme.viewerTitle.Render("Record viewer"),
+			"",
+			appTheme.viewerEmpty.Render("Run a query that returns rows, then press ctrl+x or ctrl+3."),
+		}, "\n")
 	}
 
 	m.syncSelection(query)
@@ -99,16 +97,16 @@ func (m *recordViewerModeModel) View(query QueryContext) string {
 	result := latest.PreservedResult
 	page := recordViewerPageContextFor(query.ViewerPage, len(result.Rows))
 	header := []string{
-		"Record viewer",
-		fmt.Sprintf("Query: %s", summarizeViewerQuery(latest.Query, m.width)),
-		fmt.Sprintf("Rows: %d  Columns: %d", len(result.Rows), len(result.Columns)),
-		fmt.Sprintf("Page: %d/%d  Showing rows %s", page.Number, page.TotalPages, formatRecordViewerRowRange(page)),
+		appTheme.viewerTitle.Render("Record viewer"),
+		appTheme.viewerMeta.Render(fmt.Sprintf("Query: %s", summarizeViewerQuery(latest.Query, m.width))),
+		appTheme.viewerMeta.Render(fmt.Sprintf("Rows: %d  Columns: %d", len(result.Rows), len(result.Columns))),
+		appTheme.viewerMeta.Render(fmt.Sprintf("Page: %d/%d  Showing rows %s", page.Number, page.TotalPages, formatRecordViewerRowRange(page))),
 	}
 	if m.pendingAction == recordViewerPendingActionWrite {
-		header = append(header, fmt.Sprintf("Command: %s", m.writeBuffer))
+		header = append(header, appTheme.warningNotice.Render(fmt.Sprintf("Command: %s", m.writeBuffer)))
 	}
 	if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
-		header = append(header, fmt.Sprintf("Selected: %d", selectedCount))
+		header = append(header, appTheme.viewerSelection.Render(fmt.Sprintf("Selected: %d", selectedCount)))
 	}
 
 	preparedPage := m.preparePage(result, query.ViewerPage, len(latest.SelectedRows) > 0)
@@ -117,10 +115,29 @@ func (m *recordViewerModeModel) View(query QueryContext) string {
 		SelectedRows: selectedRowSet(latest.SelectedRows),
 	})
 	if body == "" {
-		body = "(no visible rows)"
+		body = appTheme.viewerEmpty.Render("(no visible rows)")
 	}
 
 	return strings.Join(append(header, "", body), "\n")
+}
+
+func (m recordViewerModeModel) FooterHints(query QueryContext) string {
+	parts := []string{"Record viewer"}
+	if latest := query.LatestResult; latest != nil && latest.PreservedResult != nil {
+		page := recordViewerPageContextFor(query.ViewerPage, len(latest.PreservedResult.Rows))
+		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
+		if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
+			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
+		}
+	}
+	if running := formatRunningIndicator(query.Running); running != "" {
+		parts = append(parts, running)
+	}
+	if m.pendingAction == recordViewerPendingActionWrite {
+		parts = append(parts, ":w [file] export", "enter save", "esc cancel")
+	}
+	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "ctrl+u prev page", "ctrl+d next page", "ctrl+x focus", "ctrl+1 split", "ctrl+2 viewer", "ctrl+3 command", "ctrl+c quit")
+	return strings.Join(parts, " | ")
 }
 
 func (m recordViewerModeModel) Footer(connectionName, dialect string, query QueryContext) string {
@@ -144,8 +161,8 @@ func (m recordViewerModeModel) Footer(connectionName, dialect string, query Quer
 	if m.pendingAction == recordViewerPendingActionWrite {
 		parts = append(parts, ":w [file] export", "enter save", "esc cancel")
 	}
-	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u prev page", "ctrl+d next page", "ctrl+x focus", "ctrl+1 split", "ctrl+2 command", "ctrl+3 viewer", "ctrl+c quit")
-	return strings.Join(parts, " | ")
+	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u prev page", "ctrl+d next page", "ctrl+x focus", "ctrl+1 split", "ctrl+2 viewer", "ctrl+3 command", "ctrl+c quit")
+	return appTheme.footer.Render(strings.Join(parts, " | "))
 }
 
 func (m *recordViewerModeModel) syncSelection(query QueryContext) {
@@ -252,7 +269,7 @@ func renderPreparedRecordViewerPage(prepared *recordViewerPreparedPage, width, h
 	}
 
 	if len(prepared.Rows) == 0 {
-		lines = append(lines, "(no rows)")
+		lines = append(lines, appTheme.viewerEmpty.Render("(no rows)"))
 		return trimRenderedWidth(strings.Join(lines, "\n"), width)
 	}
 
@@ -262,7 +279,7 @@ func renderPreparedRecordViewerPage(prepared *recordViewerPreparedPage, width, h
 		values := append([]string(nil), prepared.Rows[rowIndex]...)
 		for columnIndex := range values {
 			if columnIndex == 0 && rowIndexSelectedSet(state.SelectedRows, absoluteRowIndex) {
-				values[columnIndex] = "* " + values[columnIndex]
+				values[columnIndex] = appTheme.selectedRowMarker.Render("* ") + values[columnIndex]
 			}
 			if state.Active.Active && state.Active.Row == absoluteRowIndex && state.Active.Column == columnIndex {
 				values[columnIndex] = renderRecordViewerActiveCell(values[columnIndex])
@@ -272,7 +289,7 @@ func renderPreparedRecordViewerPage(prepared *recordViewerPreparedPage, width, h
 	}
 
 	if end-start < len(prepared.Rows) {
-		lines = append(lines, fmt.Sprintf("Viewport rows %s of %d on this page.", formatRecordViewerViewportRange(start+1, end), len(prepared.Rows)))
+		lines = append(lines, appTheme.panelHint.Render(fmt.Sprintf("Viewport rows %s of %d on this page.", formatRecordViewerViewportRange(start+1, end), len(prepared.Rows))))
 	}
 
 	return trimRenderedWidth(strings.Join(lines, "\n"), width)
@@ -296,7 +313,7 @@ func prepareRecordViewerPage(result *db.ResultSet, page int, showSelectionMarker
 	for i, column := range columns {
 		prepared.Headers[i] = column.Header
 		if column.PrimaryKey {
-			prepared.Headers[i] = recordViewerPrimaryKeyHeaderStyle.Render(column.Header)
+			prepared.Headers[i] = appTheme.primaryKeyHeader.Render(column.Header)
 		}
 		prepared.Widths[i] = ansi.StringWidth(column.Header)
 	}
@@ -312,7 +329,7 @@ func prepareRecordViewerPage(result *db.ResultSet, page int, showSelectionMarker
 				formatted = formatRecordViewerValue(row.Values[i])
 			}
 			if columns[i].PrimaryKey {
-				values[i] = recordViewerPrimaryKeyValueStyle.Render(formatted)
+				values[i] = appTheme.primaryKeyValue.Render(formatted)
 			} else {
 				values[i] = formatted
 			}
@@ -388,7 +405,7 @@ func recordViewerNavigationDelta(msg tea.KeyMsg) (int, int, bool) {
 }
 
 func renderRecordViewerActiveCell(value string) string {
-	return "\x1b[7m" + value + "\x1b[0m"
+	return "\x1b[7m" + appTheme.activeCell.Render(value) + "\x1b[0m"
 }
 
 func selectedRowSet(rows []int) map[int]struct{} {

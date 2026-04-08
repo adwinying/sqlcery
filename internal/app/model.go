@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/adwinying/sqlcery/internal/db"
 	apphistory "github.com/adwinying/sqlcery/internal/history"
@@ -24,6 +25,9 @@ type Model struct {
 	state           SharedAppState
 	cache           *autocompleteSchemaCache
 	loader          autocompleteSchemaLoader
+	width           int
+	height          int
+	splitRatio      float64
 }
 
 type autocompleteSchemaLoader func(context.Context, *db.SQLAdapter) (*AutocompleteSchemaContext, error)
@@ -117,14 +121,15 @@ func newModelWithDependencies(session Session, adapter *db.SQLAdapter, deps mode
 	}
 
 	model := Model{
-		session: session,
-		adapter: adapter,
-		history: sessionHistory,
-		command: newCommandModeModel(),
-		viewer:  newRecordViewerModeModel(),
-		state:   NewSharedAppState(),
-		cache:   cache,
-		loader:  loader,
+		session:    session,
+		adapter:    adapter,
+		history:    sessionHistory,
+		command:    newCommandModeModel(),
+		viewer:     newRecordViewerModeModel(),
+		state:      NewSharedAppState(),
+		cache:      cache,
+		loader:     loader,
+		splitRatio: 0.5,
 	}
 	model.syncAutocompleteSchemaSnapshot()
 	model.syncSessionHistorySnapshot()
@@ -382,8 +387,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.SetRunningQueryContext(&updated)
 		return m, runningTickCmd(updated.StartedAt)
 	case tea.WindowSizeMsg:
-		m.command.SetSize(msg.Width, msg.Height)
-		m.viewer.SetSize(msg.Width, msg.Height)
+		m.width = msg.Width
+		m.height = msg.Height
+		m.syncPaneSizes()
 	}
 
 	if m.state.Query.ActiveMode == ModeRecordViewer && !layoutShowsCommand(m.state.Query.Layout) {
@@ -397,70 +403,204 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	lines := []string{"SQLcery", ""}
+	// Status bar always occupies the last line
+	statusBar := m.statusBarView()
 
+	// Content area above the status bar
+	contentHeight := m.height - 1
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
+	var content string
+	switch m.state.App.Current {
+	case StateStartup:
+		content = strings.Join([]string{
+			appTheme.panelTitle.Render("[ startup ]"),
+			appTheme.panelText.Render("Preparing command mode..."),
+			appTheme.panelMuted.Render(m.state.Status),
+		}, "\n")
+	case StateReconnect:
+		lines := []string{
+			appTheme.panelTitle.Render("[ reconnect ]"),
+			appTheme.panelText.Render("Connection recovery in progress."),
+			appTheme.panelMuted.Render(m.state.Status),
+		}
+		if reconnect := m.state.App.Reconnect; reconnect != nil {
+			if reconnect.Attempt > 0 {
+				lines = append(lines, appTheme.panelText.Render(fmt.Sprintf("Attempt %d", reconnect.Attempt)))
+			}
+			if reason := strings.TrimSpace(reconnect.Reason); reason != "" {
+				lines = append(lines, appTheme.panelText.Render(fmt.Sprintf("Reason: %s", reason)))
+			}
+			if lastError := strings.TrimSpace(reconnect.LastError); lastError != "" {
+				lines = append(lines, appTheme.panelText.Render(fmt.Sprintf("Last error: %s", lastError)))
+			}
+		}
+		content = strings.Join(lines, "\n")
+	case StateError:
+		lines := []string{
+			appTheme.errorNotice.Render("[ error ]"),
+			appTheme.panelText.Render(m.state.Status),
+		}
+		if appError := strings.TrimSpace(m.state.App.Error); appError != "" {
+			lines = append(lines, appTheme.errorNotice.Render(appError))
+		}
+		content = strings.Join(lines, "\n")
+	case StateReady:
+		content = m.readyStateView(contentHeight)
+	default:
+		content = m.command.View(m.state.Query)
+	}
+
+	return content + "\n" + statusBar
+}
+
+// syncPaneSizes computes inner pane dimensions and propagates them to sub-models.
+func (m *Model) syncPaneSizes() {
+	w := m.width
+	h := m.height
+	statusBarHeight := 1
+	contentHeight := h - statusBarHeight
+	if contentHeight < 2 {
+		contentHeight = 2
+	}
+
+	// Border chars: 1 left + 1 right = 2 cols, 1 top + 1 bottom = 2 rows
+	const borderCols = 2
+	const borderRows = 2
+
+	innerWidth := w - borderCols
+	if innerWidth < 1 {
+		innerWidth = 1
+	}
+
+	switch m.state.Query.Layout {
+	case LayoutSplit:
+		viewerOuterH := int(float64(contentHeight) * m.splitRatio)
+		if viewerOuterH < borderRows+1 {
+			viewerOuterH = borderRows + 1
+		}
+		commandOuterH := contentHeight - viewerOuterH
+		if commandOuterH < borderRows+1 {
+			commandOuterH = borderRows + 1
+		}
+		m.viewer.SetSize(innerWidth, viewerOuterH-borderRows)
+		m.command.SetSize(innerWidth, commandOuterH-borderRows)
+	case LayoutViewerOnly:
+		m.viewer.SetSize(innerWidth, contentHeight-borderRows)
+		m.command.SetSize(innerWidth, contentHeight-borderRows)
+	default: // LayoutCommandOnly
+		m.command.SetSize(innerWidth, contentHeight-borderRows)
+		m.viewer.SetSize(innerWidth, contentHeight-borderRows)
+	}
+}
+
+// renderBorderedPane wraps content in a rounded border; active pane gets accent colour.
+func (m Model) renderBorderedPane(content string, active bool, outerWidth, innerHeight int) string {
+	borderColor := appTheme.paneBorderInactive.GetForeground()
+	if active {
+		borderColor = appTheme.paneBorderActive.GetForeground()
+	}
+	innerWidth := outerWidth - 2 // subtract left+right border
+	if innerWidth < 1 {
+		innerWidth = 1
+	}
+	style := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Width(innerWidth).
+		Height(innerHeight)
+	return style.Render(content)
+}
+
+func (m Model) readyStateView(totalHeight int) string {
+	query := m.state.Query
+	w := m.width
+	if w < 4 {
+		w = 4
+	}
+
+	helpOverlay := renderHelpSurface(query)
+
+	switch query.Layout {
+	case LayoutSplit:
+		viewerOuterH := int(float64(totalHeight) * m.splitRatio)
+		if viewerOuterH < 3 {
+			viewerOuterH = 3
+		}
+		commandOuterH := totalHeight - viewerOuterH
+		if commandOuterH < 3 {
+			commandOuterH = 3
+		}
+		viewerContent := m.viewer.View(query)
+		commandContent := m.command.View(query)
+		viewerActive := query.ActiveMode == ModeRecordViewer
+		viewerPane := m.renderBorderedPane(viewerContent, viewerActive, w, viewerOuterH-2)
+		commandPane := m.renderBorderedPane(commandContent, !viewerActive, w, commandOuterH-2)
+		layout := viewerPane + "\n" + commandPane
+		if helpOverlay != "" {
+			return helpOverlay + "\n" + layout
+		}
+		return layout
+	case LayoutViewerOnly:
+		viewerContent := m.viewer.View(query)
+		viewerPane := m.renderBorderedPane(viewerContent, true, w, totalHeight-2)
+		if helpOverlay != "" {
+			return helpOverlay + "\n" + viewerPane
+		}
+		return viewerPane
+	default: // LayoutCommandOnly
+		commandContent := m.command.View(query)
+		commandPane := m.renderBorderedPane(commandContent, true, w, totalHeight-2)
+		if helpOverlay != "" {
+			return helpOverlay + "\n" + commandPane
+		}
+		return commandPane
+	}
+}
+
+func (m Model) statusBarView() string {
+	query := m.state.Query
+	var parts []string
+
+	// Running indicator
+	if running := query.Running; running != nil {
+		parts = append(parts, formatRunningIndicator(running))
+	}
+
+	// Connection name
 	if name := strings.TrimSpace(m.session.ConnectionName); name != "" {
-		lines = append(lines, fmt.Sprintf("Connection: %s", name))
+		parts = append(parts, fmt.Sprintf("[%s]", name))
 	}
 
-	if dialect := m.dialectName(); dialect != "" {
-		lines = append(lines, fmt.Sprintf("Dialect: %s", dialect))
-	}
-
-	lines = append(lines, fmt.Sprintf("App state: %s", m.state.App.Current))
-	lines = append(lines, fmt.Sprintf("Layout: %s", layoutLabel(m.state.Query.Layout)))
-	lines = append(lines, fmt.Sprintf("Mode: %s", m.state.Query.ActiveMode))
-	if pending := strings.TrimSpace(string(m.state.Query.PendingIntent)); pending != "" {
-		lines = append(lines, fmt.Sprintf("Pending: %s", pending))
-	}
-	if running := m.state.Query.Running; running != nil {
-		lines = append(lines, fmt.Sprintf("Running: %s", formatRunningIndicator(running)))
-	}
-	if action := strings.TrimSpace(m.state.Query.LastAction); action != "" {
-		lines = append(lines, fmt.Sprintf("Last action: %s", action))
-	}
-	if currentSQL := strings.TrimSpace(m.state.Query.CurrentSQL); currentSQL != "" {
-		lines = append(lines, fmt.Sprintf("Current SQL: %d characters", len(m.state.Query.CurrentSQL)))
-	}
-	if submittedSQL := strings.TrimSpace(m.state.Query.LastSubmittedSQL); submittedSQL != "" {
-		lines = append(lines, fmt.Sprintf("Last submitted SQL: %d characters", len(m.state.Query.LastSubmittedSQL)))
-	}
-	if status := strings.TrimSpace(m.state.Status); status != "" {
-		lines = append(lines, fmt.Sprintf("Status: %s", status))
-	}
-	if appError := strings.TrimSpace(m.state.App.Error); appError != "" {
-		lines = append(lines, fmt.Sprintf("Error: %s", appError))
-	}
-	if reconnect := m.state.App.Reconnect; reconnect != nil {
-		if reconnect.Attempt > 0 {
-			lines = append(lines, fmt.Sprintf("Reconnect attempt: %d", reconnect.Attempt))
+	// Delegate keybind hints to the active mode
+	if m.state.App.Current == StateReady {
+		if query.ActiveMode == ModeRecordViewer && !layoutShowsCommand(query.Layout) {
+			parts = append(parts, m.viewer.FooterHints(query))
+		} else {
+			parts = append(parts, m.command.FooterHints(query))
 		}
-		if reason := strings.TrimSpace(reconnect.Reason); reason != "" {
-			lines = append(lines, fmt.Sprintf("Reconnect reason: %s", reason))
-		}
-		if lastError := strings.TrimSpace(reconnect.LastError); lastError != "" {
-			lines = append(lines, fmt.Sprintf("Reconnect error: %s", lastError))
-		}
-	}
-	if m.state.Query.LatestResult != nil {
-		lines = append(lines, "Latest result: available")
-	}
-	if m.state.Query.PendingModeSwitch != nil {
-		lines = append(lines, "Pending mode switch: available")
-	}
-	if count := len(m.state.Query.SessionHistory); count > 0 {
-		lines = append(lines, fmt.Sprintf("Session history: %d entries", count))
-	}
-	if m.state.Query.SelectedHistoryEntry != nil {
-		lines = append(lines, "Selected history entry: available")
-	}
-	if m.state.Query.HistorySearch != nil {
-		lines = append(lines, "History search: active")
+	} else {
+		parts = append(parts, "ctrl+c quit")
 	}
 
-	lines = append(lines, "", m.stateView(), "", m.footerView())
+	bar := strings.Join(parts, " | ")
 
-	return strings.Join(lines, "\n")
+	// Pad/truncate to terminal width
+	if m.width > 0 {
+		bar = padOrTruncate(bar, m.width)
+	}
+
+	return appTheme.footer.Render(bar)
+}
+
+func padOrTruncate(s string, width int) string {
+	runes := []rune(s)
+	if len(runes) >= width {
+		return string(runes[:width])
+	}
+	return s + strings.Repeat(" ", width-len(runes))
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) tea.Cmd {
@@ -505,9 +645,9 @@ func (m Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	case msg.String() == "ctrl+1", msg.String() == "alt+1":
 		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutSplit} }
 	case msg.String() == "ctrl+2", msg.String() == "alt+2":
-		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
-	case msg.String() == "ctrl+3", msg.String() == "alt+3":
 		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutViewerOnly} }
+	case msg.String() == "ctrl+3", msg.String() == "alt+3":
+		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
 	default:
 		return nil
 	}
@@ -519,10 +659,10 @@ func (m Model) handleLayoutKey(msg tea.KeyMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, keys.LayoutSplit), msg.String() == "ctrl+1", msg.String() == "alt+1":
 		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutSplit} }
-	case key.Matches(msg, keys.LayoutCommandOnly), msg.String() == "ctrl+2", msg.String() == "alt+2":
-		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
-	case key.Matches(msg, keys.LayoutViewerOnly), msg.String() == "ctrl+3", msg.String() == "alt+3":
+	case key.Matches(msg, keys.LayoutViewerOnly), msg.String() == "ctrl+2", msg.String() == "alt+2":
 		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutViewerOnly} }
+	case key.Matches(msg, keys.LayoutCommandOnly), msg.String() == "ctrl+3", msg.String() == "alt+3":
+		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
 	default:
 		return nil
 	}
@@ -777,68 +917,6 @@ func latestHistoryEntry(entries []HistoryEntryContext) *HistoryEntryContext {
 
 	entry := entries[len(entries)-1]
 	return &entry
-}
-
-func (m Model) stateView() string {
-	switch m.state.App.Current {
-	case StateStartup:
-		return strings.Join([]string{
-			"[ startup ]",
-			"Preparing command mode...",
-			m.state.Status,
-		}, "\n")
-	case StateReconnect:
-		lines := []string{
-			"[ reconnect ]",
-			"Connection recovery placeholder is active.",
-			m.state.Status,
-		}
-
-		if reconnect := m.state.App.Reconnect; reconnect != nil {
-			if reconnect.Attempt > 0 {
-				lines = append(lines, fmt.Sprintf("Attempt %d", reconnect.Attempt))
-			}
-			if reason := strings.TrimSpace(reconnect.Reason); reason != "" {
-				lines = append(lines, fmt.Sprintf("Reason: %s", reason))
-			}
-			if lastError := strings.TrimSpace(reconnect.LastError); lastError != "" {
-				lines = append(lines, fmt.Sprintf("Last error: %s", lastError))
-			}
-		}
-
-		return strings.Join(lines, "\n")
-	case StateError:
-		lines := []string{
-			"[ error ]",
-			m.state.Status,
-		}
-
-		if appError := strings.TrimSpace(m.state.App.Error); appError != "" {
-			lines = append(lines, appError)
-		}
-
-		return strings.Join(lines, "\n")
-	case StateReady:
-		return m.readyStateView()
-	default:
-		return m.command.View(m.state.Query)
-	}
-}
-
-func (m Model) footerView() string {
-	if m.state.App.Current == StateReady {
-		if m.state.Query.ActiveMode == ModeRecordViewer && !layoutShowsCommand(m.state.Query.Layout) {
-			return m.viewer.Footer(m.session.ConnectionName, m.dialectName(), m.state.Query)
-		}
-		return m.command.Footer(m.session.ConnectionName, m.dialectName(), m.state.Query)
-	}
-
-	parts := []string{fmt.Sprintf("App state %s", m.state.App.Current)}
-	if label := strings.TrimSpace(m.session.ConnectionName); label != "" {
-		parts = append(parts, fmt.Sprintf("connection %s", label))
-	}
-	parts = append(parts, "ctrl+c quit")
-	return strings.Join(parts, " | ")
 }
 
 func (m Model) dialectName() string {
@@ -1353,36 +1431,6 @@ func (m *Model) applyLayoutSwitch(layout AppLayout) {
 	}
 }
 
-func (m Model) readyStateView() string {
-	query := m.state.Query
-	commandView := m.command.View(query)
-	viewerView := m.viewer.View(query)
-	helpView := renderHelpSurface(query)
-
-	switch query.Layout {
-	case LayoutSplit:
-		sections := []string{
-			renderLayoutSection("Record viewer", query.ActiveMode == ModeRecordViewer, viewerView),
-			renderLayoutSection("Command line", query.ActiveMode != ModeRecordViewer, commandView),
-		}
-		layoutView := strings.Join(sections, "\n\n"+strings.Repeat("-", 40)+"\n\n")
-		if helpView != "" {
-			return helpView + "\n\n" + layoutView
-		}
-		return layoutView
-	case LayoutViewerOnly:
-		if helpView != "" {
-			return helpView + "\n\n" + viewerView
-		}
-		return viewerView
-	default:
-		if helpView != "" {
-			return helpView + "\n\n" + commandView
-		}
-		return commandView
-	}
-}
-
 func renderHelpSurface(query QueryContext) string {
 	if !query.HelpVisible {
 		return ""
@@ -1418,6 +1466,16 @@ func renderHelpSurface(query QueryContext) string {
 	}
 	sections = append(sections, helpSection{Title: "Record viewer", Lines: viewerLines})
 
+	if query.Layout == LayoutSplit {
+		var layoutLines []string
+		if query.ActiveMode == ModeRecordViewer {
+			layoutLines = []string{"Record viewer [active]", "Command line"}
+		} else {
+			layoutLines = []string{"Record viewer", "Command line [active]"}
+		}
+		sections = append(sections, helpSection{Title: "Layout", Lines: layoutLines})
+	}
+
 	if query.ActiveMode == ModeHistorySearch {
 		sections = append(sections, helpSection{Title: "History search", Lines: []string{
 			"type to filter recent commands; enter restore selected entry",
@@ -1449,22 +1507,14 @@ func renderHelpSurface(query QueryContext) string {
 			continue
 		}
 		lines := make([]string, 0, len(section.Lines)+1)
-		lines = append(lines, section.Title+":")
+		lines = append(lines, appTheme.panelTitle.Render(section.Title+":"))
 		for _, line := range section.Lines {
-			lines = append(lines, "  "+line)
+			lines = append(lines, appTheme.panelText.Render("  "+line))
 		}
 		parts = append(parts, strings.Join(lines, "\n"))
 	}
 
 	return strings.Join(parts, "\n\n")
-}
-
-func renderLayoutSection(label string, active bool, body string) string {
-	heading := label
-	if active {
-		heading += " [active]"
-	}
-	return heading + "\n\n" + body
 }
 
 func layoutShowsCommand(layout AppLayout) bool {

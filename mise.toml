@@ -13,6 +13,37 @@ dir = "../webdev"
 description = "Start webdev"
 run = "docker compose up -d mysql8 pgsql"
 
+[tasks.check-go-version]
+description = "Verify Go version stays aligned"
+run = '''
+tool_version="$(go env GOVERSION)"
+tool_version="${tool_version#go}"
+mod_version="$(go mod edit -json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Go"])')"
+mise_version="$(python3 - <<'PY'
+from pathlib import Path
+import re
+
+text = Path("mise.toml").read_text()
+match = re.search(r'^go\s*=\s*"([^"]+)"\s*$', text, re.M)
+if not match:
+    raise SystemExit("could not find [tools].go in mise.toml")
+print(match.group(1))
+PY
+)"
+
+if [ "$tool_version" != "$mod_version" ]; then
+  printf 'Go toolchain version %s does not match go.mod %s\n' "$tool_version" "$mod_version" >&2
+  exit 1
+fi
+
+if [ "$mise_version" != "$mod_version" ]; then
+  printf 'mise Go version %s does not match go.mod %s\n' "$mise_version" "$mod_version" >&2
+  exit 1
+fi
+
+printf 'Go version aligned at %s\n' "$mod_version"
+'''
+
 [tasks.fmt]
 description = "Format Go code"
 run = "gofmt -w ."
@@ -20,22 +51,32 @@ run = "gofmt -w ."
 [tasks.test]
 description = "Run Go tests"
 run = "go test ./..."
+depends = ["check-go-version"]
 
 [tasks.test-targeted]
 description = "Run targeted Go tests"
 run = "go test ./cmd/sqlcery ./internal/app"
+depends = ["check-go-version"]
 
 [tasks.test-db]
 description = "Run internal db package tests"
 run = "go test ./internal/db"
+depends = ["check-go-version"]
 
 [tasks.lint]
 description = "Run golangci-lint"
 run = "go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run ./..."
+depends = ["check-go-version"]
 
 [tasks.release-snapshot]
 description = "Build snapshot release binaries"
 run = "go run github.com/goreleaser/goreleaser/v2@v2.15.2 build --snapshot --clean --config .goreleaser.yaml"
+depends = ["check-go-version"]
+
+[tasks.release-draft]
+description = "Create a draft GitHub release"
+run = "go run github.com/goreleaser/goreleaser/v2@v2.15.2 release --clean --config .goreleaser.yaml --release-notes-tmpl .github/release-notes.md.tmpl"
+depends = ["check-go-version"]
 
 [settings]
 experimental = true

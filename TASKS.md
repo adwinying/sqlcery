@@ -74,17 +74,22 @@
 - [x] Define cancellation and timeout behavior for long-running queries.
 - [x] Add unit tests with Go's `testing` package for config loading, connection parsing, SQL generation, and audit logging.
 - [x] Add table-driven tests for dialect-specific behavior.
-- [ ] Add integration tests for SQLite, PostgreSQL, and MySQL adapters, using `testcontainers-go` for external databases.
+- [x] Add integration tests for SQLite, PostgreSQL, and MySQL adapters, using `testcontainers-go` for external databases.
 - [x] Add tests for autocomplete ranking and schema-aware suggestions.
 - [x] Add UI-model tests for Bubble Tea update logic, key handling, and mode switching.
 - [x] Add export tests for CSV, TSV, JSON, and Markdown output.
 - [ ] (Skip for now) Run `go test ./...` and `go test -race ./...` in CI.
-- [ ] Document the chosen Go architecture and package layout.
-- [ ] Add installation instructions for `go install`, prebuilt binaries, and package-manager distribution.
-- [ ] Document config files, connection definitions, and SSH usage.
-- [ ] Add usage docs for command mode, record viewer mode, keyboard shortcuts, and slash commands.
-- [ ] Provide sample `sqlcery.toml` and `connections.toml` files. (kitchen sink)
-- [ ] Prepare `goreleaser` config, release notes template, and an initial release checklist.
-- [ ] Apply terminal color scheme to the UI
+- [x] Document the chosen Go architecture and package layout.
+- [x] Add installation instructions for `go install`, prebuilt binaries, and package-manager distribution.
+- [ ] Publish a first-party package-manager distribution once tagged releases are available.
+- [x] Document config files, connection definitions, and SSH usage.
+- [x] Add usage docs for command mode, record viewer mode, keyboard shortcuts, and slash commands.
+- [x] Provide sample `sqlcery.toml` and `connections.toml` files. (kitchen sink)
+- [x] Prepare `goreleaser` config, release notes template, and an initial release checklist.
+- [x] Apply terminal color scheme to the UI
 - [x] Set namespace to `github.com/adwinying/sqlcery`
 - [x] Slash commands should be expanded to a full command in the editor for the user to inspect and execute manually
+- [x] Use the same go version as goreleaser throughout the project
+- [x] Decide whether `internal/tui` should stay as a placeholder package or absorb the live Bubble Tea UI currently implemented in `internal/app`.
+- [ ] Evaluate installing `goreleaser` as a standalone tool instead of `go run`, so release tasks do not auto-upgrade the Go toolchain to build the release tool itself.
+- [ ] Add a repository `LICENSE` file before the first public tagged release.

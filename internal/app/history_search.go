@@ -161,28 +161,33 @@ func renderHistorySearch(query QueryContext) string {
 
 	search := query.HistorySearch
 	matches := filterHistorySearchEntries(query.SessionHistory, search.Query)
-	lines := []string{"Reverse search:", fmt.Sprintf("query> %s", defaultHistorySearchQuery(search.Query))}
+	lines := []string{
+		appTheme.panelTitle.Render("Reverse search:"),
+		appTheme.panelText.Render(fmt.Sprintf("query> %s", defaultHistorySearchQuery(search.Query))),
+	}
 
 	if len(query.SessionHistory) == 0 {
-		lines = append(lines, "No session history yet.", "esc close")
+		lines = append(lines, appTheme.panelMuted.Render("No session history yet."), appTheme.panelHint.Render("esc close"))
 		return strings.Join(lines, "\n")
 	}
 
 	if len(matches) == 0 {
-		lines = append(lines, "No fuzzy matches.", "ctrl+r keep searching | esc close")
+		lines = append(lines, appTheme.panelMuted.Render("No fuzzy matches."), appTheme.panelHint.Render("ctrl+r keep searching | esc close"))
 		return strings.Join(lines, "\n")
 	}
 
 	selected := wrapHistorySearchIndex(search.SelectedIndex, len(matches))
-	lines = append(lines, fmt.Sprintf("%d match(es); newest first.", len(matches)))
+	lines = append(lines, appTheme.panelMuted.Render(fmt.Sprintf("%d match(es); newest first.", len(matches))))
 	for i := 0; i < min(len(matches), historySearchPreviewRows); i++ {
-		prefix := "  "
+		line := "  " + matches[i].SQL
 		if i == selected {
-			prefix = "> "
+			line = appTheme.panelSelected.Render("> " + matches[i].SQL)
+		} else {
+			line = appTheme.panelText.Render(line)
 		}
-		lines = append(lines, prefix+matches[i].SQL)
+		lines = append(lines, line)
 	}
-	lines = append(lines, "enter restore | ctrl+r older | alt+p newer | esc close")
+	lines = append(lines, appTheme.panelHint.Render("enter restore | ctrl+r older | alt+p newer | esc close"))
 
 	return strings.Join(lines, "\n")
 }
