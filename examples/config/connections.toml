@@ -9,8 +9,6 @@
 
 [connection.local]
 type = "sqlite"
-
-[connection.local.sqlite]
 database = "tmp/sqlcery.db"
 
 [connection.local.lifecycle]
@@ -21,18 +19,16 @@ max_idle_conns = 1
 conn_max_lifetime = "30m"
 conn_max_idle_time = "5m"
 
-[connection.analytics]
+[connection.mypgsql]
 type = "postgres"
 ssh_host = "bastion"
-
-[connection.analytics.postgres]
 host = "db.internal"
 port = 5432
 database = "warehouse"
 username = "app"
 password = "secret"
 
-[connection.analytics.lifecycle]
+[connection.mypgsql.lifecycle]
 connect_timeout = "7s"
 health_check_timeout = "1500ms"
 max_open_conns = 12
@@ -40,26 +36,7 @@ max_idle_conns = 6
 conn_max_lifetime = "45m"
 conn_max_idle_time = "10m"
 
-[connection.reporting]
-type = "mysql"
-
-[connection.reporting.mysql]
-host = "127.0.0.1"
-port = 3306
-database = "reporting"
-username = "root"
-password = "secret"
-
-[connection.reporting.lifecycle]
-connect_timeout = "5s"
-health_check_timeout = "1s"
-max_open_conns = 10
-max_idle_conns = 5
-conn_max_lifetime = "1h"
-conn_max_idle_time = "15m"
-
-# Flat fields are still supported for backwards compatibility.
-[connection.legacy_mysql]
+[connection.mysql]
 type = "mysql"
 host = "127.0.0.1"
 port = 3307
@@ -67,7 +44,7 @@ database = "sqlcery"
 username = "root"
 password = "secret"
 
-[connection.legacy_mysql.lifecycle]
+[connection.mysql.lifecycle]
 connect_timeout = "3s"
 health_check_timeout = "750ms"
 max_open_conns = 4

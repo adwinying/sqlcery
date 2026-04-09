@@ -20,7 +20,7 @@ func Open(ctx context.Context, connection config.Connection) (*SQLAdapter, error
 
 	switch connection.Type {
 	case "sqlite":
-		return openSQLite(ctx, connection.SQLite, settings)
+		return openSQLite(ctx, connection, settings)
 	case "postgres":
 		return openPostgres(ctx, connection, settings)
 	case "mysql":
@@ -30,10 +30,10 @@ func Open(ctx context.Context, connection config.Connection) (*SQLAdapter, error
 	}
 }
 
-func openSQLite(ctx context.Context, options config.SQLiteConnectionOptions, settings lifecycleSettings) (*SQLAdapter, error) {
-	db, err := sql.Open(sqliteDriverName, options.Database)
+func openSQLite(ctx context.Context, connection config.Connection, settings lifecycleSettings) (*SQLAdapter, error) {
+	db, err := sql.Open(sqliteDriverName, connection.Database)
 	if err != nil {
-		return nil, fmt.Errorf("open sqlite database %q: %w", options.Database, err)
+		return nil, fmt.Errorf("open sqlite database %q: %w", connection.Database, err)
 	}
 
 	closed := false
@@ -46,11 +46,11 @@ func openSQLite(ctx context.Context, options config.SQLiteConnectionOptions, set
 	applyLifecycleSettings(db, settings)
 
 	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
-		return nil, fmt.Errorf("configure sqlite database %q: %w", options.Database, err)
+		return nil, fmt.Errorf("configure sqlite database %q: %w", connection.Database, err)
 	}
 
 	if err := pingDatabase(ctx, db, settings); err != nil {
-		return nil, fmt.Errorf("ping sqlite database %q: %w", options.Database, err)
+		return nil, fmt.Errorf("ping sqlite database %q: %w", connection.Database, err)
 	}
 
 	adapter, err := newAdapter(

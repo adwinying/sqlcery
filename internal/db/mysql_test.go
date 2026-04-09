@@ -14,7 +14,7 @@ import (
 )
 
 func TestMySQLConnConfig(t *testing.T) {
-	connConfig := mysqlConnConfig(config.MySQLConnectionOptions{
+	connConfig := mysqlConnConfig(config.Connection{
 		Host:     "db.example.com",
 		Port:     3306,
 		Database: "warehouse",
@@ -44,7 +44,7 @@ func TestMySQLConnConfig(t *testing.T) {
 }
 
 func TestMySQLConnConfigWithLifecycle(t *testing.T) {
-	connConfig := mysqlConnConfigWithLifecycle(config.MySQLConnectionOptions{
+	connConfig := mysqlConnConfigWithLifecycle(config.Connection{
 		Host:     "db.example.com",
 		Port:     3306,
 		Database: "warehouse",
@@ -60,7 +60,7 @@ func TestMySQLConnConfigWithLifecycle(t *testing.T) {
 }
 
 func TestMySQLDSN(t *testing.T) {
-	got := mysqlDSN(config.MySQLConnectionOptions{
+	got := mysqlDSN(config.Connection{
 		Host:     "db.example.com",
 		Port:     3307,
 		Database: "warehouse/reports",
@@ -112,14 +112,12 @@ func TestOpenMySQLAdapterUsesDriverConnector(t *testing.T) {
 	}
 
 	adapter, err := Open(context.Background(), config.Connection{
-		Type: "mysql",
-		MySQL: config.MySQLConnectionOptions{
-			Host:     "db.example.com",
-			Port:     3306,
-			Database: "warehouse",
-			Username: "app",
-			Password: "secret",
-		},
+		Type:     "mysql",
+		Host:     "db.example.com",
+		Port:     3306,
+		Database: "warehouse",
+		Username: "app",
+		Password: "secret",
 		Lifecycle: config.ConnectionLifecycleOptions{
 			ConnectTimeout:     config.Duration(11 * time.Second),
 			HealthCheckTimeout: config.Duration(time.Second),
@@ -194,14 +192,12 @@ func TestOpenMySQLAdapterUsesSSHTunnelWhenConfigured(t *testing.T) {
 	}
 
 	adapter, err := Open(context.Background(), config.Connection{
-		Type:    "mysql",
-		SSHHost: "bastion",
-		MySQL: config.MySQLConnectionOptions{
-			Host:     "db.internal",
-			Port:     3306,
-			Database: "warehouse",
-			Username: "app",
-		},
+		Type:     "mysql",
+		SSHHost:  "bastion",
+		Host:     "db.internal",
+		Port:     3306,
+		Database: "warehouse",
+		Username: "app",
 	})
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
@@ -237,13 +233,11 @@ func TestOpenMySQLReturnsPingError(t *testing.T) {
 	}
 
 	_, err := Open(context.Background(), config.Connection{
-		Type: "mysql",
-		MySQL: config.MySQLConnectionOptions{
-			Host:     "db.example.com",
-			Port:     3306,
-			Database: "warehouse",
-			Username: "app",
-		},
+		Type:     "mysql",
+		Host:     "db.example.com",
+		Port:     3306,
+		Database: "warehouse",
+		Username: "app",
 	})
 	if err == nil {
 		t.Fatal("Open() error = nil, want error")
@@ -274,14 +268,12 @@ func TestOpenMySQLReturnsAuthenticationError(t *testing.T) {
 	}
 
 	_, err := Open(context.Background(), config.Connection{
-		Type: "mysql",
-		MySQL: config.MySQLConnectionOptions{
-			Host:     "db.example.com",
-			Port:     3306,
-			Database: "warehouse",
-			Username: "app",
-			Password: "secret",
-		},
+		Type:     "mysql",
+		Host:     "db.example.com",
+		Port:     3306,
+		Database: "warehouse",
+		Username: "app",
+		Password: "secret",
 	})
 	if err == nil {
 		t.Fatal("Open() error = nil, want error")
@@ -320,13 +312,11 @@ func TestOpenMySQLReturnsOpenError(t *testing.T) {
 	}
 
 	_, err := Open(context.Background(), config.Connection{
-		Type: "mysql",
-		MySQL: config.MySQLConnectionOptions{
-			Host:     "db.example.com",
-			Port:     3306,
-			Database: "warehouse",
-			Username: "app",
-		},
+		Type:     "mysql",
+		Host:     "db.example.com",
+		Port:     3306,
+		Database: "warehouse",
+		Username: "app",
 	})
 	if err == nil {
 		t.Fatal("Open() error = nil, want error")

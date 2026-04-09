@@ -19,8 +19,7 @@ var openPostgresDB = func(connConfig pgx.ConnConfig) *sql.DB {
 }
 
 func openPostgres(ctx context.Context, connection config.Connection, settings lifecycleSettings) (*SQLAdapter, error) {
-	options := connection.Postgres
-	connConfig, err := postgresConnConfigWithLifecycle(options, config.ConnectionLifecycleOptions{
+	connConfig, err := postgresConnConfigWithLifecycle(connection, config.ConnectionLifecycleOptions{
 		ConnectTimeout: config.Duration(settings.ConnectTimeout),
 	})
 	if err != nil {
@@ -31,7 +30,7 @@ func openPostgres(ctx context.Context, connection config.Connection, settings li
 	if connection.SSHHost != "" {
 		tunnel, err := openSSHTunnel(ctx, connection.SSHHost)
 		if err != nil {
-			return nil, fmt.Errorf("configure ssh tunnel for postgres database %q on %s:%d: %w", options.Database, options.Host, options.Port, err)
+			return nil, fmt.Errorf("configure ssh tunnel for postgres database %q on %s:%d: %w", connection.Database, connection.Host, connection.Port, err)
 		}
 
 		connConfig.DialFunc = tunnel.dialContext
@@ -50,7 +49,7 @@ func openPostgres(ctx context.Context, connection config.Connection, settings li
 	applyLifecycleSettings(db, settings)
 
 	if err := pingDatabase(ctx, db, settings); err != nil {
-		return nil, wrapConnectionError("postgres", fmt.Sprintf("ping postgres database %q on %s:%d", options.Database, options.Host, options.Port), err)
+		return nil, wrapConnectionError("postgres", fmt.Sprintf("ping postgres database %q on %s:%d", connection.Database, connection.Host, connection.Port), err)
 	}
 
 	adapter, err := newAdapter(
@@ -74,14 +73,14 @@ func openPostgres(ctx context.Context, connection config.Connection, settings li
 	return adapter, nil
 }
 
-func postgresConnConfig(options config.PostgresConnectionOptions) (*pgx.ConnConfig, error) {
-	return postgresConnConfigWithLifecycle(options, config.ConnectionLifecycleOptions{})
+func postgresConnConfig(connection config.Connection) (*pgx.ConnConfig, error) {
+	return postgresConnConfigWithLifecycle(connection, config.ConnectionLifecycleOptions{})
 }
 
-func postgresConnConfigWithLifecycle(options config.PostgresConnectionOptions, lifecycle config.ConnectionLifecycleOptions) (*pgx.ConnConfig, error) {
-	connConfig, err := pgx.ParseConfig(postgresConnectionString(options))
+func postgresConnConfigWithLifecycle(connection config.Connection, lifecycle config.ConnectionLifecycleOptions) (*pgx.ConnConfig, error) {
+	connConfig, err := pgx.ParseConfig(postgresConnectionString(connection))
 	if err != nil {
-		return nil, fmt.Errorf("parse postgres connection config for database %q on %s:%d: %w", options.Database, options.Host, options.Port, err)
+		return nil, fmt.Errorf("parse postgres connection config for database %q on %s:%d: %w", connection.Database, connection.Host, connection.Port, err)
 	}
 
 	connConfig.ConnectTimeout = resolveLifecycleSettings("postgres", lifecycle).ConnectTimeout
@@ -89,17 +88,17 @@ func postgresConnConfigWithLifecycle(options config.PostgresConnectionOptions, l
 	return connConfig, nil
 }
 
-func postgresConnectionString(options config.PostgresConnectionOptions) string {
+func postgresConnectionString(connection config.Connection) string {
 	connectionURL := &url.URL{
 		Scheme: "postgres",
-		Host:   net.JoinHostPort(options.Host, strconv.Itoa(options.Port)),
-		Path:   "/" + options.Database,
+		Host:   net.JoinHostPort(connection.Host, strconv.Itoa(connection.Port)),
+		Path:   "/" + connection.Database,
 	}
 
-	if options.Password == "" {
-		connectionURL.User = url.User(options.Username)
+	if connection.Password == "" {
+		connectionURL.User = url.User(connection.Username)
 	} else {
-		connectionURL.User = url.UserPassword(options.Username, options.Password)
+		connectionURL.User = url.UserPassword(connection.Username, connection.Password)
 	}
 
 	return connectionURL.String()

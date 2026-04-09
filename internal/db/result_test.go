@@ -141,10 +141,8 @@ func TestQueryResultContextSQLiteIncludesResultMetadata(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "result.db")
 
 	adapter, err := Open(ctx, config.Connection{
-		Type: "sqlite",
-		SQLite: config.SQLiteConnectionOptions{
-			Database: databasePath,
-		},
+		Type:     "sqlite",
+		Database: databasePath,
 	})
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)

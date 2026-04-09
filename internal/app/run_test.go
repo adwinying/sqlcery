@@ -2375,10 +2375,8 @@ func openTestAdapter(t *testing.T) *db.SQLAdapter {
 	t.Helper()
 
 	adapter, err := db.Open(context.Background(), config.Connection{
-		Type: "sqlite",
-		SQLite: config.SQLiteConnectionOptions{
-			Database: ":memory:",
-		},
+		Type:     "sqlite",
+		Database: ":memory:",
 	})
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)

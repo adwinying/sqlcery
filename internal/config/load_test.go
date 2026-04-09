@@ -213,12 +213,12 @@ func TestLoadConnectionsLayersGlobalAndLocal(t *testing.T) {
 	}
 
 	globalPath := filepath.Join(globalDir, ConnectionsFileName)
-	if err := os.WriteFile(globalPath, []byte("[connection.analytics]\ntype = \"postgres\"\n[connection.analytics.postgres]\nhost = \"global-db\"\nport = 5432\ndatabase = \"warehouse\"\nusername = \"root\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(globalPath, []byte("[connection.analytics]\ntype = \"postgres\"\nhost = \"global-db\"\nport = 5432\ndatabase = \"warehouse\"\nusername = \"root\"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(global) error = %v", err)
 	}
 
 	localPath := filepath.Join(workingDir, ConnectionsFileName)
-	if err := os.WriteFile(localPath, []byte("[connection.analytics]\ntype = \"postgres\"\n[connection.analytics.postgres]\nhost = \"local-db\"\nport = 5432\ndatabase = \"warehouse\"\nusername = \"app\"\n[connection.cache]\ntype = \"mysql\"\n[connection.cache.mysql]\nhost = \"cache-db\"\nport = 3306\ndatabase = \"cache\"\nusername = \"cache-user\"\n[connection.local]\ntype = \"sqlite\"\n[connection.local.sqlite]\ndatabase = \"tmp/sqlcery.db\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(localPath, []byte("[connection.analytics]\ntype = \"postgres\"\nhost = \"local-db\"\nport = 5432\ndatabase = \"warehouse\"\nusername = \"app\"\n[connection.cache]\ntype = \"mysql\"\nhost = \"cache-db\"\nport = 3306\ndatabase = \"cache\"\nusername = \"cache-user\"\n[connection.local]\ntype = \"sqlite\"\ndatabase = \"tmp/sqlcery.db\"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(local) error = %v", err)
 	}
 
@@ -248,20 +248,20 @@ func TestLoadConnectionsLayersGlobalAndLocal(t *testing.T) {
 		t.Fatalf("analytics.Type = %q, want %q", got, want)
 	}
 
-	if got, want := analytics.Postgres.Host, "local-db"; got != want {
-		t.Fatalf("analytics.Postgres.Host = %q, want %q", got, want)
+	if got, want := analytics.Host, "local-db"; got != want {
+		t.Fatalf("analytics.Host = %q, want %q", got, want)
 	}
 
-	if got, want := analytics.Postgres.Port, 5432; got != want {
-		t.Fatalf("analytics.Postgres.Port = %d, want %d", got, want)
+	if got, want := analytics.Port, 5432; got != want {
+		t.Fatalf("analytics.Port = %d, want %d", got, want)
 	}
 
-	if got, want := analytics.Postgres.Database, "warehouse"; got != want {
-		t.Fatalf("analytics.Postgres.Database = %q, want %q", got, want)
+	if got, want := analytics.Database, "warehouse"; got != want {
+		t.Fatalf("analytics.Database = %q, want %q", got, want)
 	}
 
-	if got, want := analytics.Postgres.Username, "app"; got != want {
-		t.Fatalf("analytics.Postgres.Username = %q, want %q", got, want)
+	if got, want := analytics.Username, "app"; got != want {
+		t.Fatalf("analytics.Username = %q, want %q", got, want)
 	}
 
 	cache, ok := result.Value.Connection["cache"]
@@ -273,20 +273,20 @@ func TestLoadConnectionsLayersGlobalAndLocal(t *testing.T) {
 		t.Fatalf("cache.Type = %q, want %q", got, want)
 	}
 
-	if got, want := cache.MySQL.Host, "cache-db"; got != want {
-		t.Fatalf("cache.MySQL.Host = %q, want %q", got, want)
+	if got, want := cache.Host, "cache-db"; got != want {
+		t.Fatalf("cache.Host = %q, want %q", got, want)
 	}
 
-	if got, want := cache.MySQL.Port, 3306; got != want {
-		t.Fatalf("cache.MySQL.Port = %d, want %d", got, want)
+	if got, want := cache.Port, 3306; got != want {
+		t.Fatalf("cache.Port = %d, want %d", got, want)
 	}
 
-	if got, want := cache.MySQL.Database, "cache"; got != want {
-		t.Fatalf("cache.MySQL.Database = %q, want %q", got, want)
+	if got, want := cache.Database, "cache"; got != want {
+		t.Fatalf("cache.Database = %q, want %q", got, want)
 	}
 
-	if got, want := cache.MySQL.Username, "cache-user"; got != want {
-		t.Fatalf("cache.MySQL.Username = %q, want %q", got, want)
+	if got, want := cache.Username, "cache-user"; got != want {
+		t.Fatalf("cache.Username = %q, want %q", got, want)
 	}
 
 	local, ok := result.Value.Connection["local"]
@@ -298,8 +298,8 @@ func TestLoadConnectionsLayersGlobalAndLocal(t *testing.T) {
 		t.Fatalf("local.Type = %q, want %q", got, want)
 	}
 
-	if got, want := local.SQLite.Database, "tmp/sqlcery.db"; got != want {
-		t.Fatalf("local.SQLite.Database = %q, want %q", got, want)
+	if got, want := local.Database, "tmp/sqlcery.db"; got != want {
+		t.Fatalf("local.Database = %q, want %q", got, want)
 	}
 }
 
@@ -314,7 +314,7 @@ func TestLoadConnectionsReturnsValidationErrors(t *testing.T) {
 	}
 
 	localPath := filepath.Join(workingDir, ConnectionsFileName)
-	if err := os.WriteFile(localPath, []byte("[connection.analytics]\ntype = \"postgres\"\n[connection.analytics.postgres]\nport = 5432\ndatabase = \"warehouse\"\nusername = \"app\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(localPath, []byte("[connection.analytics]\ntype = \"postgres\"\nport = 5432\ndatabase = \"warehouse\"\nusername = \"app\"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
@@ -323,8 +323,8 @@ func TestLoadConnectionsReturnsValidationErrors(t *testing.T) {
 		t.Fatal("LoadConnections() error = nil, want validation error")
 	}
 
-	if got, want := err.Error(), fmt.Sprintf("validate %s:", localPath); !strings.Contains(got, want) {
-		t.Fatalf("LoadConnections() error = %q, want to contain %q", got, want)
+	if got, want := err.Error(), fmt.Sprintf("validate %s: connection \"analytics\": postgres: host is required", localPath); got != want {
+		t.Fatalf("LoadConnections() error = %q, want %q", got, want)
 	}
 
 	if got, want := err.Error(), `connection "analytics": postgres: host is required`; !strings.Contains(got, want) {
@@ -347,7 +347,7 @@ func TestLoadConnectionsDecodesLifecycleOptions(t *testing.T) {
 	}
 
 	localPath := filepath.Join(workingDir, ConnectionsFileName)
-	if err := os.WriteFile(localPath, []byte("[connection.analytics]\ntype = \"postgres\"\n[connection.analytics.postgres]\nhost = \"db\"\nport = 5432\ndatabase = \"warehouse\"\nusername = \"app\"\n[connection.analytics.lifecycle]\nconnect_timeout = \"7s\"\nhealth_check_timeout = \"1500ms\"\nmax_open_conns = 9\nmax_idle_conns = 4\nconn_max_lifetime = \"45m\"\nconn_max_idle_time = \"3m\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(localPath, []byte("[connection.analytics]\ntype = \"postgres\"\nhost = \"db\"\nport = 5432\ndatabase = \"warehouse\"\nusername = \"app\"\n[connection.analytics.lifecycle]\nconnect_timeout = \"7s\"\nhealth_check_timeout = \"1500ms\"\nmax_open_conns = 9\nmax_idle_conns = 4\nconn_max_lifetime = \"45m\"\nconn_max_idle_time = \"3m\"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
@@ -388,7 +388,7 @@ func TestLoadConnectionsDecodesSSHHost(t *testing.T) {
 	}
 
 	localPath := filepath.Join(workingDir, ConnectionsFileName)
-	if err := os.WriteFile(localPath, []byte("[connection.analytics]\ntype = \"postgres\"\nssh_host = \"bastion\"\n[connection.analytics.postgres]\nhost = \"db.internal\"\nport = 5432\ndatabase = \"warehouse\"\nusername = \"app\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(localPath, []byte("[connection.analytics]\ntype = \"postgres\"\nssh_host = \"bastion\"\nhost = \"db.internal\"\nport = 5432\ndatabase = \"warehouse\"\nusername = \"app\"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
@@ -424,20 +424,20 @@ func TestLoadConnectionsSupportsFlatMySQLFields(t *testing.T) {
 	}
 
 	connection := result.Value.Connection["mysql"]
-	if got, want := connection.MySQL.Host, "127.0.0.1"; got != want {
-		t.Fatalf("connection.MySQL.Host = %q, want %q", got, want)
+	if got, want := connection.Host, "127.0.0.1"; got != want {
+		t.Fatalf("connection.Host = %q, want %q", got, want)
 	}
-	if got, want := connection.MySQL.Port, 3307; got != want {
-		t.Fatalf("connection.MySQL.Port = %d, want %d", got, want)
+	if got, want := connection.Port, 3307; got != want {
+		t.Fatalf("connection.Port = %d, want %d", got, want)
 	}
-	if got, want := connection.MySQL.Database, "sqlcery"; got != want {
-		t.Fatalf("connection.MySQL.Database = %q, want %q", got, want)
+	if got, want := connection.Database, "sqlcery"; got != want {
+		t.Fatalf("connection.Database = %q, want %q", got, want)
 	}
-	if got, want := connection.MySQL.Username, "root"; got != want {
-		t.Fatalf("connection.MySQL.Username = %q, want %q", got, want)
+	if got, want := connection.Username, "root"; got != want {
+		t.Fatalf("connection.Username = %q, want %q", got, want)
 	}
-	if got, want := connection.MySQL.Password, "password"; got != want {
-		t.Fatalf("connection.MySQL.Password = %q, want %q", got, want)
+	if got, want := connection.Password, "password"; got != want {
+		t.Fatalf("connection.Password = %q, want %q", got, want)
 	}
 }
 
@@ -450,34 +450,28 @@ func TestConnectionValidate(t *testing.T) {
 		{
 			name: "sqlite accepts database path",
 			value: Connection{
-				Type: "sqlite",
-				SQLite: SQLiteConnectionOptions{
-					Database: filepath.Join("tmp", "sqlcery.db"),
-				},
+				Type:     "sqlite",
+				Database: filepath.Join("tmp", "sqlcery.db"),
 			},
 		},
 		{
 			name: "postgres requires host",
 			value: Connection{
-				Type: "postgres",
-				Postgres: PostgresConnectionOptions{
-					Port:     5432,
-					Database: "warehouse",
-					Username: "app",
-				},
+				Type:     "postgres",
+				Port:     5432,
+				Database: "warehouse",
+				Username: "app",
 			},
 			wantErr: "host is required",
 		},
 		{
 			name: "mysql requires valid port",
 			value: Connection{
-				Type: "mysql",
-				MySQL: MySQLConnectionOptions{
-					Host:     "db",
-					Port:     0,
-					Database: "warehouse",
-					Username: "app",
-				},
+				Type:     "mysql",
+				Host:     "db",
+				Port:     0,
+				Database: "warehouse",
+				Username: "app",
 			},
 			wantErr: "port must be between 1 and 65535",
 		},
@@ -491,11 +485,9 @@ func TestConnectionValidate(t *testing.T) {
 		{
 			name: "sqlite rejects ssh host",
 			value: Connection{
-				Type:    "sqlite",
-				SSHHost: "bastion",
-				SQLite: SQLiteConnectionOptions{
-					Database: filepath.Join("tmp", "sqlcery.db"),
-				},
+				Type:     "sqlite",
+				SSHHost:  "bastion",
+				Database: filepath.Join("tmp", "sqlcery.db"),
 			},
 			wantErr: "ssh_host is only supported for postgres and mysql",
 		},

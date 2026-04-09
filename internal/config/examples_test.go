@@ -40,17 +40,17 @@ func TestExampleConfigFilesDecodeAndValidate(t *testing.T) {
 	}
 
 	legacy := connections.Connection["legacy_mysql"]
-	if got, want := legacy.MySQL.Host, "127.0.0.1"; got != want {
-		t.Fatalf("legacy.MySQL.Host = %q, want %q", got, want)
+	if got, want := legacy.Host, "127.0.0.1"; got != want {
+		t.Fatalf("legacy.Host = %q, want %q", got, want)
 	}
-	if got, want := legacy.MySQL.Port, 3307; got != want {
-		t.Fatalf("legacy.MySQL.Port = %d, want %d", got, want)
+	if got, want := legacy.Port, 3307; got != want {
+		t.Fatalf("legacy.Port = %d, want %d", got, want)
 	}
-	if got, want := legacy.MySQL.Database, "sqlcery"; got != want {
-		t.Fatalf("legacy.MySQL.Database = %q, want %q", got, want)
+	if got, want := legacy.Database, "sqlcery"; got != want {
+		t.Fatalf("legacy.Database = %q, want %q", got, want)
 	}
-	if got, want := legacy.MySQL.Username, "root"; got != want {
-		t.Fatalf("legacy.MySQL.Username = %q, want %q", got, want)
+	if got, want := legacy.Username, "root"; got != want {
+		t.Fatalf("legacy.Username = %q, want %q", got, want)
 	}
 }
 

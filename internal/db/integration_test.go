@@ -19,10 +19,8 @@ func TestSQLiteAdapterIntegration(t *testing.T) {
 
 	databasePath := filepath.Join(t.TempDir(), "integration.db")
 	adapter := openIntegrationAdapter(t, ctx, config.Connection{
-		Type: "sqlite",
-		SQLite: config.SQLiteConnectionOptions{
-			Database: databasePath,
-		},
+		Type:     "sqlite",
+		Database: databasePath,
 	})
 
 	runAdapterIntegrationSuite(t, ctx, adapter, adapterIntegrationExpectation{
@@ -72,14 +70,12 @@ func TestPostgresAdapterIntegration(t *testing.T) {
 	}
 
 	adapter := openIntegrationAdapter(t, ctx, config.Connection{
-		Type: "postgres",
-		Postgres: config.PostgresConnectionOptions{
-			Host:     host,
-			Port:     port.Int(),
-			Database: "sqlcery",
-			Username: "postgres",
-			Password: "password",
-		},
+		Type:     "postgres",
+		Host:     host,
+		Port:     port.Int(),
+		Database: "sqlcery",
+		Username: "postgres",
+		Password: "password",
 	})
 
 	runAdapterIntegrationSuite(t, ctx, adapter, adapterIntegrationExpectation{
@@ -128,14 +124,12 @@ func TestMySQLAdapterIntegration(t *testing.T) {
 	}
 
 	adapter := openIntegrationAdapter(t, ctx, config.Connection{
-		Type: "mysql",
-		MySQL: config.MySQLConnectionOptions{
-			Host:     host,
-			Port:     port.Int(),
-			Database: "sqlcery",
-			Username: "app",
-			Password: "password",
-		},
+		Type:     "mysql",
+		Host:     host,
+		Port:     port.Int(),
+		Database: "sqlcery",
+		Username: "app",
+		Password: "password",
 	})
 
 	runAdapterIntegrationSuite(t, ctx, adapter, adapterIntegrationExpectation{

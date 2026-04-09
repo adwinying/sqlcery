@@ -22,8 +22,7 @@ var openMySQLDB = func(connConfig *mysqldriver.Config) (*sql.DB, error) {
 }
 
 func openMySQL(ctx context.Context, connection config.Connection, settings lifecycleSettings) (*SQLAdapter, error) {
-	options := connection.MySQL
-	connConfig := mysqlConnConfigWithLifecycle(options, config.ConnectionLifecycleOptions{
+	connConfig := mysqlConnConfigWithLifecycle(connection, config.ConnectionLifecycleOptions{
 		ConnectTimeout: config.Duration(settings.ConnectTimeout),
 	})
 
@@ -31,7 +30,7 @@ func openMySQL(ctx context.Context, connection config.Connection, settings lifec
 	if connection.SSHHost != "" {
 		tunnel, err := openSSHTunnel(ctx, connection.SSHHost)
 		if err != nil {
-			return nil, fmt.Errorf("configure ssh tunnel for mysql database %q on %s:%d: %w", options.Database, options.Host, options.Port, err)
+			return nil, fmt.Errorf("configure ssh tunnel for mysql database %q on %s:%d: %w", connection.Database, connection.Host, connection.Port, err)
 		}
 
 		connConfig.DialFunc = tunnel.dialContext
@@ -41,7 +40,7 @@ func openMySQL(ctx context.Context, connection config.Connection, settings lifec
 	db, err := openMySQLDB(connConfig)
 	if err != nil {
 		_ = closeResources()
-		return nil, wrapConnectionError("mysql", fmt.Sprintf("open mysql database %q on %s:%d", options.Database, options.Host, options.Port), err)
+		return nil, wrapConnectionError("mysql", fmt.Sprintf("open mysql database %q on %s:%d", connection.Database, connection.Host, connection.Port), err)
 	}
 
 	closed := false
@@ -55,13 +54,13 @@ func openMySQL(ctx context.Context, connection config.Connection, settings lifec
 	applyLifecycleSettings(db, settings)
 
 	if err := pingDatabase(ctx, db, settings); err != nil {
-		return nil, wrapConnectionError("mysql", fmt.Sprintf("ping mysql database %q on %s:%d", options.Database, options.Host, options.Port), err)
+		return nil, wrapConnectionError("mysql", fmt.Sprintf("ping mysql database %q on %s:%d", connection.Database, connection.Host, connection.Port), err)
 	}
 
 	adapter, err := newAdapter(
 		sqlRunner{db: db},
 		MySQLDialect(),
-		mysqlMetadata{runner: sqlRunner{db: db}, database: options.Database},
+		mysqlMetadata{runner: sqlRunner{db: db}, database: connection.Database},
 		wrapPingWithTimeout(db.PingContext, settings.HealthCheckTimeout),
 		func() error {
 			closeErr := db.Close()
@@ -79,17 +78,17 @@ func openMySQL(ctx context.Context, connection config.Connection, settings lifec
 	return adapter, nil
 }
 
-func mysqlConnConfig(options config.MySQLConnectionOptions) *mysqldriver.Config {
-	return mysqlConnConfigWithLifecycle(options, config.ConnectionLifecycleOptions{})
+func mysqlConnConfig(connection config.Connection) *mysqldriver.Config {
+	return mysqlConnConfigWithLifecycle(connection, config.ConnectionLifecycleOptions{})
 }
 
-func mysqlConnConfigWithLifecycle(options config.MySQLConnectionOptions, lifecycle config.ConnectionLifecycleOptions) *mysqldriver.Config {
+func mysqlConnConfigWithLifecycle(connection config.Connection, lifecycle config.ConnectionLifecycleOptions) *mysqldriver.Config {
 	connConfig := mysqldriver.NewConfig()
-	connConfig.User = options.Username
-	connConfig.Passwd = options.Password
+	connConfig.User = connection.Username
+	connConfig.Passwd = connection.Password
 	connConfig.Net = "tcp"
-	connConfig.Addr = net.JoinHostPort(options.Host, strconv.Itoa(options.Port))
-	connConfig.DBName = options.Database
+	connConfig.Addr = net.JoinHostPort(connection.Host, strconv.Itoa(connection.Port))
+	connConfig.DBName = connection.Database
 	if timeout := lifecycle.ConnectTimeout.Duration(); timeout > 0 {
 		connConfig.Timeout = timeout
 	}
@@ -97,8 +96,8 @@ func mysqlConnConfigWithLifecycle(options config.MySQLConnectionOptions, lifecyc
 	return connConfig
 }
 
-func mysqlDSN(options config.MySQLConnectionOptions) string {
-	return mysqlConnConfig(options).FormatDSN()
+func mysqlDSN(connection config.Connection) string {
+	return mysqlConnConfig(connection).FormatDSN()
 }
 
 type mysqlMetadata struct {

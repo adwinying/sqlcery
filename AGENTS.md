@@ -1,6 +1,2 @@
 - Create git commits on my behalf if needed
 - Commands (build, test, etc.) should be defined and managed in `mise.toml` (mise-en-place)
-- Use the follow DBs to test against (password is `password`):
-  - sqlite: just create a tmp file
-  - mysql: `docker compose -C ../webdev/docker-compose.yml exec mysql8 mysql -u root -d sqlcery -p`
-  - postgres: `docker compose -C ../webdev/docker-compose.yml exec pgsql psql -U postgres -d sqlcery`

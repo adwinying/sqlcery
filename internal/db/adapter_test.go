@@ -445,10 +445,8 @@ func TestOpenSQLiteAdapterExecutesQueriesAndMetadata(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "sqlcery.db")
 
 	adapter, err := Open(ctx, config.Connection{
-		Type: "sqlite",
-		SQLite: config.SQLiteConnectionOptions{
-			Database: databasePath,
-		},
+		Type:     "sqlite",
+		Database: databasePath,
 	})
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
@@ -526,7 +524,7 @@ func TestOpenSQLiteAdapterExecutesQueriesAndMetadata(t *testing.T) {
 }
 
 func TestPostgresConnectionString(t *testing.T) {
-	got := postgresConnectionString(config.PostgresConnectionOptions{
+	got := postgresConnectionString(config.Connection{
 		Host:     "db.example.com",
 		Port:     5432,
 		Database: "warehouse",
@@ -540,7 +538,7 @@ func TestPostgresConnectionString(t *testing.T) {
 }
 
 func TestPostgresConnConfig(t *testing.T) {
-	connConfig, err := postgresConnConfig(config.PostgresConnectionOptions{
+	connConfig, err := postgresConnConfig(config.Connection{
 		Host:     "db.example.com",
 		Port:     5433,
 		Database: "warehouse",
@@ -577,7 +575,7 @@ func TestPostgresConnConfig(t *testing.T) {
 }
 
 func TestPostgresConnConfigWithLifecycle(t *testing.T) {
-	connConfig, err := postgresConnConfigWithLifecycle(config.PostgresConnectionOptions{
+	connConfig, err := postgresConnConfigWithLifecycle(config.Connection{
 		Host:     "db.example.com",
 		Port:     5433,
 		Database: "warehouse",
@@ -626,14 +624,12 @@ func TestOpenPostgresAdapterUsesPGXStdlib(t *testing.T) {
 	}
 
 	adapter, err := Open(context.Background(), config.Connection{
-		Type: "postgres",
-		Postgres: config.PostgresConnectionOptions{
-			Host:     "db.example.com",
-			Port:     5432,
-			Database: "warehouse",
-			Username: "app",
-			Password: "secret",
-		},
+		Type:     "postgres",
+		Host:     "db.example.com",
+		Port:     5432,
+		Database: "warehouse",
+		Username: "app",
+		Password: "secret",
 		Lifecycle: config.ConnectionLifecycleOptions{
 			ConnectTimeout:     config.Duration(9 * time.Second),
 			HealthCheckTimeout: config.Duration(time.Second),
@@ -708,14 +704,12 @@ func TestOpenPostgresAdapterUsesSSHTunnelWhenConfigured(t *testing.T) {
 	}
 
 	adapter, err := Open(context.Background(), config.Connection{
-		Type:    "postgres",
-		SSHHost: "bastion",
-		Postgres: config.PostgresConnectionOptions{
-			Host:     "db.internal",
-			Port:     5432,
-			Database: "warehouse",
-			Username: "app",
-		},
+		Type:     "postgres",
+		SSHHost:  "bastion",
+		Host:     "db.internal",
+		Port:     5432,
+		Database: "warehouse",
+		Username: "app",
 	})
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
@@ -751,13 +745,11 @@ func TestOpenPostgresReturnsPingError(t *testing.T) {
 	}
 
 	_, err := Open(context.Background(), config.Connection{
-		Type: "postgres",
-		Postgres: config.PostgresConnectionOptions{
-			Host:     "db.example.com",
-			Port:     5432,
-			Database: "warehouse",
-			Username: "app",
-		},
+		Type:     "postgres",
+		Host:     "db.example.com",
+		Port:     5432,
+		Database: "warehouse",
+		Username: "app",
 	})
 	if err == nil {
 		t.Fatal("Open() error = nil, want error")
@@ -789,14 +781,12 @@ func TestOpenPostgresReturnsAuthenticationError(t *testing.T) {
 	}
 
 	_, err := Open(context.Background(), config.Connection{
-		Type: "postgres",
-		Postgres: config.PostgresConnectionOptions{
-			Host:     "db.example.com",
-			Port:     5432,
-			Database: "warehouse",
-			Username: "app",
-			Password: "secret",
-		},
+		Type:     "postgres",
+		Host:     "db.example.com",
+		Port:     5432,
+		Database: "warehouse",
+		Username: "app",
+		Password: "secret",
 	})
 	if err == nil {
 		t.Fatal("Open() error = nil, want error")
@@ -827,12 +817,6 @@ func TestOpenPostgresReturnsAuthenticationError(t *testing.T) {
 func TestOpenRejectsUnsupportedConnectionTypes(t *testing.T) {
 	_, err := Open(context.Background(), config.Connection{
 		Type: "oracle",
-		MySQL: config.MySQLConnectionOptions{
-			Host:     "db.example.com",
-			Port:     3306,
-			Database: "warehouse",
-			Username: "app",
-		},
 	})
 	if err == nil {
 		t.Fatal("Open() error = nil, want error")

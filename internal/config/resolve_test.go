@@ -21,7 +21,6 @@ func TestResolveCLIConnectionNamedArgument(t *testing.T) {
 	connectionsPath := filepath.Join(globalDir, ConnectionsFileName)
 	contents := "[connection.analytics]\n" +
 		"type = \"postgres\"\n" +
-		"[connection.analytics.postgres]\n" +
 		"host = \"db.example.com\"\n" +
 		"port = 5432\n" +
 		"database = \"warehouse\"\n" +
@@ -47,8 +46,8 @@ func TestResolveCLIConnectionNamedArgument(t *testing.T) {
 		t.Fatalf("resolved.Connection.Type = %q, want %q", got, want)
 	}
 
-	if got, want := resolved.Connection.Postgres.Host, "db.example.com"; got != want {
-		t.Fatalf("resolved.Connection.Postgres.Host = %q, want %q", got, want)
+	if got, want := resolved.Connection.Host, "db.example.com"; got != want {
+		t.Fatalf("resolved.Connection.Host = %q, want %q", got, want)
 	}
 }
 
@@ -69,24 +68,24 @@ func TestResolveCLIConnectionDirectConnectionString(t *testing.T) {
 		t.Fatalf("resolved.Connection.Type = %q, want %q", got, want)
 	}
 
-	if got, want := resolved.Connection.Postgres.Host, "db.example.com"; got != want {
-		t.Fatalf("resolved.Connection.Postgres.Host = %q, want %q", got, want)
+	if got, want := resolved.Connection.Host, "db.example.com"; got != want {
+		t.Fatalf("resolved.Connection.Host = %q, want %q", got, want)
 	}
 
-	if got, want := resolved.Connection.Postgres.Port, 5433; got != want {
-		t.Fatalf("resolved.Connection.Postgres.Port = %d, want %d", got, want)
+	if got, want := resolved.Connection.Port, 5433; got != want {
+		t.Fatalf("resolved.Connection.Port = %d, want %d", got, want)
 	}
 
-	if got, want := resolved.Connection.Postgres.Database, "warehouse"; got != want {
-		t.Fatalf("resolved.Connection.Postgres.Database = %q, want %q", got, want)
+	if got, want := resolved.Connection.Database, "warehouse"; got != want {
+		t.Fatalf("resolved.Connection.Database = %q, want %q", got, want)
 	}
 
-	if got, want := resolved.Connection.Postgres.Username, "app"; got != want {
-		t.Fatalf("resolved.Connection.Postgres.Username = %q, want %q", got, want)
+	if got, want := resolved.Connection.Username, "app"; got != want {
+		t.Fatalf("resolved.Connection.Username = %q, want %q", got, want)
 	}
 
-	if got, want := resolved.Connection.Postgres.Password, "secret"; got != want {
-		t.Fatalf("resolved.Connection.Postgres.Password = %q, want %q", got, want)
+	if got, want := resolved.Connection.Password, "secret"; got != want {
+		t.Fatalf("resolved.Connection.Password = %q, want %q", got, want)
 	}
 }
 
@@ -185,40 +184,40 @@ func TestParseConnectionString(t *testing.T) {
 
 			switch tt.wantType {
 			case "postgres":
-				if got, want := resolved.Connection.Postgres.Host, tt.wantHost; got != want {
-					t.Fatalf("resolved.Connection.Postgres.Host = %q, want %q", got, want)
+				if got, want := resolved.Connection.Host, tt.wantHost; got != want {
+					t.Fatalf("resolved.Connection.Host = %q, want %q", got, want)
 				}
-				if got, want := resolved.Connection.Postgres.Port, tt.wantPort; got != want {
-					t.Fatalf("resolved.Connection.Postgres.Port = %d, want %d", got, want)
+				if got, want := resolved.Connection.Port, tt.wantPort; got != want {
+					t.Fatalf("resolved.Connection.Port = %d, want %d", got, want)
 				}
-				if got, want := resolved.Connection.Postgres.Database, tt.wantDatabase; got != want {
-					t.Fatalf("resolved.Connection.Postgres.Database = %q, want %q", got, want)
+				if got, want := resolved.Connection.Database, tt.wantDatabase; got != want {
+					t.Fatalf("resolved.Connection.Database = %q, want %q", got, want)
 				}
-				if got, want := resolved.Connection.Postgres.Username, tt.wantUsername; got != want {
-					t.Fatalf("resolved.Connection.Postgres.Username = %q, want %q", got, want)
+				if got, want := resolved.Connection.Username, tt.wantUsername; got != want {
+					t.Fatalf("resolved.Connection.Username = %q, want %q", got, want)
 				}
-				if got, want := resolved.Connection.Postgres.Password, tt.wantPassword; got != want {
-					t.Fatalf("resolved.Connection.Postgres.Password = %q, want %q", got, want)
+				if got, want := resolved.Connection.Password, tt.wantPassword; got != want {
+					t.Fatalf("resolved.Connection.Password = %q, want %q", got, want)
 				}
 			case "mysql":
-				if got, want := resolved.Connection.MySQL.Host, tt.wantHost; got != want {
-					t.Fatalf("resolved.Connection.MySQL.Host = %q, want %q", got, want)
+				if got, want := resolved.Connection.Host, tt.wantHost; got != want {
+					t.Fatalf("resolved.Connection.Host = %q, want %q", got, want)
 				}
-				if got, want := resolved.Connection.MySQL.Port, tt.wantPort; got != want {
-					t.Fatalf("resolved.Connection.MySQL.Port = %d, want %d", got, want)
+				if got, want := resolved.Connection.Port, tt.wantPort; got != want {
+					t.Fatalf("resolved.Connection.Port = %d, want %d", got, want)
 				}
-				if got, want := resolved.Connection.MySQL.Database, tt.wantDatabase; got != want {
-					t.Fatalf("resolved.Connection.MySQL.Database = %q, want %q", got, want)
+				if got, want := resolved.Connection.Database, tt.wantDatabase; got != want {
+					t.Fatalf("resolved.Connection.Database = %q, want %q", got, want)
 				}
-				if got, want := resolved.Connection.MySQL.Username, tt.wantUsername; got != want {
-					t.Fatalf("resolved.Connection.MySQL.Username = %q, want %q", got, want)
+				if got, want := resolved.Connection.Username, tt.wantUsername; got != want {
+					t.Fatalf("resolved.Connection.Username = %q, want %q", got, want)
 				}
-				if got, want := resolved.Connection.MySQL.Password, tt.wantPassword; got != want {
-					t.Fatalf("resolved.Connection.MySQL.Password = %q, want %q", got, want)
+				if got, want := resolved.Connection.Password, tt.wantPassword; got != want {
+					t.Fatalf("resolved.Connection.Password = %q, want %q", got, want)
 				}
 			case "sqlite":
-				if got, want := resolved.Connection.SQLite.Database, tt.wantDatabase; got != want {
-					t.Fatalf("resolved.Connection.SQLite.Database = %q, want %q", got, want)
+				if got, want := resolved.Connection.Database, tt.wantDatabase; got != want {
+					t.Fatalf("resolved.Connection.Database = %q, want %q", got, want)
 				}
 			}
 		})
@@ -249,8 +248,8 @@ func TestResolveCLIConnectionUsesConfiguredDefault(t *testing.T) {
 		t.Fatalf("resolved.Connection.Type = %q, want %q", got, want)
 	}
 
-	if got, want := resolved.Connection.SQLite.Database, "tmp/sqlcery.db"; got != want {
-		t.Fatalf("resolved.Connection.SQLite.Database = %q, want %q", got, want)
+	if got, want := resolved.Connection.Database, "tmp/sqlcery.db"; got != want {
+		t.Fatalf("resolved.Connection.Database = %q, want %q", got, want)
 	}
 }
 

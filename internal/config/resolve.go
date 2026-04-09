@@ -119,10 +119,8 @@ func connectionFromURL(parsed *url.URL) (Connection, error) {
 	case "sqlite":
 		database := sqliteDatabaseFromURL(parsed)
 		return Connection{
-			Type: "sqlite",
-			SQLite: SQLiteConnectionOptions{
-				Database: database,
-			},
+			Type:     "sqlite",
+			Database: database,
 		}, nil
 	default:
 		return Connection{}, fmt.Errorf("unsupported connection string scheme %q", parsed.Scheme)
@@ -146,30 +144,14 @@ func networkConnectionFromURL(kind string, parsed *url.URL, defaultPort int) (Co
 		password, _ = parsed.User.Password()
 	}
 
-	connection := Connection{
-		Type: kind,
-	}
-
-	switch kind {
-	case "postgres":
-		connection.Postgres = PostgresConnectionOptions{
-			Host:     parsed.Hostname(),
-			Port:     port,
-			Database: strings.TrimPrefix(parsed.Path, "/"),
-			Username: username,
-			Password: password,
-		}
-	case "mysql":
-		connection.MySQL = MySQLConnectionOptions{
-			Host:     parsed.Hostname(),
-			Port:     port,
-			Database: strings.TrimPrefix(parsed.Path, "/"),
-			Username: username,
-			Password: password,
-		}
-	}
-
-	return connection, nil
+	return Connection{
+		Type:     kind,
+		Host:     parsed.Hostname(),
+		Port:     port,
+		Database: strings.TrimPrefix(parsed.Path, "/"),
+		Username: username,
+		Password: password,
+	}, nil
 }
 
 func sqliteDatabaseFromURL(parsed *url.URL) string {
