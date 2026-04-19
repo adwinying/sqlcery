@@ -332,7 +332,7 @@ func TestModelViewRendersStartupState(t *testing.T) {
 	for _, want := range []string{
 		"[ startup ]",
 		"Preparing command mode...",
-		"[local]",
+		"local",
 		"ctrl+c quit",
 	} {
 		if !strings.Contains(view, want) {
@@ -1007,33 +1007,19 @@ func TestModelUpdateModeSwitchSetsPendingIntent(t *testing.T) {
 	next, _ = next.(Model).Update(msg)
 	model = next.(Model)
 
-	if got, want := model.state.Query.PendingIntent, IntentSwitchMode; got != want {
+	// In split layout (default), switching to record viewer succeeds immediately
+	if got, want := model.state.Query.PendingIntent, IntentNone; got != want {
 		t.Fatalf("state.PendingIntent = %q, want %q", got, want)
 	}
-	if model.state.Query.PendingModeSwitch == nil {
-		t.Fatal("state.Query.PendingModeSwitch = nil, want mode switch context")
+	if model.state.Query.PendingModeSwitch != nil {
+		t.Fatalf("state.Query.PendingModeSwitch = %#v, want nil (switch completes immediately in split layout)", model.state.Query.PendingModeSwitch)
 	}
-	if got, want := model.state.Query.PendingModeSwitch.FromMode, ModeCommand; got != want {
-		t.Fatalf("state.Query.PendingModeSwitch.FromMode = %q, want %q", got, want)
-	}
-	if got, want := model.state.Query.PendingModeSwitch.FromLayout, LayoutCommandOnly; got != want {
-		t.Fatalf("state.Query.PendingModeSwitch.FromLayout = %q, want %q", got, want)
-	}
-	if got, want := model.state.Query.PendingModeSwitch.ToMode, ModeRecordViewer; got != want {
-		t.Fatalf("state.Query.PendingModeSwitch.ToMode = %q, want %q", got, want)
-	}
-	if got, want := model.state.Query.PendingModeSwitch.ToLayout, LayoutViewerOnly; got != want {
-		t.Fatalf("state.Query.PendingModeSwitch.ToLayout = %q, want %q", got, want)
-	}
-
-	if got, want := model.state.Status, "Record viewer is available after running a query that returns tabular results."; got != want {
-		t.Fatalf("state.Status = %q, want %q", got, want)
-	}
-	if got, want := model.state.Query.ActiveMode, ModeCommand; got != want {
+	if got, want := model.state.Query.ActiveMode, ModeRecordViewer; got != want {
 		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
 	}
-	if model.state.Query.PendingModeSwitch.ResultContext != nil {
-		t.Fatalf("state.Query.PendingModeSwitch.ResultContext = %#v, want nil", model.state.Query.PendingModeSwitch.ResultContext)
+
+	if got, want := model.state.Status, "Focused the record viewer in split layout. Run a query that returns rows to populate it."; got != want {
+		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
 
@@ -1080,10 +1066,10 @@ func TestModelUpdateModeSwitchPreservesLatestResultContext(t *testing.T) {
 	next, _ = model.Update(cmd())
 	model = next.(Model)
 
-	if got, want := model.state.Status, "Opened record viewer for 6 row(s) across 2 column(s)."; got != want {
+	if got, want := model.state.Status, "Focused the record viewer in split layout for 6 row(s) across 2 column(s)."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
-	if got, want := model.state.Query.Layout, LayoutViewerOnly; got != want {
+	if got, want := model.state.Query.Layout, LayoutSplit; got != want {
 		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
 	}
 	if got, want := model.state.Query.ActiveMode, ModeRecordViewer; got != want {

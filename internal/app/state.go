@@ -161,7 +161,7 @@ func NewSharedAppState() SharedAppState {
 			Current: StateStartup,
 		},
 		Query: QueryContext{
-			Layout:     LayoutCommandOnly,
+			Layout:     LayoutSplit,
 			ActiveMode: ModeCommand,
 			ViewerPage: 0,
 		},

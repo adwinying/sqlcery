@@ -85,6 +85,9 @@ func (m *recordViewerModeModel) SetSize(width, height int) {
 func (m *recordViewerModeModel) View(query QueryContext) string {
 	latest := query.LatestResult
 	if latest == nil || latest.PreservedResult == nil {
+		if query.Layout == LayoutSplit {
+			return appTheme.viewerEmpty.Render("Run a query that returns rows to populate results.")
+		}
 		return strings.Join([]string{
 			appTheme.viewerTitle.Render("Record viewer"),
 			"",
@@ -95,6 +98,20 @@ func (m *recordViewerModeModel) View(query QueryContext) string {
 	m.syncSelection(query)
 
 	result := latest.PreservedResult
+
+	// In split layout, show just the table with no metadata header
+	if query.Layout == LayoutSplit {
+		preparedPage := m.preparePage(result, query.ViewerPage, len(latest.SelectedRows) > 0)
+		body := renderPreparedRecordViewerPage(preparedPage, m.width, m.height, recordViewerRenderState{
+			Active:       recordViewerSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
+			SelectedRows: selectedRowSet(latest.SelectedRows),
+		})
+		if body == "" {
+			body = appTheme.viewerEmpty.Render("(no visible rows)")
+		}
+		return body
+	}
+
 	page := recordViewerPageContextFor(query.ViewerPage, len(result.Rows))
 	header := []string{
 		appTheme.viewerTitle.Render("Record viewer"),

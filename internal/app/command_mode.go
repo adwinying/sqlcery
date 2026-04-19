@@ -54,7 +54,7 @@ type commandModeKeyMap struct {
 
 func newCommandModeModel() commandModeModel {
 	editor := textarea.New()
-	editor.Prompt = "sqlcery> "
+	editor.Prompt = "> "
 	editor.Placeholder = "Write SQL here"
 	editor.ShowLineNumbers = false
 	editor.SetWidth(defaultEditorWidth)
@@ -159,17 +159,13 @@ func (m commandModeModel) View(query QueryContext) string {
 }
 
 func (m commandModeModel) FooterHints(query QueryContext) string {
-	parts := []string{
-		fmt.Sprintf("line %d col %d", m.editor.Line()+1, m.editor.LineInfo().ColumnOffset+1),
-		"enter submit",
-		bindingSummary(m.keys.Cancel),
-		bindingSummary(m.keys.History),
-	}
-	if running := formatRunningIndicator(query.Running); running != "" {
-		parts = append(parts, "esc cancel query")
-	}
+	var parts []string
 	if len(m.autocompleteItems(query)) > 0 {
 		parts = append(parts, bindingSummary(m.keys.AcceptSuggestion), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
+	}
+	parts = append(parts, "enter submit", bindingSummary(m.keys.Cancel), bindingSummary(m.keys.History))
+	if running := formatRunningIndicator(query.Running); running != "" {
+		parts = append(parts, "esc cancel query")
 	}
 	parts = append(parts, "ctrl+c quit")
 	return strings.Join(parts, " | ")
@@ -275,9 +271,11 @@ func adjustedScrollTop(current, cursorRow, totalRows, height int) int {
 func (m commandModeModel) renderView(query QueryContext) string {
 	sections := make([]string, 0, 4)
 
-	// REPL transcript — show past commands and results above the editor
-	if transcript := m.renderReplTranscript(); transcript != "" {
-		sections = append(sections, transcript)
+	// REPL transcript — only show in non-split layouts to save vertical space
+	if query.Layout != LayoutSplit {
+		if transcript := m.renderReplTranscript(); transcript != "" {
+			sections = append(sections, transcript)
+		}
 	}
 
 	// History search panel (if active)
@@ -302,6 +300,11 @@ func (m commandModeModel) renderView(query QueryContext) string {
 		editorView = m.renderVisibleLines(wrappedLines, scrollTop, ghost)
 	}
 	sections = append(sections, editorView)
+
+	// Autocomplete suggestions dropdown (if active)
+	if dropdown := m.renderAutocompleteDropdown(query); dropdown != "" {
+		sections = append(sections, dropdown)
+	}
 
 	return strings.Join(sections, "\n\n")
 }
@@ -611,6 +614,82 @@ func (m commandModeModel) renderAutocompletePanel(query QueryContext) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+func (m commandModeModel) renderAutocompleteDropdown(query QueryContext) string {
+	suggestions := m.autocompleteItems(query)
+	if len(suggestions) == 0 {
+		return ""
+	}
+
+	selected := m.selectedSuggestionIndex(len(suggestions))
+	visible := min(len(suggestions), autocompletePanelRows)
+	start := 0
+	if selected >= visible {
+		start = selected - visible + 1
+	}
+
+	lines := make([]string, 0, visible)
+	for i := start; i < start+visible; i++ {
+		if i >= len(suggestions) {
+			break
+		}
+		item := suggestions[i]
+		line := fmt.Sprintf("[%s] %s", item.Kind, item.Label)
+		if detail := strings.TrimSpace(item.Detail); detail != "" {
+			line += " - " + detail
+		}
+		if i == selected {
+			lines = append(lines, appTheme.panelSelected.Render("> "+line))
+		} else {
+			lines = append(lines, appTheme.panelText.Render("  "+line))
+		}
+	}
+
+	// Compute popup width from content
+	maxWidth := 0
+	for _, line := range lines {
+		if w := ansi.StringWidth(line); w > maxWidth {
+			maxWidth = w
+		}
+	}
+	popupWidth := maxWidth + 2
+	editorWidth := m.editor.Width()
+	if popupWidth > editorWidth {
+		popupWidth = editorWidth
+	}
+	if popupWidth < 10 {
+		popupWidth = 10
+	}
+
+	// Determine cursor column offset for positioning
+	promptWidth := ansi.StringWidth(m.editor.Prompt)
+	cursorCol := promptWidth + m.editor.LineInfo().ColumnOffset
+	indent := cursorCol
+	if indent+popupWidth+2 > editorWidth+promptWidth {
+		indent = max(0, editorWidth+promptWidth-popupWidth-2)
+	}
+	indentStr := strings.Repeat(" ", indent)
+
+	borderStyle := appTheme.paneBorderActive
+	topLine := indentStr + borderStyle.Render("╭"+strings.Repeat("─", popupWidth)+"╮")
+	bottomLine := indentStr + borderStyle.Render("╰"+strings.Repeat("─", popupWidth)+"╯")
+
+	var builder strings.Builder
+	builder.WriteString(topLine)
+	for _, line := range lines {
+		padding := popupWidth - ansi.StringWidth(line)
+		if padding < 0 {
+			padding = 0
+			line = ansi.Truncate(line, popupWidth, "")
+		}
+		builder.WriteByte('\n')
+		builder.WriteString(indentStr + borderStyle.Render("│") + line + strings.Repeat(" ", padding) + borderStyle.Render("│"))
+	}
+	builder.WriteByte('\n')
+	builder.WriteString(bottomLine)
+
+	return builder.String()
 }
 
 func renderInlineResult(query QueryContext) string {

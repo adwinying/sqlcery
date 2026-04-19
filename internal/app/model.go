@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/adwinying/sqlcery/internal/db"
 	apphistory "github.com/adwinying/sqlcery/internal/history"
@@ -129,7 +130,7 @@ func newModelWithDependencies(session Session, adapter *db.SQLAdapter, deps mode
 		state:      NewSharedAppState(),
 		cache:      cache,
 		loader:     loader,
-		splitRatio: 0.5,
+		splitRatio: 0.65,
 	}
 	model.syncAutocompleteSchemaSnapshot()
 	model.syncSessionHistorySnapshot()
@@ -460,10 +461,9 @@ func (m Model) View() string {
 		}
 		content = strings.Join(lines, "\n")
 	case StateReady:
-		// Simple REPL view — just the command mode view, no borders or panes
-		content = m.command.View(m.state.Query)
+		content = m.readyStateView(contentHeight)
 	default:
-		content = m.command.View(m.state.Query)
+		content = m.readyStateView(contentHeight)
 	}
 
 	return content + "\n" + statusBar
@@ -479,27 +479,95 @@ func (m *Model) syncPaneSizes() {
 		contentHeight = 2
 	}
 
-	// REPL mode: full width, full content height for the command editor
-	m.command.SetSize(w, contentHeight)
-	m.viewer.SetSize(w, contentHeight)
+	// Account for border characters (│ on each side)
+	innerWidth := w - 2
+	if innerWidth < minimumEditorWidth {
+		innerWidth = minimumEditorWidth
+	}
+
+	switch m.state.Query.Layout {
+	case LayoutSplit:
+		viewerOuterH := int(float64(contentHeight) * m.splitRatio)
+		if viewerOuterH < 3 {
+			viewerOuterH = 3
+		}
+		commandOuterH := contentHeight - viewerOuterH
+		if commandOuterH < 3 {
+			commandOuterH = 3
+		}
+		m.viewer.SetSize(innerWidth, viewerOuterH-2)
+		m.command.SetSize(innerWidth, commandOuterH-2)
+	case LayoutViewerOnly:
+		m.viewer.SetSize(innerWidth, contentHeight-2)
+		m.command.SetSize(innerWidth, contentHeight-2)
+	default: // LayoutCommandOnly
+		m.command.SetSize(innerWidth, contentHeight-2)
+		m.viewer.SetSize(innerWidth, contentHeight-2)
+	}
 }
 
-// renderBorderedPane wraps content in a rounded border; active pane gets accent colour.
-func (m Model) renderBorderedPane(content string, active bool, outerWidth, innerHeight int) string {
+// renderBorderedPane wraps content in a rounded border with an optional title; active pane gets accent colour.
+func (m Model) renderBorderedPane(content string, title string, active bool, outerWidth, innerHeight int) string {
 	borderColor := appTheme.paneBorderInactive.GetForeground()
 	if active {
 		borderColor = appTheme.paneBorderActive.GetForeground()
 	}
-	innerWidth := outerWidth - 2 // subtract left+right border
+	innerWidth := outerWidth - 2
 	if innerWidth < 1 {
 		innerWidth = 1
 	}
-	style := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(borderColor).
-		Width(innerWidth).
-		Height(innerHeight)
-	return style.Render(content)
+	if innerHeight < 0 {
+		innerHeight = 0
+	}
+
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+
+	// Top line with optional title
+	var topLine string
+	if title != "" {
+		titleRendered := appTheme.panelTitle.Render(title)
+		titleVisualWidth := ansi.StringWidth(title)
+		dashesAfter := innerWidth - 1 - titleVisualWidth - 1 // "─" + title + " " + dashes
+		if dashesAfter < 0 {
+			dashesAfter = 0
+		}
+		topLine = borderStyle.Render("╭─") + titleRendered + borderStyle.Render(" "+strings.Repeat("─", dashesAfter)+"╮")
+	} else {
+		topLine = borderStyle.Render("╭" + strings.Repeat("─", innerWidth) + "╮")
+	}
+
+	// Bottom line
+	bottomLine := borderStyle.Render("╰" + strings.Repeat("─", innerWidth) + "╯")
+
+	// Split content into lines
+	contentLines := strings.Split(content, "\n")
+
+	// Pad or truncate to innerHeight lines
+	for len(contentLines) < innerHeight {
+		contentLines = append(contentLines, "")
+	}
+	if len(contentLines) > innerHeight {
+		contentLines = contentLines[:innerHeight]
+	}
+
+	// Build the pane
+	lines := make([]string, 0, innerHeight+2)
+	lines = append(lines, topLine)
+	for _, cl := range contentLines {
+		visibleWidth := ansi.StringWidth(cl)
+		padding := ""
+		if visibleWidth < innerWidth {
+			padding = strings.Repeat(" ", innerWidth-visibleWidth)
+		}
+		if visibleWidth > innerWidth {
+			cl = ansi.Truncate(cl, innerWidth, "")
+			padding = ""
+		}
+		lines = append(lines, borderStyle.Render("│")+cl+padding+borderStyle.Render("│"))
+	}
+	lines = append(lines, bottomLine)
+
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) readyStateView(totalHeight int) string {
@@ -524,8 +592,8 @@ func (m Model) readyStateView(totalHeight int) string {
 		viewerContent := m.viewer.View(query)
 		commandContent := m.command.View(query)
 		viewerActive := query.ActiveMode == ModeRecordViewer
-		viewerPane := m.renderBorderedPane(viewerContent, viewerActive, w, viewerOuterH-2)
-		commandPane := m.renderBorderedPane(commandContent, !viewerActive, w, commandOuterH-2)
+		viewerPane := m.renderBorderedPane(viewerContent, "[1] Results", viewerActive, w, viewerOuterH-2)
+		commandPane := m.renderBorderedPane(commandContent, "[2] Commands", !viewerActive, w, commandOuterH-2)
 		layout := viewerPane + "\n" + commandPane
 		if helpOverlay != "" {
 			return helpOverlay + "\n" + layout
@@ -533,14 +601,14 @@ func (m Model) readyStateView(totalHeight int) string {
 		return layout
 	case LayoutViewerOnly:
 		viewerContent := m.viewer.View(query)
-		viewerPane := m.renderBorderedPane(viewerContent, true, w, totalHeight-2)
+		viewerPane := m.renderBorderedPane(viewerContent, "[1] Results", true, w, totalHeight-2)
 		if helpOverlay != "" {
 			return helpOverlay + "\n" + viewerPane
 		}
 		return viewerPane
 	default: // LayoutCommandOnly
 		commandContent := m.command.View(query)
-		commandPane := m.renderBorderedPane(commandContent, true, w, totalHeight-2)
+		commandPane := m.renderBorderedPane(commandContent, "[2] Commands", true, w, totalHeight-2)
 		if helpOverlay != "" {
 			return helpOverlay + "\n" + commandPane
 		}
@@ -559,7 +627,7 @@ func (m Model) statusBarView() string {
 
 	// Connection name
 	if name := strings.TrimSpace(m.session.ConnectionName); name != "" {
-		parts = append(parts, fmt.Sprintf("[%s]", name))
+		parts = append(parts, name)
 	}
 
 	// Status message

@@ -14,7 +14,7 @@ func TestNewSharedAppStateDefaultsToCommandMode(t *testing.T) {
 		t.Fatalf("state.App.Current = %q, want %q", got, want)
 	}
 
-	if got, want := state.Query.Layout, LayoutCommandOnly; got != want {
+	if got, want := state.Query.Layout, LayoutSplit; got != want {
 		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
 	}
 
