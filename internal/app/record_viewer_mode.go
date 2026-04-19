@@ -20,6 +20,18 @@ const (
 	recordViewerPrimaryKeyTag         = "[pk] "
 )
 
+// sqlceryLogo is the "SQLcery" ASCII art rendered in ANSI Shadow style.
+// Each line is 58 characters wide and the art is 6 lines tall.
+const sqlceryLogo = `███████╗ ██████╗ ██╗      ██████╗███████╗██████╗ ██╗   ██╗
+██╔════╝██╔═══██╗██║     ██╔════╝██╔════╝██╔══██╗╚██╗ ██╔╝
+███████╗██║   ██║██║     ██║     █████╗  ██████╔╝ ╚████╔╝ 
+╚════██║██║▄▄ ██║██║     ██║     ██╔══╝  ██╔══██╗  ╚██╔╝  
+███████║╚██████╔╝███████╗╚██████╗███████╗██║  ██║   ██║   
+╚══════╝ ╚══▀▀═╝ ╚══════╝ ╚═════╝╚══════╝╚═╝  ╚═╝   ╚═╝   `
+
+const sqlceryLogoWidth = 58
+const sqlceryLogoHeight = 6
+
 type recordViewerColumn struct {
 	Header     string
 	PrimaryKey bool
@@ -82,17 +94,53 @@ func (m *recordViewerModeModel) SetSize(width, height int) {
 	m.height = clampEditorSize(height, minimumRecordViewerHeight)
 }
 
+func (m *recordViewerModeModel) renderEmptyState(subtitle string) string {
+	logoLines := strings.Split(sqlceryLogo, "\n")
+
+	// Center the logo horizontally
+	var centeredLogoLines []string
+	leftPad := (m.width - sqlceryLogoWidth) / 2
+	if leftPad < 0 {
+		leftPad = 0
+	}
+	padStr := strings.Repeat(" ", leftPad)
+	for _, line := range logoLines {
+		centeredLogoLines = append(centeredLogoLines, padStr+appTheme.viewerEmptyLogo.Render(line))
+	}
+
+	// Center the subtitle horizontally
+	subtitleWidth := ansi.StringWidth(subtitle)
+	subLeftPad := (m.width - subtitleWidth) / 2
+	if subLeftPad < 0 {
+		subLeftPad = 0
+	}
+	styledSubtitle := strings.Repeat(" ", subLeftPad) + appTheme.viewerEmptySubtitle.Render(subtitle)
+
+	// Build content block: logo + blank line + subtitle
+	contentLines := append(centeredLogoLines, "", styledSubtitle)
+	contentHeight := len(contentLines)
+
+	// Center vertically
+	topPad := (m.height - contentHeight) / 2
+	if topPad < 0 {
+		topPad = 0
+	}
+
+	var lines []string
+	for i := 0; i < topPad; i++ {
+		lines = append(lines, "")
+	}
+	lines = append(lines, contentLines...)
+	return strings.Join(lines, "\n")
+}
+
 func (m *recordViewerModeModel) View(query QueryContext) string {
 	latest := query.LatestResult
 	if latest == nil || latest.PreservedResult == nil {
 		if query.Layout == LayoutSplit {
-			return appTheme.viewerEmpty.Render("Run a query that returns rows to populate results.")
+			return m.renderEmptyState("Run a query that returns rows to populate this pane")
 		}
-		return strings.Join([]string{
-			appTheme.viewerTitle.Render("Record viewer"),
-			"",
-			appTheme.viewerEmpty.Render("Run a query that returns rows, then press ctrl+x or ctrl+3."),
-		}, "\n")
+		return m.renderEmptyState("Run a query that returns rows, then press ctrl+x or ctrl+3.")
 	}
 
 	m.syncSelection(query)
