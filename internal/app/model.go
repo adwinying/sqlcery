@@ -272,20 +272,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.SetPendingModeSwitch(nil)
 		if msg.Err != nil {
 			if status, ok := executionInterruptedStatus(running, msg.Err); ok {
-				m.command.AppendReplEntry("sqlcery> ", msg.Query, FormatTerminalError(msg.Err))
+				m.command.AppendReplEntry("> ", msg.Query, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
 				m.command.Clear()
 				m.state.SetReady(withHistoryWarning(status, historyErr))
 				m.state.SetLatestResultContext(nil)
 				return m, nil
 			}
-			m.command.AppendReplEntry("sqlcery> ", msg.Query, FormatTerminalError(msg.Err))
+			m.command.AppendReplEntry("> ", msg.Query, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
 			m.command.Clear()
 			m.state.SetReady(withHistoryWarning(formatOperationFailure("Execution failed.", msg.Err), historyErr))
 			m.state.SetLatestResultContext(nil)
 			return m, nil
 		}
 
-		m.command.AppendReplEntry("sqlcery> ", msg.Query, formatReplStatementOutput(msg.Result, nil))
+		m.command.AppendReplEntry("> ", msg.Query, "OK: "+formatReplStatementOutput(msg.Result, nil))
 		m.command.Clear()
 		m.state.SetReady(withHistoryWarning(describeStatementStatus(msg.Result), historyErr))
 		m.state.SetLatestResultContext(buildLatestResultContext(msg.Query, m.resultOriginMode(), msg.Result))
@@ -305,7 +305,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.SetPendingModeSwitch(nil)
 		if msg.Err != nil {
 			m.state.SetSlashWizardContext(nil)
-			m.command.AppendReplEntry("sqlcery> ", msg.Command.RawInput, formatReplSlashOutput(msg))
+			m.command.AppendReplEntry("> ", msg.Command.RawInput, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
 			m.command.Clear()
 			if status, ok := executionInterruptedStatus(running, msg.Err); ok {
 				m.state.SetReady(withHistoryWarning(status, historyErr))
@@ -328,7 +328,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state.SetLatestResultContext(nil)
 		} else {
 			// Not a replace — add to transcript and clear
-			m.command.AppendReplEntry("sqlcery> ", msg.Command.RawInput, formatReplSlashOutput(msg))
+			m.command.AppendReplEntry("> ", msg.Command.RawInput, "OK: "+formatReplSlashOutput(msg))
 			m.command.Clear()
 		}
 

@@ -16,10 +16,11 @@ import (
 
 const (
 	defaultEditorWidth    = 80
-	defaultEditorHeight   = 12
+	defaultEditorHeight   = 1
 	minimumEditorWidth    = 20
-	minimumEditorHeight   = 6
+	minimumEditorHeight   = 1
 	autocompletePanelRows = 4
+	maxEditorHeightRatio  = 3
 )
 
 type replTranscriptEntry struct {
@@ -29,25 +30,30 @@ type replTranscriptEntry struct {
 }
 
 type commandModeModel struct {
-	editor             textarea.Model
-	keys               commandModeKeyMap
-	scrollTop          int
-	highlighter        sqlSyntaxHighlighter
-	selectedSuggestion int
-	replTranscript     []replTranscriptEntry
+	editor               textarea.Model
+	keys                 commandModeKeyMap
+	scrollTop            int
+	highlighter          sqlSyntaxHighlighter
+	selectedSuggestion   int
+	replTranscript       []replTranscriptEntry
+	innerWidth           int
+	innerHeight          int
+	transcriptFromBottom int // 0 = show latest; increases as user scrolls up
 }
 
 type commandModeKeyMap struct {
-	Submit            key.Binding
-	Cancel            key.Binding
-	Help              key.Binding
-	History           key.Binding
-	RestoreHistory    key.Binding
-	SwitchMode        key.Binding
-	LayoutCommandOnly key.Binding
-	AcceptSuggestion  key.Binding
-	NextSuggestion    key.Binding
-	PrevSuggestion    key.Binding
+	Submit              key.Binding
+	Cancel              key.Binding
+	Help                key.Binding
+	History             key.Binding
+	RestoreHistory      key.Binding
+	SwitchMode          key.Binding
+	LayoutCommandOnly   key.Binding
+	AcceptSuggestion    key.Binding
+	NextSuggestion      key.Binding
+	PrevSuggestion      key.Binding
+	ScrollTranscriptUp  key.Binding
+	ScrollTranscriptDown key.Binding
 }
 
 func newCommandModeModel() commandModeModel {
@@ -60,20 +66,23 @@ func newCommandModeModel() commandModeModel {
 	editor.Focus()
 
 	return commandModeModel{
-		editor:             editor,
-		highlighter:        newSQLSyntaxHighlighter(),
-		selectedSuggestion: 0,
+		editor:      editor,
+		highlighter: newSQLSyntaxHighlighter(),
+		innerWidth:  defaultEditorWidth,
+		innerHeight: defaultEditorHeight,
 		keys: commandModeKeyMap{
-			Submit:            key.NewBinding(key.WithKeys("ctrl+g"), key.WithHelp("ctrl+g", "submit")),
-			Cancel:            key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear/cancel")),
-			Help:              key.NewBinding(key.WithKeys("alt+h"), key.WithHelp("alt+h", "help")),
-			History:           key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "history")),
-			RestoreHistory:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restore")),
-			SwitchMode:        key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "focus")),
-			LayoutCommandOnly: key.NewBinding(key.WithKeys("ctrl+3"), key.WithHelp("ctrl+3", "command")),
-			AcceptSuggestion:  key.NewBinding(key.WithKeys("tab", "ctrl+y"), key.WithHelp("tab/ctrl+y", "accept")),
-			NextSuggestion:    key.NewBinding(key.WithKeys("alt+n", "ctrl+n"), key.WithHelp("alt+n/ctrl+n", "next suggestion")),
-			PrevSuggestion:    key.NewBinding(key.WithKeys("alt+p", "ctrl+p"), key.WithHelp("alt+p/ctrl+p", "prev suggestion")),
+			Submit:               key.NewBinding(key.WithKeys("ctrl+g"), key.WithHelp("ctrl+g", "submit")),
+			Cancel:               key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear/cancel")),
+			Help:                 key.NewBinding(key.WithKeys("alt+h"), key.WithHelp("alt+h", "help")),
+			History:              key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "history")),
+			RestoreHistory:       key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restore")),
+			SwitchMode:           key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "focus")),
+			LayoutCommandOnly:    key.NewBinding(key.WithKeys("ctrl+3"), key.WithHelp("ctrl+3", "command")),
+			AcceptSuggestion:     key.NewBinding(key.WithKeys("tab", "ctrl+y"), key.WithHelp("tab/ctrl+y", "accept")),
+			NextSuggestion:       key.NewBinding(key.WithKeys("alt+n", "ctrl+n"), key.WithHelp("alt+n/ctrl+n", "next suggestion")),
+			PrevSuggestion:       key.NewBinding(key.WithKeys("alt+p", "ctrl+p"), key.WithHelp("alt+p/ctrl+p", "prev suggestion")),
+			ScrollTranscriptUp:   key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "scroll up")),
+			ScrollTranscriptDown: key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "scroll down")),
 		},
 	}
 }
@@ -104,11 +113,20 @@ func (m commandModeModel) Update(msg tea.Msg, query QueryContext) (commandModeMo
 				}
 				return m, nil
 			}
+		case key.Matches(keyMsg, m.keys.ScrollTranscriptUp):
+			m.transcriptFromBottom++
+			return m, nil
+		case key.Matches(keyMsg, m.keys.ScrollTranscriptDown):
+			if m.transcriptFromBottom > 0 {
+				m.transcriptFromBottom--
+			}
+			return m, nil
 		}
 	}
 
 	var cmd tea.Cmd
 	m.editor, cmd = m.editor.Update(msg)
+	m.setEditorHeight()
 	m.syncScroll()
 	m.clampSuggestionSelection(query)
 	return m, cmd
@@ -138,12 +156,20 @@ func (m commandModeModel) Value() string {
 }
 
 func (m *commandModeModel) SetSize(innerWidth, innerHeight int) {
-	editorWidth := clampEditorSize(innerWidth, minimumEditorWidth)
-	editorHeight := clampEditorSize(innerHeight, minimumEditorHeight)
-
-	m.editor.SetWidth(editorWidth)
-	m.editor.SetHeight(editorHeight)
+	m.innerWidth = clampEditorSize(innerWidth, minimumEditorWidth)
+	m.innerHeight = innerHeight
+	m.editor.SetWidth(m.innerWidth)
+	m.setEditorHeight()
 	m.syncScroll()
+}
+
+func (m *commandModeModel) setEditorHeight() {
+	logicalLines := len(strings.Split(m.editor.Value(), "\n"))
+	if logicalLines < 1 {
+		logicalLines = 1
+	}
+	cap := max(1, m.innerHeight/maxEditorHeightRatio)
+	m.editor.SetHeight(max(minimumEditorHeight, min(logicalLines, cap)))
 }
 
 func (m commandModeModel) Focused() bool {
@@ -219,6 +245,7 @@ func (m *commandModeModel) AppendReplEntry(prompt, sql, output string) {
 		SQL:    sql,
 		Output: output,
 	})
+	m.transcriptFromBottom = 0 // auto-scroll to latest
 }
 
 func bindingSummary(binding key.Binding) string {
@@ -265,49 +292,82 @@ func adjustedScrollTop(current, cursorRow, totalRows, height int) int {
 }
 
 func (m commandModeModel) renderView(query QueryContext) string {
-	sections := make([]string, 0, 4)
+	// Update editor height based on current content (local copy for rendering)
+	logicalLines := len(strings.Split(m.editor.Value(), "\n"))
+	if logicalLines < 1 {
+		logicalLines = 1
+	}
+	editorCap := max(1, m.innerHeight/maxEditorHeightRatio)
+	editorHeight := max(minimumEditorHeight, min(logicalLines, editorCap))
+	m.editor.SetHeight(editorHeight)
 
-	// REPL transcript — only show in non-split layouts to save vertical space
-	if query.Layout != LayoutSplit {
-		if transcript := m.renderReplTranscript(); transcript != "" {
-			sections = append(sections, transcript)
-		}
+	// Compute autocomplete dropdown (may be empty)
+	dropdown := m.renderAutocompleteDropdown(query)
+	dropdownLines := 0
+	if dropdown != "" {
+		dropdownLines = strings.Count(dropdown, "\n") + 1
 	}
 
-	// History search panel (if active)
-	if historySearch := renderHistorySearch(query); historySearch != "" {
-		sections = append(sections, historySearch)
-	}
-
-	// Slash wizard (if active)
-	if wizard := renderSlashWizard(query); wizard != "" {
-		sections = append(sections, wizard)
-	}
-
-	// Compute ghost text from top autocomplete suggestion
+	// Compute ghost text for the editor cursor line
 	ghost := m.ghostText(query)
 
+	// Render the editor view
 	var editorView string
 	if m.editor.Value() == "" && strings.TrimSpace(m.editor.Placeholder) != "" {
 		editorView = m.renderPlaceholderView()
 	} else {
 		wrappedLines, cursorRow, totalRows := m.renderedLines()
-		scrollTop := adjustedScrollTop(m.scrollTop, cursorRow, totalRows, m.editor.Height())
+		scrollTop := adjustedScrollTop(m.scrollTop, cursorRow, totalRows, editorHeight)
 		editorView = m.renderVisibleLines(wrappedLines, scrollTop, ghost)
 	}
-	sections = append(sections, editorView)
 
-	// Autocomplete suggestions dropdown (if active)
-	if dropdown := m.renderAutocompleteDropdown(query); dropdown != "" {
-		sections = append(sections, dropdown)
+	// When an overlay is active, hide the transcript and show the overlay instead.
+	historySearch := renderHistorySearch(query)
+	wizard := renderSlashWizard(query)
+	if historySearch != "" || wizard != "" {
+		sections := make([]string, 0, 4)
+		if historySearch != "" {
+			sections = append(sections, historySearch)
+		}
+		if wizard != "" {
+			sections = append(sections, wizard)
+		}
+		sections = append(sections, editorView)
+		if dropdown != "" {
+			sections = append(sections, dropdown)
+		}
+		return strings.Join(sections, "\n")
 	}
 
-	return strings.Join(sections, "\n\n")
+	// No overlay — show transcript above the editor.
+	transcriptH := max(0, m.innerHeight-editorHeight-dropdownLines)
+	allTranscriptLines := m.renderReplTranscriptLines()
+	totalTranscriptLines := len(allTranscriptLines)
+
+	// Clamp scroll offset so we never scroll past the top.
+	maxOffset := max(0, totalTranscriptLines-transcriptH)
+	fromBottom := min(m.transcriptFromBottom, maxOffset)
+	scrollTop := max(0, maxOffset-fromBottom)
+
+	visibleEnd := min(totalTranscriptLines, scrollTop+transcriptH)
+	var visibleTranscript []string
+	if scrollTop < visibleEnd {
+		visibleTranscript = allTranscriptLines[scrollTop:visibleEnd]
+	}
+
+	// Build final output: transcript lines, then editor, then dropdown.
+	parts := make([]string, 0, len(visibleTranscript)+2)
+	parts = append(parts, visibleTranscript...)
+	parts = append(parts, editorView)
+	if dropdown != "" {
+		parts = append(parts, dropdown)
+	}
+	return strings.Join(parts, "\n")
 }
 
-func (m commandModeModel) renderReplTranscript() string {
+func (m commandModeModel) renderReplTranscriptLines() []string {
 	if len(m.replTranscript) == 0 {
-		return ""
+		return nil
 	}
 	lines := make([]string, 0)
 	for _, entry := range m.replTranscript {
@@ -315,7 +375,6 @@ func (m commandModeModel) renderReplTranscript() string {
 		if prompt == "" {
 			prompt = "> "
 		}
-		// Show prompt + first line of SQL
 		sqlLines := strings.Split(strings.TrimRight(entry.SQL, "\n"), "\n")
 		for i, sl := range sqlLines {
 			if i == 0 {
@@ -331,7 +390,7 @@ func (m commandModeModel) renderReplTranscript() string {
 			}
 		}
 	}
-	return strings.Join(lines, "\n")
+	return lines
 }
 
 func (m commandModeModel) ghostText(query QueryContext) string {

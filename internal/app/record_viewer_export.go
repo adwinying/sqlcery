@@ -32,11 +32,6 @@ func (m *Model) handleRecordViewerWriteKey(msg tea.KeyPressMsg) bool {
 
 func (m *Model) updateRecordViewerWritePrompt(msg tea.KeyPressMsg) bool {
 	switch msg.String() {
-	case "esc":
-		m.viewer.pendingAction = recordViewerPendingActionNone
-		m.viewer.writeBuffer = ""
-		m.state.SetPendingIntent(IntentNone, "viewer-export", "Cancelled export.")
-		return true
 	case "enter":
 		command := strings.TrimSpace(m.viewer.writeBuffer)
 		m.viewer.pendingAction = recordViewerPendingActionNone
