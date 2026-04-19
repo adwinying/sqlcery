@@ -55,10 +55,23 @@ type historyIntentMsg struct{}
 
 type toggleHelpIntentMsg struct{}
 
+type toggleZoomIntentMsg struct{}
+
 type switchModeIntentMsg struct{}
 
 type switchLayoutIntentMsg struct {
 	Layout AppLayout
+}
+
+type PaneTarget string
+
+const (
+	PaneResults PaneTarget = "results"
+	PaneCommand PaneTarget = "command"
+)
+
+type focusPaneIntentMsg struct {
+	Pane PaneTarget
 }
 
 type clearInputIntentMsg struct{}
@@ -186,6 +199,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "ctrl+c":
+			// If in command mode with text, clear the input; otherwise quit
+			if m.state.App.Current == StateReady && m.command.Focused() && strings.TrimSpace(m.command.Value()) != "" {
+				return m, func() tea.Msg { return clearInputIntentMsg{} }
+			}
 			return m, tea.Quit
 		case "q":
 			if !m.command.Focused() {
@@ -364,6 +381,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case switchLayoutIntentMsg:
 		m.syncCurrentSQL()
 		m.applyLayoutSwitch(msg.Layout)
+		return m, nil
+	case focusPaneIntentMsg:
+		m.syncCurrentSQL()
+		m.handleFocusPane(msg.Pane)
+		return m, nil
+	case toggleZoomIntentMsg:
+		m.syncCurrentSQL()
+		m.handleToggleZoom()
 		return m, nil
 	case startupCompleteMsg:
 		m.state.SetReady("")
@@ -673,12 +698,8 @@ func (m Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			return func() tea.Msg { return submitIntentMsg{} }
 		}
 		return nil
-	case key.Matches(msg, keys.LayoutSplit):
-		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutSplit} }
 	case key.Matches(msg, keys.LayoutCommandOnly):
 		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
-	case key.Matches(msg, keys.LayoutViewerOnly):
-		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutViewerOnly} }
 	case key.Matches(msg, keys.Submit):
 		return func() tea.Msg { return submitIntentMsg{} }
 	case key.Matches(msg, keys.NextSuggestion):
@@ -708,12 +729,14 @@ func (m Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return func() tea.Msg { return toggleHelpIntentMsg{} }
 	case key.Matches(msg, keys.SwitchMode):
 		return func() tea.Msg { return switchModeIntentMsg{} }
-	case msg.String() == "ctrl+1", msg.String() == "alt+1":
-		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutSplit} }
-	case msg.String() == "ctrl+2", msg.String() == "alt+2":
-		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutViewerOnly} }
+	case msg.String() == "ctrl+1":
+		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneResults} }
+	case msg.String() == "ctrl+2":
+		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneCommand} }
 	case msg.String() == "ctrl+3", msg.String() == "alt+3":
 		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
+	case msg.String() == "ctrl+z":
+		return func() tea.Msg { return toggleZoomIntentMsg{} }
 	default:
 		return nil
 	}
@@ -723,12 +746,14 @@ func (m Model) handleLayoutKey(msg tea.KeyMsg) tea.Cmd {
 	keys := m.command.KeyMap()
 
 	switch {
-	case key.Matches(msg, keys.LayoutSplit), msg.String() == "ctrl+1", msg.String() == "alt+1":
-		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutSplit} }
-	case key.Matches(msg, keys.LayoutViewerOnly), msg.String() == "ctrl+2", msg.String() == "alt+2":
-		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutViewerOnly} }
 	case key.Matches(msg, keys.LayoutCommandOnly), msg.String() == "ctrl+3", msg.String() == "alt+3":
 		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
+	case msg.String() == "ctrl+1":
+		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneResults} }
+	case msg.String() == "ctrl+2":
+		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneCommand} }
+	case msg.String() == "ctrl+z":
+		return func() tea.Msg { return toggleZoomIntentMsg{} }
 	default:
 		return nil
 	}
@@ -1497,6 +1522,74 @@ func (m *Model) applyLayoutSwitch(layout AppLayout) {
 	}
 }
 
+func (m *Model) handleFocusPane(pane PaneTarget) {
+	m.state.SetReady("")
+	m.state.SetPendingModeSwitch(nil)
+	switch pane {
+	case PaneResults:
+		m.closeHistorySearch()
+		switch m.state.Query.Layout {
+		case LayoutCommandOnly:
+			m.command.Blur()
+			m.state.SetLayout(LayoutSplit)
+			m.state.SetActiveMode(ModeRecordViewer)
+			m.state.SetPendingIntent(IntentNone, "focus-pane", "Switched to split layout with results pane focused.")
+		case LayoutViewerOnly:
+			m.state.SetActiveMode(ModeRecordViewer)
+			m.state.SetPendingIntent(IntentNone, "focus-pane", "Results pane is already focused.")
+		default: // LayoutSplit
+			m.command.Blur()
+			m.state.SetActiveMode(ModeRecordViewer)
+			m.state.SetPendingIntent(IntentNone, "focus-pane", "Focused results pane.")
+		}
+	case PaneCommand:
+		m.closeHistorySearch()
+		switch m.state.Query.Layout {
+		case LayoutViewerOnly:
+			m.command.Focus()
+			m.state.SetLayout(LayoutSplit)
+			m.state.SetActiveMode(ModeCommand)
+			m.state.SetPendingIntent(IntentNone, "focus-pane", "Switched to split layout with command pane focused.")
+		case LayoutCommandOnly:
+			m.command.Focus()
+			m.state.SetActiveMode(ModeCommand)
+			m.state.SetPendingIntent(IntentNone, "focus-pane", "Command pane is already focused.")
+		default: // LayoutSplit
+			m.command.Focus()
+			m.state.SetActiveMode(ModeCommand)
+			m.state.SetPendingIntent(IntentNone, "focus-pane", "Focused command pane.")
+		}
+	}
+}
+
+func (m *Model) handleToggleZoom() {
+	switch m.state.Query.Layout {
+	case LayoutSplit:
+		if m.state.Query.ActiveMode == ModeRecordViewer {
+			m.command.Blur()
+			m.state.SetLayout(LayoutViewerOnly)
+			m.state.SetActiveMode(ModeRecordViewer)
+			m.state.SetPendingIntent(IntentNone, "zoom", "Zoomed results pane.")
+		} else {
+			m.command.Focus()
+			m.state.SetLayout(LayoutCommandOnly)
+			m.state.SetActiveMode(ModeCommand)
+			m.state.SetPendingIntent(IntentNone, "zoom", "Zoomed command pane.")
+		}
+	case LayoutCommandOnly:
+		m.command.Blur()
+		m.state.SetLayout(LayoutSplit)
+		m.state.SetActiveMode(ModeCommand)
+		m.command.Focus()
+		m.state.SetPendingIntent(IntentNone, "zoom", "Returned to split layout.")
+	case LayoutViewerOnly:
+		m.state.SetLayout(LayoutSplit)
+		m.state.SetActiveMode(ModeRecordViewer)
+		m.command.Blur()
+		m.state.SetPendingIntent(IntentNone, "zoom", "Returned to split layout.")
+	}
+}
+
 func renderHelpSurface(query QueryContext) string {
 	if !query.HelpVisible {
 		return ""
@@ -1513,8 +1606,8 @@ func renderHelpSurface(query QueryContext) string {
 	commandLines := []string{
 		"ctrl+g submit SQL or slash command",
 		"ctrl+r open history search",
-		"ctrl+y accept suggestion; alt+n/alt+p move suggestion",
-		"ctrl+x switch focus; ctrl+1/ctrl+2/ctrl+3 change layout",
+		"ctrl+y accept suggestion; alt+n/alt+p/ctrl+n/ctrl+p move suggestion",
+		"ctrl+x switch focus; ctrl+z zoom; ctrl+1 focus results; ctrl+2 focus command; ctrl+3 command layout",
 	}
 	if query.ActiveMode == ModeHistorySearch {
 		commandLines = append(commandLines, "history search: enter restore; ctrl+r older; alt+p newer; esc close")

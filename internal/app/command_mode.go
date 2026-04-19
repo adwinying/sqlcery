@@ -44,9 +44,7 @@ type commandModeKeyMap struct {
 	History           key.Binding
 	RestoreHistory    key.Binding
 	SwitchMode        key.Binding
-	LayoutSplit       key.Binding
 	LayoutCommandOnly key.Binding
-	LayoutViewerOnly  key.Binding
 	AcceptSuggestion  key.Binding
 	NextSuggestion    key.Binding
 	PrevSuggestion    key.Binding
@@ -72,12 +70,10 @@ func newCommandModeModel() commandModeModel {
 			History:           key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "history")),
 			RestoreHistory:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restore")),
 			SwitchMode:        key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "focus")),
-			LayoutSplit:       key.NewBinding(key.WithKeys("ctrl+1"), key.WithHelp("ctrl+1", "split")),
-			LayoutViewerOnly:  key.NewBinding(key.WithKeys("ctrl+2"), key.WithHelp("ctrl+2", "viewer")),
 			LayoutCommandOnly: key.NewBinding(key.WithKeys("ctrl+3"), key.WithHelp("ctrl+3", "command")),
 			AcceptSuggestion:  key.NewBinding(key.WithKeys("tab", "ctrl+y"), key.WithHelp("tab/ctrl+y", "accept")),
-			NextSuggestion:    key.NewBinding(key.WithKeys("alt+n"), key.WithHelp("alt+n", "next suggestion")),
-			PrevSuggestion:    key.NewBinding(key.WithKeys("alt+p"), key.WithHelp("alt+p", "prev suggestion")),
+			NextSuggestion:    key.NewBinding(key.WithKeys("alt+n", "ctrl+n"), key.WithHelp("alt+n/ctrl+n", "next suggestion")),
+			PrevSuggestion:    key.NewBinding(key.WithKeys("alt+p", "ctrl+p"), key.WithHelp("alt+p/ctrl+p", "prev suggestion")),
 		},
 	}
 }
@@ -195,7 +191,7 @@ func (m commandModeModel) Footer(connectionName, dialect string, query QueryCont
 	}
 
 	parts = append(parts, fmt.Sprintf("line %d col %d", m.editor.Line()+1, m.editor.LineInfo().ColumnOffset+1))
-	parts = append(parts, bindingSummary(m.keys.Submit), bindingSummary(m.keys.Cancel), bindingSummary(m.keys.Help), bindingSummary(m.keys.History), bindingSummary(m.keys.SwitchMode), bindingSummary(m.keys.LayoutSplit), bindingSummary(m.keys.LayoutCommandOnly), bindingSummary(m.keys.LayoutViewerOnly))
+	parts = append(parts, bindingSummary(m.keys.Submit), bindingSummary(m.keys.Cancel), bindingSummary(m.keys.Help), bindingSummary(m.keys.History), bindingSummary(m.keys.SwitchMode), bindingSummary(m.keys.LayoutCommandOnly))
 	if query.ActiveMode == ModeRecordViewer {
 		parts = append(parts, "ctrl+u prev page", "ctrl+d next page")
 	}
@@ -640,9 +636,9 @@ func (m commandModeModel) renderAutocompleteDropdown(query QueryContext) string 
 			line += " - " + detail
 		}
 		if i == selected {
-			lines = append(lines, appTheme.panelSelected.Render("> "+line))
+			lines = append(lines, appTheme.panelSelected.Render(line))
 		} else {
-			lines = append(lines, appTheme.panelText.Render("  "+line))
+			lines = append(lines, appTheme.panelText.Render(line))
 		}
 	}
 
@@ -653,7 +649,7 @@ func (m commandModeModel) renderAutocompleteDropdown(query QueryContext) string 
 			maxWidth = w
 		}
 	}
-	popupWidth := maxWidth + 2
+	popupWidth := maxWidth
 	editorWidth := m.editor.Width()
 	if popupWidth > editorWidth {
 		popupWidth = editorWidth
@@ -666,28 +662,23 @@ func (m commandModeModel) renderAutocompleteDropdown(query QueryContext) string 
 	promptWidth := ansi.StringWidth(m.editor.Prompt)
 	cursorCol := promptWidth + m.editor.LineInfo().ColumnOffset
 	indent := cursorCol
-	if indent+popupWidth+2 > editorWidth+promptWidth {
-		indent = max(0, editorWidth+promptWidth-popupWidth-2)
+	if indent+popupWidth > editorWidth+promptWidth {
+		indent = max(0, editorWidth+promptWidth-popupWidth)
 	}
 	indentStr := strings.Repeat(" ", indent)
 
-	borderStyle := appTheme.paneBorderActive
-	topLine := indentStr + borderStyle.Render("╭"+strings.Repeat("─", popupWidth)+"╮")
-	bottomLine := indentStr + borderStyle.Render("╰"+strings.Repeat("─", popupWidth)+"╯")
-
 	var builder strings.Builder
-	builder.WriteString(topLine)
-	for _, line := range lines {
+	for i, line := range lines {
+		if i > 0 {
+			builder.WriteByte('\n')
+		}
 		padding := popupWidth - ansi.StringWidth(line)
 		if padding < 0 {
 			padding = 0
 			line = ansi.Truncate(line, popupWidth, "")
 		}
-		builder.WriteByte('\n')
-		builder.WriteString(indentStr + borderStyle.Render("│") + line + strings.Repeat(" ", padding) + borderStyle.Render("│"))
+		builder.WriteString(indentStr + line + strings.Repeat(" ", padding))
 	}
-	builder.WriteByte('\n')
-	builder.WriteString(bottomLine)
 
 	return builder.String()
 }

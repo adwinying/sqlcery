@@ -1564,23 +1564,14 @@ func TestModelUpdateQQuitsWhenRecordViewerFocusedInSplitLayout(t *testing.T) {
 	}
 }
 
-func TestModelUpdateLayoutSwitchesToSplitAndKeepsHistorySearch(t *testing.T) {
+func TestModelUpdateFocusResultsPaneFromHistorySearchClosesHistorySearch(t *testing.T) {
 	model := NewModel(Session{}, nil)
 	model.state.SetReady("")
 	model.state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1"}})
 	next, _ := model.Update(historyIntentMsg{})
 	model = next.(Model)
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}, Alt: true})
-	if cmd == nil {
-		t.Fatal("Update(ctrl+1) cmd = nil, want layout intent command")
-	}
-	msg := cmd()
-	if got, ok := msg.(switchLayoutIntentMsg); !ok || got.Layout != LayoutSplit {
-		t.Fatalf("Update(ctrl+1) cmd() = %#v, want split layout intent", msg)
-	}
-
-	next, _ = next.(Model).Update(msg)
+	next, _ = model.Update(focusPaneIntentMsg{Pane: PaneResults})
 	model = next.(Model)
 	{
 		m, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -1590,15 +1581,11 @@ func TestModelUpdateLayoutSwitchesToSplitAndKeepsHistorySearch(t *testing.T) {
 	if got, want := model.state.Query.Layout, LayoutSplit; got != want {
 		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
 	}
-	if got, want := model.state.Query.ActiveMode, ModeHistorySearch; got != want {
+	if got, want := model.state.Query.ActiveMode, ModeRecordViewer; got != want {
 		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
 	}
-	view := model.View()
-	if !strings.Contains(view, "Reverse search:") {
-		t.Fatalf("View() = %q, want to contain %q", view, "Reverse search:")
-	}
-	if got, want := model.state.Query.Layout, LayoutSplit; got != want {
-		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+	if model.state.Query.HistorySearch != nil {
+		t.Fatalf("state.Query.HistorySearch = %#v, want nil", model.state.Query.HistorySearch)
 	}
 }
 
@@ -1609,11 +1596,8 @@ func TestModelUpdateLayoutSwitchesToViewerOnlyAndClosesHistorySearch(t *testing.
 	next, _ := model.Update(historyIntentMsg{})
 	model = next.(Model)
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}, Alt: true})
-	if cmd == nil {
-		t.Fatal("Update(ctrl+2) cmd = nil, want layout intent command")
-	}
-	next, _ = next.(Model).Update(cmd())
+	// Switch to viewer-only via the intent message (alt+1/alt+2 bindings have been removed)
+	next, _ = model.Update(switchLayoutIntentMsg{Layout: LayoutViewerOnly})
 	model = next.(Model)
 
 	if got, want := model.state.Query.Layout, LayoutViewerOnly; got != want {

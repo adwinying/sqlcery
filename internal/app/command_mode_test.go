@@ -360,7 +360,7 @@ func TestCommandModeFooterShowsRunningIndicator(t *testing.T) {
 		Running: &RunningQueryContext{Label: "SQL", Elapsed: 1500 * time.Millisecond},
 	})
 
-	for _, want := range []string{"Command mode", "layout command only", "connection local", "dialect sqlite", "alt+h help", "ctrl+1 split", "ctrl+3 command", "ctrl+2 viewer", "- SQL 1.5s", "esc cancel query"} {
+	for _, want := range []string{"Command mode", "layout command only", "connection local", "dialect sqlite", "alt+h help", "ctrl+3 command", "- SQL 1.5s", "esc cancel query"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
 		}
