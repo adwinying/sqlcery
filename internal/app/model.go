@@ -254,15 +254,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.SetPendingModeSwitch(nil)
 		if msg.Err != nil {
 			if status, ok := executionInterruptedStatus(running, msg.Err); ok {
+				m.command.AppendReplEntry("sqlcery> ", msg.Query, FormatTerminalError(msg.Err))
+				m.command.Clear()
 				m.state.SetReady(withHistoryWarning(status, historyErr))
 				m.state.SetLatestResultContext(nil)
 				return m, nil
 			}
+			m.command.AppendReplEntry("sqlcery> ", msg.Query, FormatTerminalError(msg.Err))
+			m.command.Clear()
 			m.state.SetReady(withHistoryWarning(formatOperationFailure("Execution failed.", msg.Err), historyErr))
 			m.state.SetLatestResultContext(nil)
 			return m, nil
 		}
 
+		m.command.AppendReplEntry("sqlcery> ", msg.Query, formatReplStatementOutput(msg.Result, nil))
+		m.command.Clear()
 		m.state.SetReady(withHistoryWarning(describeStatementStatus(msg.Result), historyErr))
 		m.state.SetLatestResultContext(buildLatestResultContext(msg.Query, m.resultOriginMode(), msg.Result))
 		return m, nil
@@ -281,6 +287,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.SetPendingModeSwitch(nil)
 		if msg.Err != nil {
 			m.state.SetSlashWizardContext(nil)
+			m.command.AppendReplEntry("sqlcery> ", msg.Command.RawInput, formatReplSlashOutput(msg))
+			m.command.Clear()
 			if status, ok := executionInterruptedStatus(running, msg.Err); ok {
 				m.state.SetReady(withHistoryWarning(status, historyErr))
 				m.state.SetLatestResultContext(nil)
@@ -300,6 +308,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.command.selectedSuggestion = 0
 			m.syncCurrentSQL()
 			m.state.SetLatestResultContext(nil)
+		} else {
+			// Not a replace — add to transcript and clear
+			m.command.AppendReplEntry("sqlcery> ", msg.Command.RawInput, formatReplSlashOutput(msg))
+			m.command.Clear()
 		}
 
 		if msg.Result.Statement != nil {
@@ -448,7 +460,8 @@ func (m Model) View() string {
 		}
 		content = strings.Join(lines, "\n")
 	case StateReady:
-		content = m.readyStateView(contentHeight)
+		// Simple REPL view — just the command mode view, no borders or panes
+		content = m.command.View(m.state.Query)
 	default:
 		content = m.command.View(m.state.Query)
 	}
@@ -466,34 +479,9 @@ func (m *Model) syncPaneSizes() {
 		contentHeight = 2
 	}
 
-	// Border chars: 1 left + 1 right = 2 cols, 1 top + 1 bottom = 2 rows
-	const borderCols = 2
-	const borderRows = 2
-
-	innerWidth := w - borderCols
-	if innerWidth < 1 {
-		innerWidth = 1
-	}
-
-	switch m.state.Query.Layout {
-	case LayoutSplit:
-		viewerOuterH := int(float64(contentHeight) * m.splitRatio)
-		if viewerOuterH < borderRows+1 {
-			viewerOuterH = borderRows + 1
-		}
-		commandOuterH := contentHeight - viewerOuterH
-		if commandOuterH < borderRows+1 {
-			commandOuterH = borderRows + 1
-		}
-		m.viewer.SetSize(innerWidth, viewerOuterH-borderRows)
-		m.command.SetSize(innerWidth, commandOuterH-borderRows)
-	case LayoutViewerOnly:
-		m.viewer.SetSize(innerWidth, contentHeight-borderRows)
-		m.command.SetSize(innerWidth, contentHeight-borderRows)
-	default: // LayoutCommandOnly
-		m.command.SetSize(innerWidth, contentHeight-borderRows)
-		m.viewer.SetSize(innerWidth, contentHeight-borderRows)
-	}
+	// REPL mode: full width, full content height for the command editor
+	m.command.SetSize(w, contentHeight)
+	m.viewer.SetSize(w, contentHeight)
 }
 
 // renderBorderedPane wraps content in a rounded border; active pane gets accent colour.
@@ -574,13 +562,14 @@ func (m Model) statusBarView() string {
 		parts = append(parts, fmt.Sprintf("[%s]", name))
 	}
 
-	// Delegate keybind hints to the active mode
+	// Status message
+	if status := strings.TrimSpace(m.state.Status); status != "" {
+		parts = append(parts, status)
+	}
+
+	// Keybind hints
 	if m.state.App.Current == StateReady {
-		if query.ActiveMode == ModeRecordViewer && !layoutShowsCommand(query.Layout) {
-			parts = append(parts, m.viewer.FooterHints(query))
-		} else {
-			parts = append(parts, m.command.FooterHints(query))
-		}
+		parts = append(parts, m.command.FooterHints(query))
 	} else {
 		parts = append(parts, "ctrl+c quit")
 	}
@@ -607,6 +596,15 @@ func (m Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	keys := m.command.KeyMap()
 
 	switch {
+	case msg.String() == "enter":
+		// Enter submits when statement is complete (ends with ;), otherwise
+		// falls through to textarea to insert a newline for multi-line SQL.
+		m.syncCurrentSQL()
+		currentSQL := m.command.Value()
+		if isCompleteSQLStatement(currentSQL) || isSlashCommandInput(currentSQL) {
+			return func() tea.Msg { return submitIntentMsg{} }
+		}
+		return nil
 	case key.Matches(msg, keys.LayoutSplit):
 		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutSplit} }
 	case key.Matches(msg, keys.LayoutCommandOnly):
@@ -1630,4 +1628,85 @@ func describeStatementStatus(result *db.StatementResult) string {
 	}
 
 	return "Statement executed successfully."
+}
+
+func isSlashCommandInput(input string) bool {
+	return strings.HasPrefix(strings.TrimSpace(input), "/")
+}
+
+func formatReplStatementOutput(result *db.StatementResult, err error) string {
+	if err != nil {
+		return FormatTerminalError(err)
+	}
+	if result == nil {
+		return "Statement executed successfully."
+	}
+	if result.Kind == db.StatementResultKindExec {
+		var parts []string
+		if result.RowsAffected != nil {
+			label := "rows"
+			if *result.RowsAffected == 1 {
+				label = "row"
+			}
+			parts = append(parts, fmt.Sprintf("%d %s affected", *result.RowsAffected, label))
+		} else {
+			parts = append(parts, "Statement executed successfully")
+		}
+		if result.LastInsertID != nil && *result.LastInsertID != 0 {
+			parts = append(parts, fmt.Sprintf("last insert id %d", *result.LastInsertID))
+		}
+		return strings.Join(parts, "\n")
+	}
+	if result.ResultSet == nil {
+		return "Statement executed successfully."
+	}
+	// Format as text table
+	rs := result.ResultSet
+	columns := make([]string, 0, len(rs.Columns))
+	widths := make([]int, 0, len(rs.Columns))
+	for _, column := range rs.Columns {
+		name := strings.TrimSpace(column.Name)
+		if name == "" {
+			name = fmt.Sprintf("column_%d", len(columns)+1)
+		}
+		columns = append(columns, name)
+		widths = append(widths, runeWidth(name))
+	}
+	for _, row := range rs.Rows {
+		for i, value := range row.Values {
+			formatted := formatInlineResultValue(value)
+			if runeWidth(formatted) > widths[i] {
+				widths[i] = runeWidth(formatted)
+			}
+		}
+	}
+	lines := []string{renderInlineResultLine(columns, widths), renderInlineSeparator(widths)}
+	for _, row := range rs.Rows {
+		values := make([]string, len(row.Values))
+		for i, value := range row.Values {
+			values[i] = formatInlineResultValue(value)
+		}
+		lines = append(lines, renderInlineResultLine(values, widths))
+	}
+	if len(rs.Rows) == 0 {
+		lines = append(lines, "(no rows)")
+	}
+	rowCount := len(rs.Rows)
+	if rowCount == 1 {
+		lines = append(lines, "1 row.")
+	} else {
+		lines = append(lines, fmt.Sprintf("%d rows.", rowCount))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatReplSlashOutput(msg slashCommandExecutedMsg) string {
+	if msg.Err != nil {
+		return FormatTerminalError(msg.Err)
+	}
+	if msg.Result.Statement != nil {
+		return formatReplStatementOutput(msg.Result.Statement, nil)
+	}
+	status := defaultStatus(msg.Result.Status, fmt.Sprintf("%s completed.", msg.Command.DisplayName))
+	return status
 }

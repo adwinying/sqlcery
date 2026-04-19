@@ -46,6 +46,7 @@ type sqlSyntaxHighlighter struct {
 	placeholderStyle      lipgloss.Style
 	cursorLineStyle       lipgloss.Style
 	cursorStyle           lipgloss.Style
+	ghostTextStyle        lipgloss.Style
 }
 
 type renderedEditorLine struct {
@@ -71,6 +72,7 @@ func newSQLSyntaxHighlighter() sqlSyntaxHighlighter {
 		placeholderStyle:      appTheme.placeholderStyle,
 		cursorLineStyle:       appTheme.cursorLineStyle,
 		cursorStyle:           appTheme.cursorStyle,
+		ghostTextStyle:        appTheme.ghostTextStyle,
 	}
 }
 
@@ -138,6 +140,51 @@ func (h sqlSyntaxHighlighter) renderLineContent(line sqlStyledLine, cursorCol, w
 	paddingWidth := max(0, width-currentWidth)
 	if cursorCol == currentWidth && cursorRendered && paddingWidth > 0 {
 		paddingWidth--
+	}
+
+	if paddingWidth > 0 {
+		builder.WriteString(strings.Repeat(" ", paddingWidth))
+	}
+
+	return builder.String()
+}
+
+func (h sqlSyntaxHighlighter) renderLineContentWithGhost(line sqlStyledLine, cursorCol, width int, placeholder bool, ghostText string) string {
+	var builder strings.Builder
+	currentWidth := 0
+	cursorRendered := false
+
+	for _, sr := range line {
+		rendered := string(sr.rune)
+		runeWidth := max(1, rw.RuneWidth(sr.rune))
+
+		if cursorCol == currentWidth && !cursorRendered {
+			builder.WriteString(h.cursorStyle.Render(rendered))
+			cursorRendered = true
+		} else {
+			builder.WriteString(h.styleFor(sr.kind, placeholder).Render(rendered))
+		}
+
+		currentWidth += runeWidth
+	}
+
+	// Cursor at end of line
+	if cursorCol == currentWidth && !cursorRendered {
+		builder.WriteString(h.cursorStyle.Render(" "))
+		cursorRendered = true
+	}
+
+	// Ghost text appears right after the cursor when cursor is at end of line
+	if ghostText != "" && cursorCol >= 0 && cursorCol == len(line) {
+		builder.WriteString(h.ghostTextStyle.Render(ghostText))
+		currentWidth += len([]rune(ghostText))
+	}
+
+	paddingWidth := max(0, width-currentWidth)
+	if cursorCol == currentWidth-len([]rune(ghostText)) && cursorRendered && paddingWidth > 0 && ghostText == "" {
+		paddingWidth--
+	} else if cursorCol == len(line) && cursorRendered && ghostText == "" {
+		paddingWidth = max(0, width-currentWidth-1)
 	}
 
 	if paddingWidth > 0 {

@@ -54,7 +54,7 @@ type commandModeKeyMap struct {
 
 func newCommandModeModel() commandModeModel {
 	editor := textarea.New()
-	editor.Prompt = "> "
+	editor.Prompt = "sqlcery> "
 	editor.Placeholder = "Write SQL here"
 	editor.ShowLineNumbers = false
 	editor.SetWidth(defaultEditorWidth)
@@ -75,7 +75,7 @@ func newCommandModeModel() commandModeModel {
 			LayoutSplit:       key.NewBinding(key.WithKeys("ctrl+1"), key.WithHelp("ctrl+1", "split")),
 			LayoutViewerOnly:  key.NewBinding(key.WithKeys("ctrl+2"), key.WithHelp("ctrl+2", "viewer")),
 			LayoutCommandOnly: key.NewBinding(key.WithKeys("ctrl+3"), key.WithHelp("ctrl+3", "command")),
-			AcceptSuggestion:  key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("ctrl+y", "accept")),
+			AcceptSuggestion:  key.NewBinding(key.WithKeys("tab", "ctrl+y"), key.WithHelp("tab/ctrl+y", "accept")),
 			NextSuggestion:    key.NewBinding(key.WithKeys("alt+n"), key.WithHelp("alt+n", "next suggestion")),
 			PrevSuggestion:    key.NewBinding(key.WithKeys("alt+p"), key.WithHelp("alt+p", "prev suggestion")),
 		},
@@ -142,10 +142,8 @@ func (m commandModeModel) Value() string {
 }
 
 func (m *commandModeModel) SetSize(innerWidth, innerHeight int) {
-	// innerWidth and innerHeight are already the content dimensions (border excluded).
-	// Reserve fixed rows: autocomplete panel (autocompletePanelRows+1) + transcript margin
 	editorWidth := clampEditorSize(innerWidth, minimumEditorWidth)
-	editorHeight := clampEditorSize(innerHeight-autocompletePanelRows-1, minimumEditorHeight)
+	editorHeight := clampEditorSize(innerHeight, minimumEditorHeight)
 
 	m.editor.SetWidth(editorWidth)
 	m.editor.SetHeight(editorHeight)
@@ -163,23 +161,9 @@ func (m commandModeModel) View(query QueryContext) string {
 func (m commandModeModel) FooterHints(query QueryContext) string {
 	parts := []string{
 		fmt.Sprintf("line %d col %d", m.editor.Line()+1, m.editor.LineInfo().ColumnOffset+1),
-		bindingSummary(m.keys.Submit),
+		"enter submit",
 		bindingSummary(m.keys.Cancel),
-		bindingSummary(m.keys.Help),
 		bindingSummary(m.keys.History),
-		bindingSummary(m.keys.SwitchMode),
-		bindingSummary(m.keys.LayoutSplit),
-		bindingSummary(m.keys.LayoutCommandOnly),
-		bindingSummary(m.keys.LayoutViewerOnly),
-	}
-	if query.ActiveMode == ModeRecordViewer {
-		parts = append(parts, "ctrl+u prev page", "ctrl+d next page")
-	}
-	if query.ActiveMode == ModeHistorySearch {
-		parts = append(parts, bindingSummary(m.keys.RestoreHistory), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
-	}
-	if query.SlashWizard != nil {
-		parts = append(parts, "wizard /commands")
 	}
 	if running := formatRunningIndicator(query.Running); running != "" {
 		parts = append(parts, "esc cancel query")
@@ -289,24 +273,25 @@ func adjustedScrollTop(current, cursorRow, totalRows, height int) int {
 }
 
 func (m commandModeModel) renderView(query QueryContext) string {
-	sections := make([]string, 0, 6)
+	sections := make([]string, 0, 4)
 
-	if warning := renderGeneratedCommandWarning(m.editor.Value()); warning != "" {
-		sections = append(sections, warning)
+	// REPL transcript — show past commands and results above the editor
+	if transcript := m.renderReplTranscript(); transcript != "" {
+		sections = append(sections, transcript)
 	}
 
+	// History search panel (if active)
 	if historySearch := renderHistorySearch(query); historySearch != "" {
 		sections = append(sections, historySearch)
 	}
 
+	// Slash wizard (if active)
 	if wizard := renderSlashWizard(query); wizard != "" {
 		sections = append(sections, wizard)
 	}
 
-	// REPL transcript — show last few entries above the editor
-	if transcript := m.renderReplTranscript(); transcript != "" {
-		sections = append(sections, transcript)
-	}
+	// Compute ghost text from top autocomplete suggestion
+	ghost := m.ghostText(query)
 
 	var editorView string
 	if m.editor.Value() == "" && strings.TrimSpace(m.editor.Placeholder) != "" {
@@ -314,18 +299,9 @@ func (m commandModeModel) renderView(query QueryContext) string {
 	} else {
 		wrappedLines, cursorRow, totalRows := m.renderedLines()
 		scrollTop := adjustedScrollTop(m.scrollTop, cursorRow, totalRows, m.editor.Height())
-		editorView = m.renderVisibleLines(wrappedLines, scrollTop)
+		editorView = m.renderVisibleLines(wrappedLines, scrollTop, ghost)
 	}
 	sections = append(sections, editorView)
-
-	if inline := renderInlineResult(query); inline != "" {
-		sections = append(sections, inline)
-	}
-
-	// Autocomplete panel is always rendered (fixed height to prevent layout shift)
-	if query.ActiveMode != ModeHistorySearch {
-		sections = append(sections, m.renderAutocompletePanel(query))
-	}
 
 	return strings.Join(sections, "\n\n")
 }
@@ -357,6 +333,26 @@ func (m commandModeModel) renderReplTranscript() string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func (m commandModeModel) ghostText(query QueryContext) string {
+	suggestions := m.autocompleteItems(query)
+	if len(suggestions) == 0 {
+		return ""
+	}
+
+	selected := suggestions[m.selectedSuggestionIndex(len(suggestions))]
+	ctx := analyzeAutocompleteContext(m.editor.Value(), m.cursorOffset())
+	prefix := strings.ToLower(m.editor.Value()[ctx.ReplaceStart:ctx.ReplaceEnd])
+	insert := selected.InsertText
+	if len(insert) <= len(prefix) {
+		return ""
+	}
+	if !strings.HasPrefix(strings.ToLower(insert), prefix) {
+		return ""
+	}
+
+	return insert[len(prefix):]
 }
 
 func renderGeneratedCommandWarning(sql string) string {
@@ -391,7 +387,7 @@ func (m commandModeModel) renderPlaceholderView() string {
 		lines = append(lines, renderedEditorLine{logicalLine: len(lines), lineNumber: len(lines) + 1})
 	}
 
-	return m.renderVisibleLines(lines, 0)
+	return m.renderVisibleLines(lines, 0, "")
 }
 
 func (m commandModeModel) renderedLines() ([]renderedEditorLine, int, int) {
@@ -439,7 +435,7 @@ func (m commandModeModel) renderedLines() ([]renderedEditorLine, int, int) {
 	return wrappedLines, cursorVisualRow, len(wrappedLines)
 }
 
-func (m commandModeModel) renderVisibleLines(lines []renderedEditorLine, scrollTop int) string {
+func (m commandModeModel) renderVisibleLines(lines []renderedEditorLine, scrollTop int, ghostText string) string {
 	height := max(1, m.editor.Height())
 	if scrollTop < 0 {
 		scrollTop = 0
@@ -453,24 +449,28 @@ func (m commandModeModel) renderVisibleLines(lines []renderedEditorLine, scrollT
 		if i > 0 {
 			builder.WriteByte('\n')
 		}
-		builder.WriteString(m.renderLine(line))
+		lineGhost := ""
+		if line.isCursor {
+			lineGhost = ghostText
+		}
+		builder.WriteString(m.renderLine(line, lineGhost))
 	}
 
 	for len(visible) < height {
 		if builder.Len() > 0 {
 			builder.WriteByte('\n')
 		}
-		builder.WriteString(m.renderLine(renderedEditorLine{}))
+		builder.WriteString(m.renderLine(renderedEditorLine{}, ""))
 		visible = append(visible, renderedEditorLine{})
 	}
 
 	return builder.String()
 }
 
-func (m commandModeModel) renderLine(line renderedEditorLine) string {
+func (m commandModeModel) renderLine(line renderedEditorLine, ghostText string) string {
 	lineStyle := appTheme.panelText
 	lineNumberStyle := m.highlighter.lineNumberStyle
-	content := m.highlighter.renderLineContent(line.runes, line.cursorCol, m.editor.Width(), false)
+	content := m.highlighter.renderLineContentWithGhost(line.runes, line.cursorCol, m.editor.Width(), false, ghostText)
 
 	if line.isCursor {
 		lineStyle = m.highlighter.cursorLineStyle
@@ -478,7 +478,7 @@ func (m commandModeModel) renderLine(line renderedEditorLine) string {
 	}
 
 	if line.logicalLine == 0 && m.editor.Value() == "" && strings.TrimSpace(m.editor.Placeholder) != "" {
-		content = m.highlighter.renderLineContent(line.runes, line.cursorCol, m.editor.Width(), true)
+		content = m.highlighter.renderLineContentWithGhost(line.runes, line.cursorCol, m.editor.Width(), true, "")
 	}
 
 	prompt := m.highlighter.promptStyle.Render(m.editor.Prompt)

@@ -122,11 +122,9 @@ func TestModelViewIncludesSessionDetails(t *testing.T) {
 
 	for _, want := range []string{
 		"Write SQL here",
-		"ctrl+g submit",
+		"enter submit",
 		"esc clear/cancel",
 		"ctrl+r history",
-		"ctrl+x focus",
-		"ctrl+1 split",
 	} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
@@ -679,13 +677,10 @@ func TestModelUpdateSubmitExecutesSelectAndLimitsInlineRows(t *testing.T) {
 	}
 
 	view := model.View()
-	for _, want := range []string{"Results:", "id | name", "1  | one", "5  | five", "Showing first 5 of 6 rows."} {
+	for _, want := range []string{"id | name", "1  | one", "5  | five", "6  | six", "6 rows."} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
 		}
-	}
-	if strings.Contains(view, "6  | six") {
-		t.Fatalf("View() = %q, want inline result to omit 6th row", view)
 	}
 }
 
@@ -731,7 +726,7 @@ func TestModelUpdateSubmitExecutesNonSelectStatement(t *testing.T) {
 	}
 
 	view := model.View()
-	for _, want := range []string{"Results:", "2 rows affected"} {
+	for _, want := range []string{"2 rows affected"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
 		}
@@ -1112,7 +1107,8 @@ func TestModelUpdateModeSwitchPreservesLatestResultContext(t *testing.T) {
 	}
 
 	view := model.View()
-	for _, want := range []string{"Record viewer", "Rows: 6  Columns: 2", "id | name", "1  | one", "6  | six"} {
+	// In REPL mode, record viewer is not rendered in View(), but transcript shows query results
+	for _, want := range []string{"id | name", "1  | one", "6  | six"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
 		}
@@ -1178,17 +1174,16 @@ func TestModelViewRecordViewerShowsPaginatedRows(t *testing.T) {
 	})
 	model.state.SetViewerPage(1)
 
-	view := model.View()
-	for _, want := range []string{"Rows: 305  Columns: 1", "Page: 2/2  Showing rows 301-305", "page 2/2", "301", "305"} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("View() = %q, want to contain %q", view, want)
-		}
+	// In REPL mode, record viewer is not rendered in View();
+	// verify state instead.
+	if got, want := model.state.Query.ViewerPage, 1; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
 	}
-
-	for _, unwanted := range []string{"299", "300"} {
-		if strings.Contains(view, unwanted) {
-			t.Fatalf("View() = %q, want not to contain %q", view, unwanted)
-		}
+	if got, want := len(model.state.Query.LatestResult.PreservedResult.Rows), 305; got != want {
+		t.Fatalf("len(PreservedResult.Rows) = %d, want %d", got, want)
+	}
+	if got, want := len(model.state.Query.LatestResult.PreservedResult.Columns), 1; got != want {
+		t.Fatalf("len(PreservedResult.Columns) = %d, want %d", got, want)
 	}
 }
 
@@ -1437,11 +1432,10 @@ func TestModelUpdateSpaceTogglesSelectedRowsInRecordViewer(t *testing.T) {
 
 	next, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
-	view := model.View()
-	for _, want := range []string{"Selected: 1", "1 selected", "* 2"} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("View() = %q, want to contain %q", view, want)
-		}
+	// In REPL mode, record viewer is not rendered in View();
+	// verify selected row state instead.
+	if got, want := len(model.state.Query.LatestResult.SelectedRows), 1; got != want {
+		t.Fatalf("len(SelectedRows) = %d, want %d after view update", got, want)
 	}
 }
 
@@ -2008,8 +2002,10 @@ func TestModelUpdateDDComposesDeleteAndReturnsToCommandMode(t *testing.T) {
 	}
 	next, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
-	if got := model.View(); !strings.Contains(got, "Warning: generated DELETE statement. Review carefully before submitting.") {
-		t.Fatalf("View() = %q, want destructive warning", got)
+	// In REPL mode, the destructive warning is not rendered in View();
+	// verify the warning function still detects the DELETE statement.
+	if got := renderGeneratedCommandWarning(model.command.Value()); got == "" {
+		t.Fatal("renderGeneratedCommandWarning() = empty, want destructive warning for DELETE")
 	}
 }
 
@@ -2046,8 +2042,8 @@ func TestModelUpdateDDKeepsSplitLayoutWhenComposingDelete(t *testing.T) {
 	}
 	next2, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next2.(Model)
-	if got := model.View(); !strings.Contains(got, "Warning: generated DELETE statement. Review carefully before submitting.") {
-		t.Fatalf("View() = %q, want destructive warning", got)
+	if got := renderGeneratedCommandWarning(model.command.Value()); !strings.Contains(got, "Warning: generated DELETE statement. Review carefully before submitting.") {
+		t.Fatalf("renderGeneratedCommandWarning() = %q, want destructive warning", got)
 	}
 }
 
@@ -2241,11 +2237,14 @@ func TestModelViewRecordViewerShowsWritePrompt(t *testing.T) {
 	model = next.(Model)
 	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
 	model = next.(Model)
-	view := model.View()
-	for _, want := range []string{"Command: :", ":w [file] export", "enter save", "esc cancel"} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("View() = %q, want to contain %q", view, want)
-		}
+	if got, want := model.viewer.pendingAction, recordViewerPendingActionWrite; got != want {
+		t.Fatalf("viewer.pendingAction = %q, want %q", got, want)
+	}
+	if got, want := model.viewer.writeBuffer, ":"; got != want {
+		t.Fatalf("viewer.writeBuffer = %q, want %q", got, want)
+	}
+	if got := model.state.Status; !strings.Contains(got, "Type :w") {
+		t.Fatalf("state.Status = %q, want to contain export guidance", got)
 	}
 }
 
@@ -2268,7 +2267,7 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 	if got, want := model.state.Status, "Opened help for keybindings and slash commands."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
-	view := model.View()
+	view := renderHelpSurface(model.state.Query)
 	for _, want := range []string{
 		"Help:",
 		"alt+h toggle help",
@@ -2281,7 +2280,7 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 		"/select - compose a SELECT statement (/select <table>)",
 	} {
 		if !strings.Contains(view, want) {
-			t.Fatalf("View() = %q, want to contain %q", view, want)
+			t.Fatalf("renderHelpSurface() = %q, want to contain %q", view, want)
 		}
 	}
 
@@ -2322,14 +2321,14 @@ func TestModelToggleHelpShowsSplitAndWizardSpecificGuidance(t *testing.T) {
 	next, _ = model.Update(cmd())
 	model = next.(Model)
 
-	view := model.View()
+	view := renderHelpSurface(model.state.Query)
 	for _, want := range []string{
 		"slash wizard: ctrl+g confirm; alt+n/alt+p move; esc back or close",
 		"Record viewer [active]",
 		"Command line",
 	} {
 		if !strings.Contains(view, want) {
-			t.Fatalf("View() = %q, want to contain %q", view, want)
+			t.Fatalf("renderHelpSurface() = %q, want to contain %q", view, want)
 		}
 	}
 }
@@ -2349,14 +2348,14 @@ func TestModelToggleHelpShowsHistorySearchGuidance(t *testing.T) {
 	next, _ = model.Update(cmd())
 	model = next.(Model)
 
-	view := model.View()
+	view := renderHelpSurface(model.state.Query)
 	for _, want := range []string{
 		"History search:",
 		"type to filter recent commands; enter restore selected entry",
 		"ctrl+r or up select older match; alt+p or down select newer match",
 	} {
 		if !strings.Contains(view, want) {
-			t.Fatalf("View() = %q, want to contain %q", view, want)
+			t.Fatalf("renderHelpSurface() = %q, want to contain %q", view, want)
 		}
 	}
 }

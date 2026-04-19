@@ -46,6 +46,7 @@ type tuiTheme struct {
 	placeholderStyle      lipgloss.Style
 	cursorLineStyle       lipgloss.Style
 	cursorStyle           lipgloss.Style
+	ghostTextStyle        lipgloss.Style
 }
 
 func newTUITheme() tuiTheme {
@@ -107,5 +108,6 @@ func newTUITheme() tuiTheme {
 		placeholderStyle:      lipgloss.NewStyle().Foreground(mutedSoft).Italic(true),
 		cursorLineStyle:       lipgloss.NewStyle().Background(cursorLineBackground),
 		cursorStyle:           lipgloss.NewStyle().Reverse(true),
+		ghostTextStyle:        lipgloss.NewStyle().Foreground(mutedSoft).Italic(true),
 	}
 }

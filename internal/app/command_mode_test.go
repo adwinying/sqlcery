@@ -248,14 +248,14 @@ func TestCommandModeViewRendersAutocompletePanel(t *testing.T) {
 	mode.SetSize(80, 20)
 	mode.editor.SetValue("SELECT * FROM us")
 	mode.editor.CursorEnd()
-	view := mode.View(QueryContext{
+	query := QueryContext{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}}},
-	})
+	}
 
-	for _, want := range []string{"Suggestions:", "> [tbl] users - table"} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("View() = %q, want to contain %q", view, want)
-		}
+	// Ghost text should show completion for "users" after typing "us"
+	ghost := mode.ghostText(query)
+	if ghost != "ers" {
+		t.Fatalf("ghostText() = %q, want %q", ghost, "ers")
 	}
 }
 
@@ -301,9 +301,7 @@ func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 }
 
 func TestCommandModeViewRendersInlineSelectResult(t *testing.T) {
-	mode := newCommandModeModel()
-	mode.SetSize(80, 20)
-	view := mode.View(QueryContext{
+	query := QueryContext{
 		LatestResult: &LatestResultContext{
 			OriginMode:    ModeCommand,
 			StatementKind: db.StatementResultKindQuery,
@@ -318,11 +316,11 @@ func TestCommandModeViewRendersInlineSelectResult(t *testing.T) {
 				}},
 			},
 		},
-	})
-
+	}
+	result := renderInlineResult(query)
 	for _, want := range []string{"Results:", "id | name | created_at", "1  | Ada  | 2026-04-07T11:30:00Z", "1 row."} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("View() = %q, want to contain %q", view, want)
+		if !strings.Contains(result, want) {
+			t.Fatalf("renderInlineResult() = %q, want to contain %q", result, want)
 		}
 	}
 }
@@ -330,34 +328,27 @@ func TestCommandModeViewRendersInlineSelectResult(t *testing.T) {
 func TestCommandModeViewRendersInlineExecResult(t *testing.T) {
 	rowsAffected := int64(2)
 	lastInsertID := int64(9)
-	mode := newCommandModeModel()
-	mode.SetSize(80, 20)
-	view := mode.View(QueryContext{
+	query := QueryContext{
 		LatestResult: &LatestResultContext{
 			OriginMode:    ModeCommand,
 			StatementKind: db.StatementResultKindExec,
 			RowsAffected:  &rowsAffected,
 			LastInsertID:  &lastInsertID,
 		},
-	})
-
+	}
+	result := renderInlineResult(query)
 	for _, want := range []string{"Results:", "2 rows affected", "last insert id 9"} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("View() = %q, want to contain %q", view, want)
+		if !strings.Contains(result, want) {
+			t.Fatalf("renderInlineResult() = %q, want to contain %q", result, want)
 		}
 	}
 }
 
 func TestCommandModeViewShowsWarningForDestructiveGeneratedCommands(t *testing.T) {
-	mode := newCommandModeModel()
-	mode.SetSize(80, 20)
-	mode.editor.SetValue("DELETE FROM \"users\"\nWHERE\n  \"id\" = 7;")
-	mode.editor.CursorEnd()
-
-	view := mode.View(QueryContext{})
-
-	if !strings.Contains(view, "Warning: generated DELETE statement. Review carefully before submitting.") {
-		t.Fatalf("View() = %q, want destructive warning", view)
+	sql := "DELETE FROM \"users\"\nWHERE\n  \"id\" = 7;"
+	warning := renderGeneratedCommandWarning(sql)
+	if !strings.Contains(warning, "Warning: generated DELETE statement. Review carefully before submitting.") {
+		t.Fatalf("renderGeneratedCommandWarning() = %q, want destructive warning", warning)
 	}
 }
 

@@ -426,7 +426,7 @@ func TestModelSubmitDispatchesSlashTablesWithoutRunningRawSQL(t *testing.T) {
 	}
 
 	view := model.View()
-	for _, want := range []string{"Results:", "schema", "name", "type", "widgets", "table"} {
+	for _, want := range []string{"schema", "name", "type", "widgets", "table"} {
 		if !containsLine(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
 		}
