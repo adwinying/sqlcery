@@ -6,10 +6,10 @@ import (
 	"strings"
 
 	"github.com/adwinying/sqlcery/internal/export"
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
-func (m *Model) handleRecordViewerWriteKey(msg tea.KeyMsg) bool {
+func (m *Model) handleRecordViewerWriteKey(msg tea.KeyPressMsg) bool {
 	if m.state.Query.ActiveMode != ModeRecordViewer {
 		m.viewer.pendingAction = recordViewerPendingActionNone
 		m.viewer.writeBuffer = ""
@@ -20,7 +20,7 @@ func (m *Model) handleRecordViewerWriteKey(msg tea.KeyMsg) bool {
 		return m.updateRecordViewerWritePrompt(msg)
 	}
 
-	if msg.Type == tea.KeyRunes && !msg.Alt && string(msg.Runes) == ":" {
+	if msg.String() == ":" {
 		m.viewer.pendingAction = recordViewerPendingActionWrite
 		m.viewer.writeBuffer = ":"
 		m.state.SetPendingIntent(IntentNone, "viewer-export", "Type :w [filename] to export selected rows or the current result rows.")
@@ -30,31 +30,31 @@ func (m *Model) handleRecordViewerWriteKey(msg tea.KeyMsg) bool {
 	return false
 }
 
-func (m *Model) updateRecordViewerWritePrompt(msg tea.KeyMsg) bool {
-	switch msg.Type {
-	case tea.KeyEsc:
+func (m *Model) updateRecordViewerWritePrompt(msg tea.KeyPressMsg) bool {
+	switch msg.String() {
+	case "esc":
 		m.viewer.pendingAction = recordViewerPendingActionNone
 		m.viewer.writeBuffer = ""
 		m.state.SetPendingIntent(IntentNone, "viewer-export", "Cancelled export.")
 		return true
-	case tea.KeyEnter:
+	case "enter":
 		command := strings.TrimSpace(m.viewer.writeBuffer)
 		m.viewer.pendingAction = recordViewerPendingActionNone
 		m.viewer.writeBuffer = ""
 		return m.writeRecordViewerExport(command)
-	case tea.KeyBackspace, tea.KeyDelete:
+	case "backspace", "delete":
 		if len(m.viewer.writeBuffer) > 0 {
 			runes := []rune(m.viewer.writeBuffer)
 			m.viewer.writeBuffer = string(runes[:len(runes)-1])
 		}
 		return true
-	case tea.KeyRunes:
-		if msg.Alt {
-			return false
-		}
-		m.viewer.writeBuffer += string(msg.Runes)
-		return true
 	default:
+		if len(msg.Text) > 0 {
+			if msg.Mod.Contains(tea.ModAlt) {
+				return false
+			}
+			m.viewer.writeBuffer += msg.Text
+		}
 		return true
 	}
 }

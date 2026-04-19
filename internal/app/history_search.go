@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 )
 
 const historySearchPreviewRows = 4
@@ -105,7 +105,7 @@ func (m *Model) syncHistorySearchSelection() {
 	m.state.SetSelectedHistoryEntry(&matches[search.SelectedIndex])
 }
 
-func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) tea.Cmd {
+func (m *Model) handleHistorySearchKey(msg tea.KeyPressMsg) tea.Cmd {
 	keys := m.command.KeyMap()
 
 	switch {
@@ -119,13 +119,13 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, keys.Cancel):
 		m.closeHistorySearch()
 		return nil
-	case key.Matches(msg, keys.History), key.Matches(msg, keys.NextSuggestion), msg.Type == tea.KeyUp:
+	case key.Matches(msg, keys.History), key.Matches(msg, keys.NextSuggestion), msg.String() == "up":
 		m.cycleHistorySearch(1)
 		return nil
-	case key.Matches(msg, keys.PrevSuggestion), msg.Type == tea.KeyDown:
+	case key.Matches(msg, keys.PrevSuggestion), msg.String() == "down":
 		m.cycleHistorySearch(-1)
 		return nil
-	case msg.Type == tea.KeyBackspace || msg.Type == tea.KeyCtrlH || msg.Type == tea.KeyDelete:
+	case msg.String() == "backspace" || msg.String() == "ctrl+h" || msg.String() == "delete":
 		search := m.state.Query.HistorySearch
 		if search == nil {
 			m.openHistorySearch()
@@ -133,7 +133,7 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		m.updateHistorySearchQuery(trimLastRune(search.Query))
 		return nil
-	case msg.Type == tea.KeySpace:
+	case msg.String() == "space":
 		search := m.state.Query.HistorySearch
 		if search == nil {
 			m.openHistorySearch()
@@ -141,13 +141,13 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		m.updateHistorySearchQuery(search.Query + " ")
 		return nil
-	case msg.Type == tea.KeyRunes && !msg.Alt:
+	case len(msg.Text) > 0 && !msg.Mod.Contains(tea.ModAlt):
 		search := m.state.Query.HistorySearch
 		if search == nil {
 			m.openHistorySearch()
 			search = m.state.Query.HistorySearch
 		}
-		m.updateHistorySearchQuery(search.Query + string(msg.Runes))
+		m.updateHistorySearchQuery(search.Query + msg.Text)
 		return nil
 	default:
 		return nil

@@ -11,7 +11,7 @@ import (
 
 	"github.com/adwinying/sqlcery/internal/db"
 	apphistory "github.com/adwinying/sqlcery/internal/history"
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestParseSlashCommandParsesQuotedArgs(t *testing.T) {
@@ -425,7 +425,7 @@ func TestModelSubmitDispatchesSlashTablesWithoutRunningRawSQL(t *testing.T) {
 		t.Fatalf("state.Query.SessionHistory[0].ConnectionName = %q, want %q", got, want)
 	}
 
-	view := model.View()
+	view := model.View().Content
 	for _, want := range []string{"schema", "name", "type", "widgets", "table"} {
 		if !containsLine(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
@@ -563,7 +563,7 @@ func TestModelSubmitCommandsOpensWizard(t *testing.T) {
 	if got, want := model.state.Status, "Opened the slash command wizard. Choose a command and press ctrl+g."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
-	view := model.View()
+	view := model.View().Content
 	for _, want := range []string{"Command wizard:", "Step 1/2: choose a slash command", "> /tables - list tables in the current database", "ctrl+g confirm | alt+n next | alt+p prev | esc close"} {
 		if !containsLine(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
@@ -706,7 +706,7 @@ func TestModelSubmitCommandsWizardAdvancesToTargetSelection(t *testing.T) {
 	if got, want := model.state.Status, "Choose a table for /select and press ctrl+g."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
-	view := model.View()
+	view := model.View().Content
 	for _, want := range []string{"Step 1/2 complete: /select", "Step 2/2: choose a table for /select", "> main.widgets", "esc back"} {
 		if !containsLine(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
@@ -729,7 +729,7 @@ func TestModelSlashWizardNavigationKeysMoveBackAndClose(t *testing.T) {
 		Targets: []SlashCommandWizardTarget{{Value: "users", Display: "users"}, {Value: "widgets", Display: "widgets"}},
 	})
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}, Alt: true})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModAlt})
 	if cmd == nil {
 		t.Fatal("Update(alt+n) cmd = nil, want move command")
 	}
@@ -740,7 +740,7 @@ func TestModelSlashWizardNavigationKeysMoveBackAndClose(t *testing.T) {
 		t.Fatalf("SelectedTarget = %d, want %d", got, want)
 	}
 
-	next, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	next, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	if cmd == nil {
 		t.Fatal("Update(esc) cmd = nil, want back command")
 	}
@@ -751,7 +751,7 @@ func TestModelSlashWizardNavigationKeysMoveBackAndClose(t *testing.T) {
 		t.Fatalf("state.Query.SlashWizard = %#v, want command step", model.state.Query.SlashWizard)
 	}
 
-	next, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	next, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	if cmd == nil {
 		t.Fatal("Update(esc) cmd = nil, want close command")
 	}

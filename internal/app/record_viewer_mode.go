@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/adwinying/sqlcery/internal/db"
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -153,7 +153,7 @@ func (m recordViewerModeModel) FooterHints(query QueryContext) string {
 	if m.pendingAction == recordViewerPendingActionWrite {
 		parts = append(parts, ":w [file] export", "enter save", "esc cancel")
 	}
-	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "ctrl+u prev page", "ctrl+d next page", "ctrl+x focus", "ctrl+1 split", "ctrl+2 viewer", "ctrl+3 command", "ctrl+c quit")
+	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "ctrl+u prev page", "ctrl+d next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit")
 	return strings.Join(parts, " | ")
 }
 
@@ -178,7 +178,7 @@ func (m recordViewerModeModel) Footer(connectionName, dialect string, query Quer
 	if m.pendingAction == recordViewerPendingActionWrite {
 		parts = append(parts, ":w [file] export", "enter save", "esc cancel")
 	}
-	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u prev page", "ctrl+d next page", "ctrl+x focus", "ctrl+1 split", "ctrl+2 viewer", "ctrl+3 command", "ctrl+c quit")
+	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u prev page", "ctrl+d next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit")
 	return appTheme.footer.Render(strings.Join(parts, " | "))
 }
 
@@ -225,7 +225,7 @@ func (m *recordViewerModeModel) preparePage(result *db.ResultSet, page int, show
 	return prepared
 }
 
-func (m *recordViewerModeModel) Navigate(msg tea.KeyMsg, query QueryContext) (int, bool) {
+func (m *recordViewerModeModel) Navigate(msg tea.KeyPressMsg, query QueryContext) (int, bool) {
 	deltaRow, deltaColumn, ok := recordViewerNavigationDelta(msg)
 	if !ok {
 		return query.ViewerPage, false
@@ -406,7 +406,7 @@ func recordViewerPageHeightHint(height int) int {
 	return height
 }
 
-func recordViewerNavigationDelta(msg tea.KeyMsg) (int, int, bool) {
+func recordViewerNavigationDelta(msg tea.KeyPressMsg) (int, int, bool) {
 	switch msg.String() {
 	case "up", "k":
 		return -1, 0, true

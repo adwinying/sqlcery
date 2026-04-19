@@ -4,8 +4,8 @@ import (
 	"database/sql"
 
 	"github.com/BurntSushi/toml"
-	bubbleshelp "github.com/charmbracelet/bubbles/help"
-	tea "github.com/charmbracelet/bubbletea"
+	bubbleshelp "charm.land/bubbles/v2/help"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 )
 

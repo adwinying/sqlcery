@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
@@ -157,7 +157,7 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m.state.App.Current != StateReady {
 			switch msg.String() {
 			case "ctrl+c":
@@ -440,7 +440,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) View() string {
+func (m Model) View() tea.View {
 	// Status bar always occupies the last line
 	statusBar := m.statusBarView()
 
@@ -491,7 +491,9 @@ func (m Model) View() string {
 		content = m.readyStateView(contentHeight)
 	}
 
-	return content + "\n" + statusBar
+	v := tea.NewView(content + "\n" + statusBar)
+	v.KeyboardEnhancements.ReportAllKeysAsEscapeCodes = true
+	return v
 }
 
 // syncPaneSizes computes inner pane dimensions and propagates them to sub-models.
@@ -685,7 +687,7 @@ func padOrTruncate(s string, width int) string {
 	return s + strings.Repeat(" ", width-len(runes))
 }
 
-func (m Model) handleKey(msg tea.KeyMsg) tea.Cmd {
+func (m Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	keys := m.command.KeyMap()
 
 	switch {
@@ -742,7 +744,7 @@ func (m Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	}
 }
 
-func (m Model) handleLayoutKey(msg tea.KeyMsg) tea.Cmd {
+func (m Model) handleLayoutKey(msg tea.KeyPressMsg) tea.Cmd {
 	keys := m.command.KeyMap()
 
 	switch {
@@ -759,7 +761,7 @@ func (m Model) handleLayoutKey(msg tea.KeyMsg) tea.Cmd {
 	}
 }
 
-func (m *Model) handleRecordViewerPagingKey(msg tea.KeyMsg) bool {
+func (m *Model) handleRecordViewerPagingKey(msg tea.KeyPressMsg) bool {
 	if msg.String() != "ctrl+u" && msg.String() != "ctrl+d" {
 		return false
 	}
@@ -796,7 +798,7 @@ func (m *Model) handleRecordViewerPagingKey(msg tea.KeyMsg) bool {
 	return true
 }
 
-func (m *Model) handleRecordViewerNavigationKey(msg tea.KeyMsg) bool {
+func (m *Model) handleRecordViewerNavigationKey(msg tea.KeyPressMsg) bool {
 	if m.state.Query.ActiveMode != ModeRecordViewer {
 		m.viewer.pendingAction = recordViewerPendingActionNone
 		return false
@@ -812,8 +814,8 @@ func (m *Model) handleRecordViewerNavigationKey(msg tea.KeyMsg) bool {
 	return true
 }
 
-func (m *Model) handleRecordViewerSelectionKey(msg tea.KeyMsg) bool {
-	if msg.Type != tea.KeySpace && msg.String() != " " {
+func (m *Model) handleRecordViewerSelectionKey(msg tea.KeyPressMsg) bool {
+	if msg.String() != "space" && msg.String() != " " {
 		return false
 	}
 	if m.state.Query.ActiveMode != ModeRecordViewer {
@@ -837,18 +839,18 @@ func (m *Model) handleRecordViewerSelectionKey(msg tea.KeyMsg) bool {
 	return true
 }
 
-func (m *Model) handleRecordViewerComposeKey(msg tea.KeyMsg) bool {
+func (m *Model) handleRecordViewerComposeKey(msg tea.KeyPressMsg) bool {
 	if m.state.Query.ActiveMode != ModeRecordViewer {
 		m.viewer.pendingAction = recordViewerPendingActionNone
 		return false
 	}
 
-	if msg.Type != tea.KeyRunes || msg.Alt || len(msg.Runes) != 1 {
+	if len(msg.Text) != 1 || msg.Mod.Contains(tea.ModAlt) {
 		m.viewer.pendingAction = recordViewerPendingActionNone
 		return false
 	}
 
-	switch msg.Runes[0] {
+	switch []rune(msg.Text)[0] {
 	case 'y':
 		if m.viewer.pendingAction != recordViewerPendingActionComposeInsert {
 			m.viewer.pendingAction = recordViewerPendingActionComposeInsert

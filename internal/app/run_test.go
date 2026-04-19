@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/adwinying/sqlcery/internal/config"
 	"github.com/adwinying/sqlcery/internal/db"
@@ -118,7 +118,7 @@ func TestModelViewIncludesSessionDetails(t *testing.T) {
 	model.state.SetReady("")
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
-	view := model.View()
+	view := model.View().Content
 
 	for _, want := range []string{
 		"enter submit",
@@ -254,12 +254,12 @@ func TestModelAutocompleteUsesCachedSchemaWhileTyping(t *testing.T) {
 		t.Fatalf("schema load calls = %d, want %d", got, want)
 	}
 
-	for _, keyMsg := range []tea.KeyMsg{
-		{Type: tea.KeyRunes, Runes: []rune{'S', 'E', 'L', 'E', 'C', 'T', ' '}},
-		{Type: tea.KeyRunes, Runes: []rune{'*'}},
-		{Type: tea.KeyRunes, Runes: []rune{' '}},
-		{Type: tea.KeyRunes, Runes: []rune{'F', 'R', 'O', 'M', ' '}},
-		{Type: tea.KeyRunes, Runes: []rune{'u', 's'}},
+	for _, keyMsg := range []tea.KeyPressMsg{
+		{Text: "SELECT "},
+		{Text: "*"},
+		{Text: " "},
+		{Text: "FROM "},
+		{Text: "us"},
 	} {
 		next, _ = model.Update(keyMsg)
 		model = next.(Model)
@@ -327,7 +327,7 @@ func TestModelInitTransitionsStartupToReady(t *testing.T) {
 }
 
 func TestModelViewRendersStartupState(t *testing.T) {
-	view := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, nil).View()
+	view := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, nil).View().Content
 
 	for _, want := range []string{
 		"[ startup ]",
@@ -353,7 +353,7 @@ func TestModelViewRendersReconnectState(t *testing.T) {
 	})
 	model = next.(Model)
 
-	view := model.View()
+	view := model.View().Content
 	for _, want := range []string{
 		"[ reconnect ]",
 		"Connection recovery in progress.",
@@ -373,7 +373,7 @@ func TestModelViewRendersErrorState(t *testing.T) {
 	next, _ := model.Update(appErrorMsg{Err: errors.New("dial tcp 127.0.0.1:5432: connect: connection refused"), Status: "Query failed."})
 	model = next.(Model)
 
-	view := model.View()
+	view := model.View().Content
 	for _, want := range []string{
 		"[ error ]",
 		"Query failed.",
@@ -407,7 +407,7 @@ func TestStatementExecutionFailureUsesFriendlyStatus(t *testing.T) {
 }
 
 func TestModelUpdateQuitsOnCtrlC(t *testing.T) {
-	next, cmd := NewModel(Session{}, nil).Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	next, cmd := NewModel(Session{}, nil).Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if _, ok := next.(Model); !ok {
 		t.Fatalf("Update() model type = %T, want %T", next, Model{})
 	}
@@ -425,7 +425,7 @@ func TestModelUpdateTypesIntoCommandMode(t *testing.T) {
 	initial := NewModel(Session{}, nil)
 	initial.state.SetReady("")
 
-	next, cmd := initial.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s', 'e', 'l', 'e', 'c', 't'}})
+	next, cmd := initial.Update(tea.KeyPressMsg{Text: "select"})
 	if cmd == nil {
 		t.Fatal("Update() cmd = nil, want cursor blink command")
 	}
@@ -439,9 +439,9 @@ func TestModelUpdateTypesIntoCommandMode(t *testing.T) {
 		t.Fatalf("editor.Value() = %q, want %q", got, want)
 	}
 
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = next.(Model)
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	next, _ = model.Update(tea.KeyPressMsg{Text: "1"})
 	model = next.(Model)
 
 	if got, want := model.command.editor.Value(), "select\n1"; got != want {
@@ -452,7 +452,7 @@ func TestModelUpdateTypesIntoCommandMode(t *testing.T) {
 func TestModelUpdateQTypesWhenEditorFocused(t *testing.T) {
 	model := NewModel(Session{}, nil)
 	model.state.SetReady("")
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	next, cmd := model.Update(tea.KeyPressMsg{Text: "q"})
 	if cmd == nil {
 		t.Fatal("Update() cmd = nil, want textarea command")
 	}
@@ -472,12 +472,12 @@ func TestModelUpdateSubmitSetsPendingIntent(t *testing.T) {
 	model.state.SetReady("")
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s', 'e', 'l', 'e', 'c', 't'}})
+	next, _ = model.Update(tea.KeyPressMsg{Text: "select"})
 	model = next.(Model)
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{';'}})
+	next, _ = model.Update(tea.KeyPressMsg{Text: ";"})
 	model = next.(Model)
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlG})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("Update() cmd = nil, want submit intent command")
 	}
@@ -512,7 +512,7 @@ func TestModelUpdateSubmitSetsPendingIntent(t *testing.T) {
 		t.Fatalf("state.Query.LastSubmittedSQL = %q, want %q", got, want)
 	}
 
-	view := model.View()
+	view := model.View().Content
 	_ = view // "esc cancel query" may be truncated at 120-char width; check state directly
 	if model.state.Query.Running == nil {
 		t.Fatal("state.Query.Running should still be set (pending)")
@@ -598,7 +598,7 @@ func TestModelUpdateRunningTickUpdatesElapsedAndFooter(t *testing.T) {
 		t.Fatalf("state.Query.Running.SpinnerFrame = %d, want %d", got, want)
 	}
 
-	view := model.View()
+	view := model.View().Content
 	if !strings.Contains(view, "\\ SQL 1.5s") {
 		t.Fatalf("View() = %q, want to contain %q", view, "\\ SQL 1.5s")
 	}
@@ -675,7 +675,7 @@ func TestModelUpdateSubmitExecutesSelectAndLimitsInlineRows(t *testing.T) {
 		t.Fatalf("state.Query.SessionHistory[0].SQL = %q, want %q", got, want)
 	}
 
-	view := model.View()
+	view := model.View().Content
 	for _, want := range []string{"id | name", "1  | one", "5  | five", "6  | six", "6 rows."} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
@@ -724,7 +724,7 @@ func TestModelUpdateSubmitExecutesNonSelectStatement(t *testing.T) {
 		t.Fatalf("latest.RowsAffected = %#v, want 2", model.state.Query.LatestResult.RowsAffected)
 	}
 
-	view := model.View()
+	view := model.View().Content
 	for _, want := range []string{"2 rows affected"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
@@ -735,10 +735,10 @@ func TestModelUpdateSubmitExecutesNonSelectStatement(t *testing.T) {
 func TestModelUpdateCancelClearsInput(t *testing.T) {
 	model := NewModel(Session{}, nil)
 	model.state.SetReady("")
-	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s', 'e', 'l', 'e', 'c', 't'}})
+	next, _ := model.Update(tea.KeyPressMsg{Text: "select"})
 	model = next.(Model)
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	if cmd == nil {
 		t.Fatal("Update() cmd = nil, want clear intent command")
 	}
@@ -773,7 +773,7 @@ func TestModelUpdateCancelWhileRunningRequestsCancellation(t *testing.T) {
 	model.state.SetReady("")
 	model.state.SetRunningQueryContext(&RunningQueryContext{Label: "SQL"})
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	if cmd == nil {
 		t.Fatal("Update() cmd = nil, want cancel intent command")
 	}
@@ -836,7 +836,7 @@ func TestModelUpdateHistorySetsPendingIntent(t *testing.T) {
 	model := NewModel(Session{}, nil)
 	model.state.SetReady("")
 	model.state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1"}, {SQL: "/tables"}})
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("Update() cmd = nil, want history intent command")
 	}
@@ -896,7 +896,7 @@ func TestModelUpdateHistorySearchFiltersAndCyclesEntries(t *testing.T) {
 	next, _ := model.Update(historyIntentMsg{})
 	model = next.(Model)
 
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s', 'u'}})
+	next, _ = model.Update(tea.KeyPressMsg{Text: "su"})
 	model = next.(Model)
 
 	if got, want := model.state.Query.HistorySearch.Query, "su"; got != want {
@@ -909,7 +909,7 @@ func TestModelUpdateHistorySearchFiltersAndCyclesEntries(t *testing.T) {
 		t.Fatalf("state.Query.SelectedHistoryEntry.SQL = %q, want %q", got, want)
 	}
 
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	next, _ = model.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
 	model = next.(Model)
 
 	if got, want := model.state.Query.SelectedHistoryEntry.SQL, "select * from users"; got != want {
@@ -928,7 +928,7 @@ func TestModelUpdateHistorySearchCancelReturnsToCommandMode(t *testing.T) {
 	next, _ := model.Update(historyIntentMsg{})
 	model = next.(Model)
 
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	model = next.(Model)
 
 	if got, want := model.state.Query.ActiveMode, ModeCommand; got != want {
@@ -956,10 +956,10 @@ func TestModelUpdateHistorySearchRestoreLoadsEditorAndClosesSearch(t *testing.T)
 	next, _ := model.Update(historyIntentMsg{})
 	model = next.(Model)
 
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s', 'u'}})
+	next, _ = model.Update(tea.KeyPressMsg{Text: "su"})
 	model = next.(Model)
 
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = next.(Model)
 
 	if got, want := model.command.editor.Value(), "select * from user_sessions"; got != want {
@@ -994,7 +994,7 @@ func TestModelUpdateHistorySearchRestoreLoadsEditorAndClosesSearch(t *testing.T)
 func TestModelUpdateModeSwitchSetsPendingIntent(t *testing.T) {
 	model := NewModel(Session{}, nil)
 	model.state.SetReady("")
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("Update() cmd = nil, want switch mode intent command")
 	}
@@ -1057,7 +1057,7 @@ func TestModelUpdateModeSwitchPreservesLatestResultContext(t *testing.T) {
 	next, _ = model.Update(firstCommandMessageForTest[statementExecutedMsg](t, cmd))
 	model = next.(Model)
 
-	next, cmd = model.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
+	next, cmd = model.Update(tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("Update(ctrl+x) cmd = nil, want switch mode intent command")
 	}
@@ -1091,7 +1091,7 @@ func TestModelUpdateModeSwitchPreservesLatestResultContext(t *testing.T) {
 		t.Fatalf("state.Query.PendingModeSwitch = %#v, want nil after switching", model.state.Query.PendingModeSwitch)
 	}
 
-	view := model.View()
+	view := model.View().Content
 	// In REPL mode, record viewer is not rendered in View(), but transcript shows query results
 	for _, want := range []string{"id | name", "1  | one", "6  | six"} {
 		if !strings.Contains(view, want) {
@@ -1185,7 +1185,7 @@ func TestModelUpdateCtrlDPagesForwardInViewerOnlyLayout(t *testing.T) {
 		},
 	})
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	model = next.(Model)
 
 	if cmd != nil {
@@ -1198,13 +1198,13 @@ func TestModelUpdateCtrlDPagesForwardInViewerOnlyLayout(t *testing.T) {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	next, _ = model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	model = next.(Model)
 	if got, want := model.state.Query.ViewerPage, 2; got != want {
 		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
 	}
 
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	next, _ = model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	model = next.(Model)
 	if got, want := model.state.Query.ViewerPage, 2; got != want {
 		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
@@ -1228,7 +1228,7 @@ func TestModelUpdateCtrlUPagesBackwardInViewerOnlyLayout(t *testing.T) {
 	})
 	model.state.SetViewerPage(2)
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	model = next.(Model)
 
 	if cmd != nil {
@@ -1241,13 +1241,13 @@ func TestModelUpdateCtrlUPagesBackwardInViewerOnlyLayout(t *testing.T) {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	next, _ = model.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	model = next.(Model)
 	if got, want := model.state.Query.ViewerPage, 0; got != want {
 		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
 	}
 
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	next, _ = model.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	model = next.(Model)
 	if got, want := model.state.Query.ViewerPage, 0; got != want {
 		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
@@ -1273,14 +1273,14 @@ func TestModelUpdateCtrlDPagesOnlyWhenViewerFocusedInSplitLayout(t *testing.T) {
 	model.command.editor.CursorEnd()
 	model.syncCurrentSQL()
 
-	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	next, _ := model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	model = next.(Model)
 	if got, want := model.state.Query.ViewerPage, 1; got != want {
 		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
 	}
 
 	model.state.SetActiveMode(ModeRecordViewer)
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	next, _ = model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	model = next.(Model)
 	if got, want := model.state.Query.ViewerPage, 2; got != want {
 		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
@@ -1305,7 +1305,7 @@ func TestModelUpdateCtrlDDoesNotPageDuringHistorySearch(t *testing.T) {
 	})
 	model.state.SetViewerPage(1)
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	model = next.(Model)
 
 	if cmd != nil {
@@ -1335,7 +1335,7 @@ func TestModelUpdateArrowKeysNavigateRecordViewerSelectionAcrossPages(t *testing
 		},
 	})
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRight})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 	model = next.(Model)
 	if cmd != nil {
 		t.Fatalf("Update(right) cmd = %#v, want nil", cmd)
@@ -1348,7 +1348,7 @@ func TestModelUpdateArrowKeysNavigateRecordViewerSelectionAcrossPages(t *testing
 	}
 
 	model.viewer.selectedRow = 299
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	model = next.(Model)
 	if got, want := model.viewer.selectedRow, 300; got != want {
 		t.Fatalf("viewer.selectedRow = %d, want %d", got, want)
@@ -1357,7 +1357,7 @@ func TestModelUpdateArrowKeysNavigateRecordViewerSelectionAcrossPages(t *testing
 		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
 	}
 
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	next, _ = model.Update(tea.KeyPressMsg{Text: "k"})
 	model = next.(Model)
 	if got, want := model.viewer.selectedRow, 299; got != want {
 		t.Fatalf("viewer.selectedRow = %d, want %d", got, want)
@@ -1383,7 +1383,7 @@ func TestModelUpdateSpaceTogglesSelectedRowsInRecordViewer(t *testing.T) {
 		},
 	})
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	model = next.(Model)
 	if cmd != nil {
 		t.Fatalf("Update(space) cmd = %#v, want nil", cmd)
@@ -1396,7 +1396,7 @@ func TestModelUpdateSpaceTogglesSelectedRowsInRecordViewer(t *testing.T) {
 	}
 
 	model.viewer.selectedRow = 1
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	model = next.(Model)
 	if got, want := model.state.Query.LatestResult.SelectedRows, []int{0, 1}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("SelectedRows = %#v, want %#v", got, want)
@@ -1406,7 +1406,7 @@ func TestModelUpdateSpaceTogglesSelectedRowsInRecordViewer(t *testing.T) {
 	}
 
 	model.viewer.selectedRow = 0
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	model = next.(Model)
 	if got, want := model.state.Query.LatestResult.SelectedRows, []int{1}; len(got) != len(want) || got[0] != want[0] {
 		t.Fatalf("SelectedRows = %#v, want %#v", got, want)
@@ -1437,7 +1437,7 @@ func TestModelUpdateSpaceIgnoredOutsideRecordViewer(t *testing.T) {
 		},
 	})
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeySpace})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	model = next.(Model)
 	if model.state.Query.LatestResult != nil && len(model.state.Query.LatestResult.SelectedRows) != 0 {
 		t.Fatalf("SelectedRows = %#v, want unchanged", model.state.Query.LatestResult.SelectedRows)
@@ -1462,7 +1462,7 @@ func TestModelUpdateNavigationIgnoredOutsideRecordViewer(t *testing.T) {
 		},
 	})
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	next, cmd := model.Update(tea.KeyPressMsg{Text: "l"})
 	model = next.(Model)
 
 	if got, want := model.state.Query.ViewerPage, 0; got != want {
@@ -1493,7 +1493,7 @@ func TestModelUpdateModeSwitchReturnsFromRecordViewerToCommandMode(t *testing.T)
 		},
 	})
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("Update(ctrl+x) cmd = nil, want switch mode intent command")
 	}
@@ -1520,8 +1520,8 @@ func TestModelUpdateModeSwitchReturnsFromRecordViewerToCommandMode(t *testing.T)
 	if !model.command.Focused() {
 		t.Fatal("command.Focused() = false, want editor focused after returning to command mode")
 	}
-	if strings.Contains(model.View(), "Record viewer") {
-		t.Fatalf("View() = %q, want command mode view", model.View())
+	if strings.Contains(model.View().Content, "Record viewer") {
+		t.Fatalf("View() = %q, want command mode view", model.View().Content)
 	}
 }
 
@@ -1540,7 +1540,7 @@ func TestModelUpdateQQuitsWhenRecordViewerFocusedInSplitLayout(t *testing.T) {
 	model.command.editor.CursorEnd()
 	model.syncCurrentSQL()
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("Update(ctrl+x) cmd = nil, want switch mode intent command")
 	}
@@ -1551,7 +1551,7 @@ func TestModelUpdateQQuitsWhenRecordViewerFocusedInSplitLayout(t *testing.T) {
 		t.Fatal("command.Focused() = true, want editor blurred while record viewer is focused")
 	}
 
-	next, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	next, cmd = model.Update(tea.KeyPressMsg{Text: "q"})
 	model = next.(Model)
 	if cmd == nil {
 		t.Fatal("Update(q) cmd = nil, want tea.Quit")
@@ -1630,7 +1630,7 @@ func TestModelUpdateLayoutSwitchesToCommandOnlyFromSplitViewerFocus(t *testing.T
 		},
 	})
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}, Alt: true})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: '3', Mod: tea.ModAlt})
 	if cmd == nil {
 		t.Fatal("Update(ctrl+3) cmd = nil, want layout intent command")
 	}
@@ -1657,7 +1657,7 @@ func TestModelUpdateCtrlXUsesSplitFocusWhenAlreadyInSplitLayout(t *testing.T) {
 		},
 	})
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("Update(ctrl+x) cmd = nil, want switch mode intent command")
 	}
@@ -1709,7 +1709,7 @@ func TestModelUpdateCCComposesUpdateAndReturnsToCommandMode(t *testing.T) {
 		},
 	})
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	next, cmd := model.Update(tea.KeyPressMsg{Text: "c"})
 	model = next.(Model)
 	if cmd != nil {
 		t.Fatalf("Update(first c) cmd = %#v, want nil", cmd)
@@ -1718,7 +1718,7 @@ func TestModelUpdateCCComposesUpdateAndReturnsToCommandMode(t *testing.T) {
 		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
 	}
 
-	next, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	next, cmd = model.Update(tea.KeyPressMsg{Text: "c"})
 	model = next.(Model)
 	if cmd != nil {
 		t.Fatalf("Update(second c) cmd = %#v, want nil", cmd)
@@ -1757,9 +1757,9 @@ func TestModelUpdateCCKeepsSplitLayoutWhenComposingUpdate(t *testing.T) {
 		},
 	})
 
-	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	next, _ := model.Update(tea.KeyPressMsg{Text: "c"})
 	model = next.(Model)
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	next, _ = model.Update(tea.KeyPressMsg{Text: "c"})
 	model = next.(Model)
 
 	if got, want := model.state.Query.Layout, LayoutSplit; got != want {
@@ -1789,9 +1789,9 @@ func TestModelUpdateCCReportsUnknownSource(t *testing.T) {
 		},
 	})
 
-	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	next, _ := model.Update(tea.KeyPressMsg{Text: "c"})
 	model = next.(Model)
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	next, _ = model.Update(tea.KeyPressMsg{Text: "c"})
 	model = next.(Model)
 
 	if got, want := model.state.Query.ActiveMode, ModeRecordViewer; got != want {
@@ -1817,7 +1817,7 @@ func TestModelUpdateYYComposesInsertAndReturnsToCommandMode(t *testing.T) {
 		},
 	})
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	next, cmd := model.Update(tea.KeyPressMsg{Text: "y"})
 	model = next.(Model)
 	if cmd != nil {
 		t.Fatalf("Update(first y) cmd = %#v, want nil", cmd)
@@ -1829,7 +1829,7 @@ func TestModelUpdateYYComposesInsertAndReturnsToCommandMode(t *testing.T) {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
-	next, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	next, cmd = model.Update(tea.KeyPressMsg{Text: "y"})
 	model = next.(Model)
 	if cmd != nil {
 		t.Fatalf("Update(second y) cmd = %#v, want nil", cmd)
@@ -1852,43 +1852,11 @@ func TestModelUpdateYYComposesInsertAndReturnsToCommandMode(t *testing.T) {
 	if got, want := model.state.Status, "Loaded INSERT for row 1 from main.widgets into command mode."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
-	if got := model.View(); strings.Contains(got, "Warning: generated DELETE statement. Review carefully before submitting.") {
+	if got := model.View().Content; strings.Contains(got, "Warning: generated DELETE statement. Review carefully before submitting.") {
 		t.Fatalf("View() = %q, want no destructive warning", got)
 	}
-}
 
-func TestModelUpdateYYKeepsSplitLayoutWhenComposingInsert(t *testing.T) {
-	model := NewModel(Session{}, nil)
-	model.state.SetReady("")
-	model.state.SetLayout(LayoutSplit)
-	model.state.SetActiveMode(ModeRecordViewer)
-	model.command.Blur()
-	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select name from widgets;",
-		PreservedResult: &db.ResultSet{
-			Columns: []db.ResultColumn{{Name: "name"}},
-			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindString, Value: "one"}}}},
-		},
-	})
-
-	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
-	model = next.(Model)
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
-	model = next.(Model)
-
-	if got, want := model.state.Query.Layout, LayoutSplit; got != want {
-		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
-	}
-	if got, want := model.state.Query.ActiveMode, ModeCommand; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
-	}
-	if got, want := model.state.Status, "Loaded INSERT for row 1 from widgets into command mode."; got != want {
-		t.Fatalf("state.Status = %q, want %q", got, want)
-	}
-	if got := model.command.Value(); !strings.Contains(got, "INSERT INTO \"widgets\"") || !strings.Contains(got, "'one'") {
-		t.Fatalf("command.Value() = %q, want generated INSERT", got)
-	}
-	if got := model.View(); strings.Contains(got, "Warning: generated DELETE statement. Review carefully before submitting.") {
+	if got := model.View().Content; strings.Contains(got, "Warning: generated DELETE statement. Review carefully before submitting.") {
 		t.Fatalf("View() = %q, want no destructive warning", got)
 	}
 }
@@ -1906,9 +1874,9 @@ func TestModelUpdateYYReportsUnknownSource(t *testing.T) {
 		},
 	})
 
-	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	next, _ := model.Update(tea.KeyPressMsg{Text: "y"})
 	model = next.(Model)
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	next, _ = model.Update(tea.KeyPressMsg{Text: "y"})
 	model = next.(Model)
 
 	if got, want := model.state.Query.ActiveMode, ModeRecordViewer; got != want {
@@ -1934,7 +1902,7 @@ func TestModelUpdateDDComposesDeleteAndReturnsToCommandMode(t *testing.T) {
 		},
 	})
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	next, cmd := model.Update(tea.KeyPressMsg{Text: "d"})
 	model = next.(Model)
 	if cmd != nil {
 		t.Fatalf("Update(first d) cmd = %#v, want nil", cmd)
@@ -1946,7 +1914,7 @@ func TestModelUpdateDDComposesDeleteAndReturnsToCommandMode(t *testing.T) {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
-	next, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	next, cmd = model.Update(tea.KeyPressMsg{Text: "d"})
 	model = next.(Model)
 	if cmd != nil {
 		t.Fatalf("Update(second d) cmd = %#v, want nil", cmd)
@@ -1992,9 +1960,9 @@ func TestModelUpdateDDKeepsSplitLayoutWhenComposingDelete(t *testing.T) {
 		},
 	})
 
-	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	next, _ := model.Update(tea.KeyPressMsg{Text: "d"})
 	model = next.(Model)
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	next, _ = model.Update(tea.KeyPressMsg{Text: "d"})
 	model = next.(Model)
 
 	if got, want := model.state.Query.Layout, LayoutSplit; got != want {
@@ -2029,9 +1997,9 @@ func TestModelUpdateDDReportsUnknownSource(t *testing.T) {
 		},
 	})
 
-	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	next, _ := model.Update(tea.KeyPressMsg{Text: "d"})
 	model = next.(Model)
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	next, _ = model.Update(tea.KeyPressMsg{Text: "d"})
 	model = next.(Model)
 
 	if got, want := model.state.Query.ActiveMode, ModeRecordViewer; got != want {
@@ -2064,12 +2032,12 @@ func TestModelUpdateRecordViewerWriteExportsSelectedRowsToCSV(t *testing.T) {
 		SelectedRows: []int{1},
 	})
 
-	for _, msg := range []tea.KeyMsg{
-		{Type: tea.KeyRunes, Runes: []rune{':'}},
-		{Type: tea.KeyRunes, Runes: []rune{'w'}},
-		{Type: tea.KeyRunes, Runes: []rune{' '}},
-		{Type: tea.KeyRunes, Runes: []rune{'e', 'x', 'p', 'o', 'r', 't', 's', '/', 's', 'e', 'l', 'e', 'c', 't', 'e', 'd', '.', 'c', 's', 'v'}},
-		{Type: tea.KeyEnter},
+	for _, msg := range []tea.KeyPressMsg{
+		{Text: ":"},
+		{Text: "w"},
+		{Text: " "},
+		{Text: "exports/selected.csv"},
+		{Code: tea.KeyEnter},
 	} {
 		next, _ := model.Update(msg)
 		model = next.(Model)
@@ -2109,11 +2077,11 @@ func TestModelUpdateRecordViewerWriteFallsBackToAllRowsAndSupportsJSONMarkdownTS
 	})
 
 	runWrite := func(model Model, command string) Model {
-		next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
+		next, _ := model.Update(tea.KeyPressMsg{Text: ":"})
 		model = next.(Model)
-		next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(command)})
+		next, _ = model.Update(tea.KeyPressMsg{Text: command})
 		model = next.(Model)
-		next, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 		return next.(Model)
 	}
 
@@ -2166,7 +2134,7 @@ func TestModelUpdateRecordViewerWriteValidatesCommandAndPathScope(t *testing.T) 
 		},
 	})
 
-	for _, msg := range []tea.KeyMsg{{Type: tea.KeyRunes, Runes: []rune{':'}}, {Type: tea.KeyEnter}} {
+	for _, msg := range []tea.KeyPressMsg{{Text: ":"}, {Code: tea.KeyEnter}} {
 		next, _ := model.Update(msg)
 		model = next.(Model)
 	}
@@ -2174,12 +2142,12 @@ func TestModelUpdateRecordViewerWriteValidatesCommandAndPathScope(t *testing.T) 
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
-	for _, msg := range []tea.KeyMsg{
-		{Type: tea.KeyRunes, Runes: []rune{':'}},
-		{Type: tea.KeyRunes, Runes: []rune{'w'}},
-		{Type: tea.KeyRunes, Runes: []rune{' '}},
-		{Type: tea.KeyRunes, Runes: []rune{'.', '.', '/', 'o', 'u', 't', '.', 'c', 's', 'v'}},
-		{Type: tea.KeyEnter},
+	for _, msg := range []tea.KeyPressMsg{
+		{Text: ":"},
+		{Text: "w"},
+		{Text: " "},
+		{Text: "../out.csv"},
+		{Code: tea.KeyEnter},
 	} {
 		next, _ := model.Update(msg)
 		model = next.(Model)
@@ -2204,7 +2172,7 @@ func TestModelViewRecordViewerShowsWritePrompt(t *testing.T) {
 
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
-	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
+	next, _ = model.Update(tea.KeyPressMsg{Text: ":"})
 	model = next.(Model)
 	if got, want := model.viewer.pendingAction, recordViewerPendingActionWrite; got != want {
 		t.Fatalf("viewer.pendingAction = %q, want %q", got, want)
@@ -2221,7 +2189,7 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 	model := NewModel(Session{}, nil)
 	model.state.SetReady("")
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}, Alt: true})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'h', Mod: tea.ModAlt})
 	if cmd == nil {
 		t.Fatal("Update(alt+h) cmd = nil, want toggle help intent")
 	}
@@ -2253,7 +2221,7 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 		}
 	}
 
-	next, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}, Alt: true})
+	next, cmd = model.Update(tea.KeyPressMsg{Code: 'h', Mod: tea.ModAlt})
 	if cmd == nil {
 		t.Fatal("Update(second alt+h) cmd = nil, want toggle help intent")
 	}
@@ -2285,7 +2253,7 @@ func TestModelToggleHelpShowsSplitAndWizardSpecificGuidance(t *testing.T) {
 		Targets: []SlashCommandWizardTarget{{Value: "widgets", Display: "widgets"}},
 	})
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}, Alt: true})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'h', Mod: tea.ModAlt})
 	model = next.(Model)
 	next, _ = model.Update(cmd())
 	model = next.(Model)
@@ -2309,7 +2277,7 @@ func TestModelToggleHelpShowsHistorySearchGuidance(t *testing.T) {
 	next, _ := model.Update(historyIntentMsg{})
 	model = next.(Model)
 
-	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}, Alt: true})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'h', Mod: tea.ModAlt})
 	if cmd == nil {
 		t.Fatal("Update(alt+h) cmd = nil, want toggle help intent")
 	}

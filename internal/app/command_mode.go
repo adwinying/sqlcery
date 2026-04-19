@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textarea"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textarea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/adwinying/sqlcery/internal/db"
@@ -83,7 +83,7 @@ func (m commandModeModel) Init() tea.Cmd {
 }
 
 func (m commandModeModel) Update(msg tea.Msg, query QueryContext) (commandModeModel, tea.Cmd) {
-	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		suggestions := m.autocompleteItems(query)
 		switch {
 		case key.Matches(keyMsg, m.keys.AcceptSuggestion):
@@ -541,7 +541,7 @@ func (m *commandModeModel) setCursorOffset(offset int) {
 	for m.editor.Line() < row {
 		m.editor.CursorDown()
 	}
-	m.editor.SetCursor(col)
+	m.editor.SetCursorColumn(col)
 }
 
 func rowColFromCursorOffset(lines []string, offset int) (int, int) {

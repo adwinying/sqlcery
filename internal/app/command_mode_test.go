@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/adwinying/sqlcery/internal/db"
 )
@@ -216,7 +216,7 @@ func TestCommandModeAcceptSuggestionReplacesPrefix(t *testing.T) {
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}}},
 	}
 
-	updated, _ := mode.Update(tea.KeyMsg{Type: tea.KeyCtrlY}, query)
+	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl}, query)
 
 	if got, want := updated.Value(), "SELECT * FROM users"; got != want {
 		t.Fatalf("Value() = %q, want %q", got, want)
@@ -232,12 +232,12 @@ func TestCommandModeSuggestionNavigationCyclesSelection(t *testing.T) {
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}, {Name: "orders"}}},
 	}
 
-	updated, _ := mode.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}, Alt: true}, query)
+	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModAlt}, query)
 	if got, want := updated.selectedSuggestion, 1; got != want {
 		t.Fatalf("selectedSuggestion = %d, want %d", got, want)
 	}
 
-	updated, _ = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}, Alt: true}, query)
+	updated, _ = updated.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModAlt}, query)
 	if got, want := updated.selectedSuggestion, 0; got != want {
 		t.Fatalf("selectedSuggestion = %d, want %d", got, want)
 	}

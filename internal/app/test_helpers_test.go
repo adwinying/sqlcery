@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 func collectCommandMessagesForTest(t *testing.T, cmd tea.Cmd) []tea.Msg {

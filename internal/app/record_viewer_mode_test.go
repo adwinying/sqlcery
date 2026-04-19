@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/adwinying/sqlcery/internal/db"
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -127,7 +127,7 @@ func TestRecordViewerModeFooterIncludesModeDetails(t *testing.T) {
 		Running:      &RunningQueryContext{Label: "/tables", Elapsed: 2*time.Second + 300*time.Millisecond},
 	})
 
-	for _, want := range []string{"Record viewer", "layout viewer only", "connection local", "dialect sqlite", "2 rows", "page 1/1", "1 selected", "- /tables 2.3s", "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u prev page", "ctrl+d next page", "ctrl+x focus", "ctrl+1 split", "ctrl+3 command", "ctrl+2 viewer", "ctrl+c quit"} {
+	for _, want := range []string{"Record viewer", "layout viewer only", "connection local", "dialect sqlite", "2 rows", "page 1/1", "1 selected", "- /tables 2.3s", "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u prev page", "ctrl+d next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
 		}
@@ -375,28 +375,28 @@ func TestRecordViewerModeNavigateSupportsArrowsAndHJKL(t *testing.T) {
 		},
 	}
 
-	if page, handled := mode.Navigate(tea.KeyMsg{Type: tea.KeyRight}, query); !handled || page != 0 {
+	if page, handled := mode.Navigate(tea.KeyPressMsg{Code: tea.KeyRight}, query); !handled || page != 0 {
 		t.Fatalf("Navigate(right) = (%d, %t), want (0, true)", page, handled)
 	}
 	if got, want := mode.selectedColumn, 1; got != want {
 		t.Fatalf("selectedColumn = %d, want %d", got, want)
 	}
 
-	if page, handled := mode.Navigate(tea.KeyMsg{Type: tea.KeyDown}, query); !handled || page != 0 {
+	if page, handled := mode.Navigate(tea.KeyPressMsg{Code: tea.KeyDown}, query); !handled || page != 0 {
 		t.Fatalf("Navigate(down) = (%d, %t), want (0, true)", page, handled)
 	}
 	if got, want := mode.selectedRow, 1; got != want {
 		t.Fatalf("selectedRow = %d, want %d", got, want)
 	}
 
-	if page, handled := mode.Navigate(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}}, query); !handled || page != 0 {
+	if page, handled := mode.Navigate(tea.KeyPressMsg{Text: "h"}, query); !handled || page != 0 {
 		t.Fatalf("Navigate(h) = (%d, %t), want (0, true)", page, handled)
 	}
 	if got, want := mode.selectedColumn, 0; got != want {
 		t.Fatalf("selectedColumn = %d, want %d", got, want)
 	}
 
-	if page, handled := mode.Navigate(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}, query); !handled || page != 0 {
+	if page, handled := mode.Navigate(tea.KeyPressMsg{Text: "k"}, query); !handled || page != 0 {
 		t.Fatalf("Navigate(k) = (%d, %t), want (0, true)", page, handled)
 	}
 	if got, want := mode.selectedRow, 0; got != want {
