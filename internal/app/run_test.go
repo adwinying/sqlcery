@@ -121,7 +121,6 @@ func TestModelViewIncludesSessionDetails(t *testing.T) {
 	view := model.View()
 
 	for _, want := range []string{
-		"Write SQL here",
 		"enter submit",
 		"esc clear/cancel",
 		"ctrl+r history",

@@ -367,27 +367,14 @@ func renderGeneratedCommandWarning(sql string) string {
 }
 
 func (m commandModeModel) renderPlaceholderView() string {
-	height := max(1, m.editor.Height())
-	lines := make([]renderedEditorLine, 0, height)
-	placeholder := []rune(m.editor.Placeholder)
-	firstLine := sqlStyledLine{}
-	for _, r := range placeholder {
-		firstLine = append(firstLine, sqlStyledRune{rune: r, kind: sqlTokenPlain})
-	}
-
-	lines = append(lines, renderedEditorLine{
+	line := renderedEditorLine{
 		logicalLine: 0,
 		lineNumber:  1,
-		runes:       firstLine,
+		runes:       sqlStyledLine{},
 		isCursor:    true,
 		cursorCol:   0,
-	})
-
-	for len(lines) < height {
-		lines = append(lines, renderedEditorLine{logicalLine: len(lines), lineNumber: len(lines) + 1})
 	}
-
-	return m.renderVisibleLines(lines, 0, "")
+	return m.renderLine(line, "")
 }
 
 func (m commandModeModel) renderedLines() ([]renderedEditorLine, int, int) {
@@ -454,14 +441,6 @@ func (m commandModeModel) renderVisibleLines(lines []renderedEditorLine, scrollT
 			lineGhost = ghostText
 		}
 		builder.WriteString(m.renderLine(line, lineGhost))
-	}
-
-	for len(visible) < height {
-		if builder.Len() > 0 {
-			builder.WriteByte('\n')
-		}
-		builder.WriteString(m.renderLine(renderedEditorLine{}, ""))
-		visible = append(visible, renderedEditorLine{})
 	}
 
 	return builder.String()
