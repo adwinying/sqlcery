@@ -731,9 +731,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return func() tea.Msg { return toggleHelpIntentMsg{} }
 	case key.Matches(msg, keys.SwitchMode):
 		return func() tea.Msg { return switchModeIntentMsg{} }
-	case msg.String() == "ctrl+1":
+	case msg.String() == "ctrl+q":
 		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneResults} }
-	case msg.String() == "ctrl+2":
+	case msg.String() == "ctrl+w":
 		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneCommand} }
 	case msg.String() == "ctrl+3", msg.String() == "alt+3":
 		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
@@ -750,9 +750,9 @@ func (m Model) handleLayoutKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, keys.LayoutCommandOnly), msg.String() == "ctrl+3", msg.String() == "alt+3":
 		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
-	case msg.String() == "ctrl+1":
+	case msg.String() == "ctrl+q":
 		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneResults} }
-	case msg.String() == "ctrl+2":
+	case msg.String() == "ctrl+w":
 		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneCommand} }
 	case msg.String() == "ctrl+z":
 		return func() tea.Msg { return toggleZoomIntentMsg{} }
@@ -1823,44 +1823,14 @@ func formatReplStatementOutput(result *db.StatementResult, err error) string {
 	if result.ResultSet == nil {
 		return "Statement executed successfully."
 	}
-	// Format as text table
-	rs := result.ResultSet
-	columns := make([]string, 0, len(rs.Columns))
-	widths := make([]int, 0, len(rs.Columns))
-	for _, column := range rs.Columns {
-		name := strings.TrimSpace(column.Name)
-		if name == "" {
-			name = fmt.Sprintf("column_%d", len(columns)+1)
-		}
-		columns = append(columns, name)
-		widths = append(widths, runeWidth(name))
+	rowCount := len(result.ResultSet.Rows)
+	if rowCount == 0 {
+		return "(no rows)"
 	}
-	for _, row := range rs.Rows {
-		for i, value := range row.Values {
-			formatted := formatInlineResultValue(value)
-			if runeWidth(formatted) > widths[i] {
-				widths[i] = runeWidth(formatted)
-			}
-		}
-	}
-	lines := []string{renderInlineResultLine(columns, widths), renderInlineSeparator(widths)}
-	for _, row := range rs.Rows {
-		values := make([]string, len(row.Values))
-		for i, value := range row.Values {
-			values[i] = formatInlineResultValue(value)
-		}
-		lines = append(lines, renderInlineResultLine(values, widths))
-	}
-	if len(rs.Rows) == 0 {
-		lines = append(lines, "(no rows)")
-	}
-	rowCount := len(rs.Rows)
 	if rowCount == 1 {
-		lines = append(lines, "1 row.")
-	} else {
-		lines = append(lines, fmt.Sprintf("%d rows.", rowCount))
+		return "1 row."
 	}
-	return strings.Join(lines, "\n")
+	return fmt.Sprintf("%d rows.", rowCount)
 }
 
 func formatReplSlashOutput(msg slashCommandExecutedMsg) string {
