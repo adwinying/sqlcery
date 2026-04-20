@@ -215,6 +215,16 @@ func normalizeResultValue(value any, column ResultColumn) ResultValue {
 	}
 }
 
+var timeLayouts = []string{
+	"2006-01-02 15:04:05.999999999 -0700 MST",
+	"2006-01-02 15:04:05.999999999 -0700",
+	"2006-01-02 15:04:05.999999999",
+	"2006-01-02 15:04:05",
+	time.RFC3339Nano,
+	time.RFC3339,
+	"2006-01-02",
+}
+
 func normalizeByteResultValue(value []byte, column ResultColumn) ResultValue {
 	copy := append([]byte(nil), value...)
 	if resultColumnLooksBinary(column) {
@@ -222,6 +232,14 @@ func normalizeByteResultValue(value []byte, column ResultColumn) ResultValue {
 	}
 	if !utf8.Valid(copy) {
 		return ResultValue{Kind: ValueKindBytes, Value: copy}
+	}
+	if resultColumnLooksTime(column) {
+		text := string(copy)
+		for _, layout := range timeLayouts {
+			if t, err := time.Parse(layout, text); err == nil {
+				return ResultValue{Kind: ValueKindTime, Value: t}
+			}
+		}
 	}
 	if !resultColumnLooksText(column) && !resultColumnLooksDecimal(column) {
 		return ResultValue{Kind: ValueKindBytes, Value: copy}
@@ -270,6 +288,10 @@ func resultColumnLooksText(column ResultColumn) bool {
 
 func resultColumnLooksDecimal(column ResultColumn) bool {
 	return resultColumnTypeMatches(column, "DECIMAL", "NUMERIC")
+}
+
+func resultColumnLooksTime(column ResultColumn) bool {
+	return resultColumnTypeMatches(column, "DATE", "TIME", "TIMESTAMP", "DATETIME")
 }
 
 func resultColumnTypeMatches(column ResultColumn, fragments ...string) bool {

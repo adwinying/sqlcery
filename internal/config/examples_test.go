@@ -17,7 +17,7 @@ func TestExampleConfigFilesDecodeAndValidate(t *testing.T) {
 	if err := appConfig.Validate(); err != nil {
 		t.Fatalf("Config.Validate() error = %v", err)
 	}
-	if got, want := appConfig.Connection, "analytics"; got != want {
+	if got, want := appConfig.Connection, "mypgsql"; got != want {
 		t.Fatalf("appConfig.Connection = %q, want %q", got, want)
 	}
 
@@ -39,7 +39,7 @@ func TestExampleConfigFilesDecodeAndValidate(t *testing.T) {
 		t.Fatalf("resolved.Connection.SSHHost = %q, want %q", got, want)
 	}
 
-	legacy := connections.Connection["legacy_mysql"]
+	legacy := connections.Connection["mysql"]
 	if got, want := legacy.Host, "127.0.0.1"; got != want {
 		t.Fatalf("legacy.Host = %q, want %q", got, want)
 	}

@@ -9,7 +9,7 @@
 # connection string.
 
 # Preferred: use a named connection defined in connections.toml.
-connection = "analytics"
+connection = "mypgsql"
 
 # Direct connection string examples:
 # connection = "postgres://app:secret@127.0.0.1:5432/warehouse"
