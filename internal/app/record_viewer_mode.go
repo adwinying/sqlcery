@@ -377,9 +377,6 @@ func prepareRecordViewerPage(result *db.ResultSet, page int, showSelectionMarker
 
 	for i, column := range columns {
 		prepared.Headers[i] = column.Header
-		if column.PrimaryKey {
-			prepared.Headers[i] = appTheme.primaryKeyHeader.Render(column.Header)
-		}
 		prepared.Widths[i] = ansi.StringWidth(column.Header)
 	}
 	if showSelectionMarker && len(prepared.Widths) > 0 {
@@ -393,11 +390,7 @@ func prepareRecordViewerPage(result *db.ResultSet, page int, showSelectionMarker
 			if i < len(row.Values) {
 				formatted = formatRecordViewerValue(row.Values[i])
 			}
-			if columns[i].PrimaryKey {
-				values[i] = appTheme.primaryKeyValue.Render(formatted)
-			} else {
-				values[i] = formatted
-			}
+			values[i] = formatted
 
 			widthValue := formatted
 			if showSelectionMarker && i == 0 {

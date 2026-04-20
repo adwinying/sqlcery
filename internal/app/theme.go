@@ -31,8 +31,6 @@ type tuiTheme struct {
 	viewerEmpty           lipgloss.Style
 	viewerEmptyLogo       lipgloss.Style
 	viewerEmptySubtitle   lipgloss.Style
-	primaryKeyHeader      lipgloss.Style
-	primaryKeyValue       lipgloss.Style
 	selectedRowMarker     lipgloss.Style
 	keywordStyle          lipgloss.Style
 	stringStyle           lipgloss.Style
@@ -92,8 +90,6 @@ func newTUITheme() tuiTheme {
 		viewerEmpty:           lipgloss.NewStyle().Foreground(muted).Italic(true),
 		viewerEmptyLogo:       lipgloss.NewStyle().Foreground(panelForeground).Bold(true),
 		viewerEmptySubtitle:   lipgloss.NewStyle().Foreground(muted).Italic(true),
-		primaryKeyHeader:      lipgloss.NewStyle().Foreground(accentWarm).Bold(true).Underline(true),
-		primaryKeyValue:       lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
 		selectedRowMarker:     lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
 		keywordStyle:          lipgloss.NewStyle().Foreground(accent).Bold(true),
 		stringStyle:           lipgloss.NewStyle().Foreground(success),
