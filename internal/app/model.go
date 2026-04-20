@@ -1242,7 +1242,7 @@ func executeStatementCmd(adapter *db.SQLAdapter, query string) func(context.Cont
 				return statementExecutedMsg{Query: query, ResultSummary: "error: adapter is required", Err: fmt.Errorf("adapter is required")}
 			}
 
-			result, err := adapter.ExecuteStatementContext(ctx, query, db.ResultOptions{})
+			result, err := adapter.ExecuteStatementContext(ctx, query, db.ResultOptions{Source: inferQuerySourceTable(query)})
 			return statementExecutedMsg{Query: query, Result: result, ResultSummary: summarizeStatementResult(result, err), Err: err}
 		}
 	}

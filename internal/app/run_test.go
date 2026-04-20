@@ -676,7 +676,7 @@ func TestModelUpdateSubmitExecutesSelectAndLimitsInlineRows(t *testing.T) {
 	}
 
 	view := model.View().Content
-	for _, want := range []string{"id | name", "1  | one", "5  | five", "6  | six", "6 rows."} {
+	for _, want := range []string{"[pk] id | name", "1       | one", "5       | five", "6       | six", "6 rows."} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
 		}
@@ -1093,7 +1093,7 @@ func TestModelUpdateModeSwitchPreservesLatestResultContext(t *testing.T) {
 
 	view := model.View().Content
 	// In REPL mode, record viewer is not rendered in View(), but transcript shows query results
-	for _, want := range []string{"id | name", "1  | one", "6  | six"} {
+	for _, want := range []string{"[pk] id | name", "1       | one", "6       | six"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
 		}
