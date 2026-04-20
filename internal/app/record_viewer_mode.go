@@ -342,12 +342,13 @@ func renderPreparedRecordViewerPage(prepared *recordViewerPreparedPage, width, h
 	for rowIndex := start; rowIndex < end; rowIndex++ {
 		absoluteRowIndex := prepared.Context.StartRow - 1 + rowIndex
 		values := append([]string(nil), prepared.Rows[rowIndex]...)
+		isActiveRow := state.Active.Active && state.Active.Row == absoluteRowIndex
 		for columnIndex := range values {
 			if columnIndex == 0 && rowIndexSelectedSet(state.SelectedRows, absoluteRowIndex) {
 				values[columnIndex] = appTheme.selectedRowMarker.Render("* ") + values[columnIndex]
 			}
-			if state.Active.Active && state.Active.Row == absoluteRowIndex && state.Active.Column == columnIndex {
-				values[columnIndex] = renderRecordViewerActiveCell(values[columnIndex])
+			if isActiveRow {
+				values[columnIndex] = renderRecordViewerActiveRowCell(values[columnIndex])
 			}
 		}
 		lines = append(lines, renderInlineResultLine(values, prepared.Widths))
@@ -469,8 +470,9 @@ func recordViewerNavigationDelta(msg tea.KeyPressMsg) (int, int, bool) {
 	}
 }
 
-func renderRecordViewerActiveCell(value string) string {
-	return "\x1b[7m" + appTheme.activeCell.Render(value) + "\x1b[0m"
+func renderRecordViewerActiveRowCell(value string) string {
+	// Use raw ANSI bold + foreground color 221 (accentWarm dark) to highlight the entire row via text color.
+	return "\x1b[1;38;5;221m" + value + "\x1b[0m"
 }
 
 func selectedRowSet(rows []int) map[int]struct{} {

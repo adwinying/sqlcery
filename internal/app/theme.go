@@ -34,7 +34,6 @@ type tuiTheme struct {
 	primaryKeyHeader      lipgloss.Style
 	primaryKeyValue       lipgloss.Style
 	selectedRowMarker     lipgloss.Style
-	activeCell            lipgloss.Style
 	keywordStyle          lipgloss.Style
 	stringStyle           lipgloss.Style
 	numberStyle           lipgloss.Style
@@ -64,8 +63,6 @@ func newTUITheme() tuiTheme {
 	footerBackground := lipgloss.AdaptiveColor{Light: "254", Dark: "236"}
 	selectedForeground := lipgloss.AdaptiveColor{Light: "17", Dark: "231"}
 	selectedBackground := lipgloss.AdaptiveColor{Light: "153", Dark: "24"}
-	activeCellForeground := lipgloss.AdaptiveColor{Light: "231", Dark: "255"}
-	activeCellBackground := lipgloss.AdaptiveColor{Light: "31", Dark: "31"}
 	cursorLineBackground := lipgloss.AdaptiveColor{Light: "255", Dark: "236"}
 
 	return tuiTheme{
@@ -98,7 +95,6 @@ func newTUITheme() tuiTheme {
 		primaryKeyHeader:      lipgloss.NewStyle().Foreground(accentWarm).Bold(true).Underline(true),
 		primaryKeyValue:       lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
 		selectedRowMarker:     lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
-		activeCell:            lipgloss.NewStyle().Foreground(activeCellForeground).Background(activeCellBackground).Bold(true).Reverse(true),
 		keywordStyle:          lipgloss.NewStyle().Foreground(accent).Bold(true),
 		stringStyle:           lipgloss.NewStyle().Foreground(success),
 		numberStyle:           lipgloss.NewStyle().Foreground(accentSoft),

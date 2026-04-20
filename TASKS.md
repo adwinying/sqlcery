@@ -7,3 +7,4 @@
 - [x] fix CJK characters not being displayed correctly in the results pane
 - [x] fix cursor position wrong in command pane when CJK full width characters are used
 - [x] ensure each row in result pane only uses one row; if a column is multi-line, truncate it and add "..." to the end
+- [x] whole rows should be highlighted when selected; hightlight should change the color of the text not apply background color
