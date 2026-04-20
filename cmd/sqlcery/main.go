@@ -23,7 +23,7 @@ func run(args []string, getwd func() (string, error)) error {
 	return runWithDependencies(args, getwd, runDependencies{
 		open: db.Open,
 		start: func(ctx context.Context, session app.Session, adapter *db.SQLAdapter) error {
-			history, err := apphistory.NewPersistentSession()
+			history, err := apphistory.NewPersistentSession(session.ConnectionName)
 			if err != nil {
 				return err
 			}

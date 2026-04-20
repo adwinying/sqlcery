@@ -16,6 +16,7 @@ const (
 	FileName             = "history.log"
 	maxHistoryLogSize    = 1 << 20
 	rotatedHistorySuffix = ".1"
+	maxLoadedEntries     = 1000
 )
 
 type Entry struct {
@@ -46,13 +47,100 @@ func NewFileBackedSession(path string) *Session {
 	return &Session{store: fileStore{path: path}}
 }
 
-func NewPersistentSession() (*Session, error) {
+func NewPersistentSession(connectionName string) (*Session, error) {
 	path, err := DefaultPath()
 	if err != nil {
 		return nil, err
 	}
 
-	return NewFileBackedSession(path), nil
+	entries, err := LoadFromFile(path, connectionName)
+	if err != nil {
+		return nil, err
+	}
+
+	session := NewFileBackedSession(path)
+	session.entries = entries
+	return session, nil
+}
+
+// LoadFromFile reads persisted history entries from path and path+".1" (if it
+// exists), filters to the given connectionName, deduplicates keeping the most
+// recent occurrence of each command, and returns at most maxLoadedEntries
+// entries in chronological order.
+func LoadFromFile(path string, connectionName string) ([]Entry, error) {
+	var all []Entry
+	// Read the older rotated file first so entries are in chronological order.
+	for _, p := range []string{path + rotatedHistorySuffix, path} {
+		entries, err := readHistoryFile(p)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return nil, fmt.Errorf("read history file %s: %w", p, err)
+		}
+		all = append(all, entries...)
+	}
+
+	// Filter to the requested connection.
+	filtered := make([]Entry, 0, len(all))
+	for _, e := range all {
+		if e.ConnectionName == connectionName {
+			filtered = append(filtered, e)
+		}
+	}
+
+	// Deduplicate: walk backwards so the first occurrence we encounter is the
+	// most recent; skip any command we have already seen.
+	seen := make(map[string]struct{}, len(filtered))
+	deduped := make([]Entry, 0, len(filtered))
+	for i := len(filtered) - 1; i >= 0; i-- {
+		cmd := filtered[i].Command
+		if _, ok := seen[cmd]; ok {
+			continue
+		}
+		seen[cmd] = struct{}{}
+		deduped = append(deduped, filtered[i])
+	}
+
+	// Restore chronological (oldest-first) order.
+	for i, j := 0, len(deduped)-1; i < j; i, j = i+1, j-1 {
+		deduped[i], deduped[j] = deduped[j], deduped[i]
+	}
+
+	// Cap to the most recent maxLoadedEntries entries.
+	if len(deduped) > maxLoadedEntries {
+		deduped = deduped[len(deduped)-maxLoadedEntries:]
+	}
+
+	return deduped, nil
+}
+
+// readHistoryFile reads all valid JSONL history entries from a single file.
+// Malformed lines are silently skipped.
+func readHistoryFile(path string) ([]Entry, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var entries []Entry
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var pe persistedEntry
+		if err := json.Unmarshal([]byte(line), &pe); err != nil {
+			continue // skip malformed lines
+		}
+		entries = append(entries, Entry{
+			Command:        pe.Command,
+			ConnectionName: pe.Connection,
+			ExecutedAt:     pe.Time,
+			ResultSummary:  pe.Result,
+		})
+	}
+	return entries, nil
 }
 
 func DefaultPath() (string, error) {

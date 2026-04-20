@@ -2,6 +2,7 @@ package history
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,6 +154,249 @@ func TestSessionAppendRotatesHistoryLogWhenItWouldGrowPastLimit(t *testing.T) {
 	}
 	if got, want := persisted.Command, "select 1"; got != want {
 		t.Fatalf("persisted.Command = %q, want %q", got, want)
+	}
+}
+
+// writeHistoryLines is a test helper that marshals entries as JSONL into path.
+func writeHistoryLines(t *testing.T, path string, entries []Entry) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	var lines []string
+	for _, e := range entries {
+		b, err := json.Marshal(newPersistedEntry(e))
+		if err != nil {
+			t.Fatalf("json.Marshal() error = %v", err)
+		}
+		lines = append(lines, string(b))
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+}
+
+func TestLoadFromFileNoFiles(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, DirName, FileName)
+
+	entries, err := LoadFromFile(path, "local")
+	if err != nil {
+		t.Fatalf("LoadFromFile() error = %v, want nil", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("LoadFromFile() len = %d, want 0", len(entries))
+	}
+}
+
+func TestLoadFromFileFiltersByConnection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, DirName, FileName)
+	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
+
+	writeHistoryLines(t, path, []Entry{
+		{Command: "select 1", ConnectionName: "local", ExecutedAt: stamp},
+		{Command: "select 2", ConnectionName: "remote", ExecutedAt: stamp.Add(time.Minute)},
+		{Command: "select 3", ConnectionName: "local", ExecutedAt: stamp.Add(2 * time.Minute)},
+	})
+
+	entries, err := LoadFromFile(path, "local")
+	if err != nil {
+		t.Fatalf("LoadFromFile() error = %v", err)
+	}
+	if got, want := len(entries), 2; got != want {
+		t.Fatalf("len(entries) = %d, want %d", got, want)
+	}
+	if got, want := entries[0].Command, "select 1"; got != want {
+		t.Fatalf("entries[0].Command = %q, want %q", got, want)
+	}
+	if got, want := entries[1].Command, "select 3"; got != want {
+		t.Fatalf("entries[1].Command = %q, want %q", got, want)
+	}
+}
+
+func TestLoadFromFileDeduplicatesKeepsMostRecent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, DirName, FileName)
+	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
+
+	writeHistoryLines(t, path, []Entry{
+		{Command: "select 1", ConnectionName: "local", ExecutedAt: stamp},
+		{Command: "select 2", ConnectionName: "local", ExecutedAt: stamp.Add(time.Minute)},
+		{Command: "select 1", ConnectionName: "local", ExecutedAt: stamp.Add(2 * time.Minute)},
+	})
+
+	entries, err := LoadFromFile(path, "local")
+	if err != nil {
+		t.Fatalf("LoadFromFile() error = %v", err)
+	}
+	if got, want := len(entries), 2; got != want {
+		t.Fatalf("len(entries) = %d, want %d (duplicate should be removed)", got, want)
+	}
+	// The earlier "select 1" is removed; the later one is kept.
+	// Chronological order: select 2 (older), select 1 (newer).
+	if got, want := entries[0].Command, "select 2"; got != want {
+		t.Fatalf("entries[0].Command = %q, want %q", got, want)
+	}
+	if got, want := entries[1].Command, "select 1"; got != want {
+		t.Fatalf("entries[1].Command = %q, want %q", got, want)
+	}
+	// The kept "select 1" entry should be the most recent one.
+	if got, want := entries[1].ExecutedAt, stamp.Add(2*time.Minute); !got.Equal(want) {
+		t.Fatalf("entries[1].ExecutedAt = %v, want %v", got, want)
+	}
+}
+
+func TestLoadFromFileReadsBothRotatedAndCurrentFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, DirName, FileName)
+	rotatedPath := path + rotatedHistorySuffix
+	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
+
+	writeHistoryLines(t, rotatedPath, []Entry{
+		{Command: "select old", ConnectionName: "local", ExecutedAt: stamp},
+	})
+	writeHistoryLines(t, path, []Entry{
+		{Command: "select new", ConnectionName: "local", ExecutedAt: stamp.Add(time.Hour)},
+	})
+
+	entries, err := LoadFromFile(path, "local")
+	if err != nil {
+		t.Fatalf("LoadFromFile() error = %v", err)
+	}
+	if got, want := len(entries), 2; got != want {
+		t.Fatalf("len(entries) = %d, want %d", got, want)
+	}
+	if got, want := entries[0].Command, "select old"; got != want {
+		t.Fatalf("entries[0].Command = %q, want %q (older rotated entry should come first)", got, want)
+	}
+	if got, want := entries[1].Command, "select new"; got != want {
+		t.Fatalf("entries[1].Command = %q, want %q", got, want)
+	}
+}
+
+func TestLoadFromFileCapsAtMaxLoadedEntries(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, DirName, FileName)
+	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
+
+	all := make([]Entry, maxLoadedEntries+10)
+	for i := range all {
+		all[i] = Entry{
+			Command:        fmt.Sprintf("select %d", i),
+			ConnectionName: "local",
+			ExecutedAt:     stamp.Add(time.Duration(i) * time.Second),
+		}
+	}
+	writeHistoryLines(t, path, all)
+
+	entries, err := LoadFromFile(path, "local")
+	if err != nil {
+		t.Fatalf("LoadFromFile() error = %v", err)
+	}
+	if got, want := len(entries), maxLoadedEntries; got != want {
+		t.Fatalf("len(entries) = %d, want %d", got, want)
+	}
+	// Should be the most recent maxLoadedEntries entries.
+	if got, want := entries[0].Command, fmt.Sprintf("select %d", 10); got != want {
+		t.Fatalf("entries[0].Command = %q, want %q (should be oldest of retained entries)", got, want)
+	}
+}
+
+func TestLoadFromFileSkipsMalformedLines(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, DirName, FileName)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
+	good, err := json.Marshal(newPersistedEntry(Entry{Command: "select 1", ConnectionName: "local", ExecutedAt: stamp}))
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	contents := "not-json\n" + string(good) + "\n{broken\n"
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	entries, err := LoadFromFile(path, "local")
+	if err != nil {
+		t.Fatalf("LoadFromFile() error = %v", err)
+	}
+	if got, want := len(entries), 1; got != want {
+		t.Fatalf("len(entries) = %d, want %d", got, want)
+	}
+	if got, want := entries[0].Command, "select 1"; got != want {
+		t.Fatalf("entries[0].Command = %q, want %q", got, want)
+	}
+}
+
+func TestNewPersistentSessionSeedsEntriesFromDisk(t *testing.T) {
+	dataHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+
+	path, err := DefaultPath()
+	if err != nil {
+		t.Fatalf("DefaultPath() error = %v", err)
+	}
+
+	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
+	writeHistoryLines(t, path, []Entry{
+		{Command: "select 1", ConnectionName: "local", ExecutedAt: stamp},
+		{Command: "select 2", ConnectionName: "remote", ExecutedAt: stamp.Add(time.Minute)},
+		{Command: "select 3", ConnectionName: "local", ExecutedAt: stamp.Add(2 * time.Minute)},
+	})
+
+	session, err := NewPersistentSession("local")
+	if err != nil {
+		t.Fatalf("NewPersistentSession() error = %v", err)
+	}
+
+	entries := session.Entries()
+	if got, want := len(entries), 2; got != want {
+		t.Fatalf("len(session.Entries()) = %d, want %d", got, want)
+	}
+	if got, want := entries[0].Command, "select 1"; got != want {
+		t.Fatalf("entries[0].Command = %q, want %q", got, want)
+	}
+	if got, want := entries[1].Command, "select 3"; got != want {
+		t.Fatalf("entries[1].Command = %q, want %q", got, want)
+	}
+}
+
+func TestNewPersistentSessionAppendsToExistingFile(t *testing.T) {
+	dataHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+
+	path, err := DefaultPath()
+	if err != nil {
+		t.Fatalf("DefaultPath() error = %v", err)
+	}
+
+	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
+	writeHistoryLines(t, path, []Entry{
+		{Command: "select 1", ConnectionName: "local", ExecutedAt: stamp},
+	})
+
+	session, err := NewPersistentSession("local")
+	if err != nil {
+		t.Fatalf("NewPersistentSession() error = %v", err)
+	}
+
+	if err := session.Append(Entry{Command: "select 2", ConnectionName: "local", ExecutedAt: stamp.Add(time.Minute)}); err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+
+	entries := session.Entries()
+	if got, want := len(entries), 2; got != want {
+		t.Fatalf("len(session.Entries()) = %d, want %d", got, want)
+	}
+	if got, want := entries[0].Command, "select 1"; got != want {
+		t.Fatalf("entries[0].Command = %q, want %q", got, want)
+	}
+	if got, want := entries[1].Command, "select 2"; got != want {
+		t.Fatalf("entries[1].Command = %q, want %q", got, want)
 	}
 }
 
