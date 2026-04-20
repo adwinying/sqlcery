@@ -241,6 +241,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if spec, ok := defaultSlashCommandRegistry.byName[parsedSlash.Name]; ok && spec.NeedsTarget && len(parsedSlash.Args) == 0 {
 				return m.openTableSelectionForCommand(parsedSlash)
 			}
+			if parsedSlash.Name == "commands" {
+				return m.openCommandWizard()
+			}
 			return m, m.startExecution(parsedSlash.DisplayName, fmt.Sprintf("Dispatching %s.", parsedSlash.DisplayName), executeSlashCommandCmd(slashCommandContext{
 				Session: m.session,
 				Adapter: m.adapter,
@@ -1182,6 +1185,21 @@ func (m *Model) openTableSelectionForCommand(parsed *slashCommand) (Model, tea.C
 	}
 	m.state.SetSlashWizardContext(wizard)
 	m.state.SetReady(fmt.Sprintf("Choose a table for %s and press ctrl+g.", parsed.DisplayName))
+	return *m, nil
+}
+
+func (m *Model) openCommandWizard() (Model, tea.Cmd) {
+	commands := buildSlashWizardCommands()
+	if len(commands) == 0 {
+		m.state.SetReady("/commands: no slash commands available.")
+		return *m, nil
+	}
+	wizard := &SlashCommandWizardContext{
+		Step:     SlashCommandWizardStepCommand,
+		Commands: commands,
+	}
+	m.state.SetSlashWizardContext(wizard)
+	m.state.SetReady("Choose a slash command and press ctrl+g.")
 	return *m, nil
 }
 

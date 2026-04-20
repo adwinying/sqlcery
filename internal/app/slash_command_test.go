@@ -522,19 +522,17 @@ func TestModelSubmitCommandsOpensWizard(t *testing.T) {
 	model.command.editor.SetValue("/commands")
 	model.syncCurrentSQL()
 
+	// /commands opens the wizard synchronously without an async dispatch
 	next, cmd := model.Update(submitIntentMsg{})
-	if cmd == nil {
-		t.Fatal("Update(submitIntentMsg{}) cmd = nil, want slash dispatch command")
+	if cmd != nil {
+		t.Fatalf("Update(submitIntentMsg{}) cmd = %v, want nil (wizard opened synchronously)", cmd)
 	}
-	model = next.(Model)
-
-	next, _ = model.Update(firstCommandMessageForTest[slashCommandExecutedMsg](t, cmd))
 	model = next.(Model)
 
 	if model.state.Query.SlashWizard == nil {
 		t.Fatal("state.Query.SlashWizard = nil, want wizard context")
 	}
-	if got, want := model.state.Status, "Opened the slash command wizard. Choose a command and press ctrl+g."; got != want {
+	if got, want := model.state.Status, "Choose a slash command and press ctrl+g."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	view := model.View().Content
