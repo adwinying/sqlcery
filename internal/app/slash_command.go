@@ -280,90 +280,55 @@ func handleSlashCommands(_ context.Context, _ slashCommandContext, parsed slashC
 	}, nil
 }
 
-func handleSlashTables(ctx context.Context, command slashCommandContext, _ slashCommand) (slashCommandResult, error) {
-	adapter, err := ensureSlashAdapter(command)
-	if err != nil {
-		return slashCommandResult{}, err
-	}
-
-	tables, err := adapter.Tables(ctx, db.TableFilter{})
-	if err != nil {
-		return slashCommandResult{}, err
-	}
-
-	sort.SliceStable(tables, func(i, j int) bool {
-		left := strings.ToLower(strings.TrimSpace(tables[i].Schema) + "." + strings.TrimSpace(tables[i].Name))
-		right := strings.ToLower(strings.TrimSpace(tables[j].Schema) + "." + strings.TrimSpace(tables[j].Name))
-		return left < right
-	})
-
-	rows := make([][]string, 0, len(tables))
-	for _, table := range tables {
-		rows = append(rows, []string{table.Schema, table.Name, table.Type})
-	}
-
-	status := "No tables found."
-	if len(rows) == 1 {
-		status = "Listed 1 table."
-	} else if len(rows) > 1 {
-		status = fmt.Sprintf("Listed %d tables.", len(rows))
-	}
-
+func handleSlashTables(_ context.Context, command slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
+	sql := slashTablesSQL(command.Dialect)
 	return slashCommandResult{
-		Status:    status,
-		Statement: buildSlashQueryResult([]string{"schema", "name", "type"}, rows),
+		Status:        slashTemplateStatus(parsed.DisplayName, "current database"),
+		ReplaceEditor: sql,
+		ShouldReplace: true,
 	}, nil
 }
 
-func handleSlashColumns(ctx context.Context, command slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
-	if err := validateSlashCommandArgs(parsed, 1); err != nil {
-		return slashCommandResult{}, err
+func slashTablesSQL(dialect db.Dialect) string {
+	switch slashDialectOrFallback(dialect).Name() {
+	case "postgres":
+		return "SELECT table_schema, table_name, table_type\nFROM information_schema.tables\nWHERE table_schema NOT IN ('pg_catalog', 'information_schema')\nORDER BY table_schema, table_name;"
+	case "mysql":
+		return "SHOW TABLES;"
+	default: // sqlite
+		return "SELECT name, type\nFROM sqlite_master\nWHERE type IN ('table', 'view')\nORDER BY name;"
 	}
-	adapter, err := ensureSlashAdapter(command)
-	if err != nil {
+}
+
+func handleSlashColumns(_ context.Context, command slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
+	if err := validateSlashCommandArgs(parsed, 1); err != nil {
 		return slashCommandResult{}, err
 	}
 
 	table := parseSlashTableRef(parsed.Args[0])
-	columns, err := adapter.Columns(ctx, table)
-	if err != nil {
-		return slashCommandResult{}, err
-	}
-
-	sort.SliceStable(columns, func(i, j int) bool {
-		if columns[i].Position != columns[j].Position {
-			return columns[i].Position < columns[j].Position
-		}
-		return strings.ToLower(columns[i].Name) < strings.ToLower(columns[j].Name)
-	})
-
-	rows := make([][]string, 0, len(columns))
-	for _, column := range columns {
-		defaultValue := ""
-		if column.DefaultValue != nil {
-			defaultValue = *column.DefaultValue
-		}
-		rows = append(rows, []string{
-			fmt.Sprintf("%d", column.Position),
-			column.Name,
-			column.Type,
-			boolWord(column.Nullable),
-			defaultValue,
-		})
-	}
-
+	sql := slashColumnsSQL(command.Dialect, table)
 	qualified := displaySlashTableRef(table)
-	status := fmt.Sprintf("Table %s has no columns.", qualified)
-	if len(rows) == 1 {
-		status = fmt.Sprintf("Listed 1 column for %s.", qualified)
-	} else if len(rows) > 1 {
-		status = fmt.Sprintf("Listed %d columns for %s.", len(rows), qualified)
-	}
-
 	return slashCommandResult{
-		Status:    status,
-		Statement: buildSlashQueryResult([]string{"position", "name", "type", "nullable", "default"}, rows),
+		Status:        slashTemplateStatus(parsed.DisplayName, qualified),
+		ReplaceEditor: sql,
+		ShouldReplace: true,
 	}, nil
+}
+
+func slashColumnsSQL(dialect db.Dialect, table db.TableRef) string {
+	tableName := table.Name
+	schemaName := table.Schema
+	switch slashDialectOrFallback(dialect).Name() {
+	case "postgres":
+		if strings.TrimSpace(schemaName) != "" {
+			return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default\nFROM information_schema.columns\nWHERE table_schema = '%s'\n  AND table_name = '%s'\nORDER BY ordinal_position;", schemaName, tableName)
+		}
+		return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default\nFROM information_schema.columns\nWHERE table_name = '%s'\nORDER BY ordinal_position;", tableName)
+	case "mysql":
+		return fmt.Sprintf("DESCRIBE %s;", quoteSlashTableRef(dialect, table))
+	default: // sqlite
+		return fmt.Sprintf("PRAGMA table_info(%s);", quoteSlashTableRef(dialect, table))
+	}
 }
 
 func handleSlashSelect(ctx context.Context, command slashCommandContext, parsed slashCommand) (slashCommandResult, error) {

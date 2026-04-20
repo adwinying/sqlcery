@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -355,7 +354,7 @@ func TestDispatchSlashCommandDeleteAndDropBuildDialectAwareIdentifiers(t *testin
 	}
 }
 
-func TestModelSubmitDispatchesSlashTablesWithoutRunningRawSQL(t *testing.T) {
+func TestModelSubmitDispatchesSlashTablesExpandsToSQL(t *testing.T) {
 	adapter := openTestAdapter(t)
 	defer func() {
 		if err := adapter.Close(); err != nil {
@@ -397,43 +396,35 @@ func TestModelSubmitDispatchesSlashTablesWithoutRunningRawSQL(t *testing.T) {
 	next, _ = model.Update(executed)
 	model = next.(Model)
 
-	if got, want := model.state.Query.LastSubmittedSQL, "/tables"; got != want {
+	// /tables now expands to SQL in the editor instead of executing immediately
+	if got, want := model.state.Query.LastSubmittedSQL, ""; got != want {
 		t.Fatalf("state.Query.LastSubmittedSQL = %q, want %q", got, want)
 	}
 	if model.state.Query.Running != nil {
 		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Query.Running)
 	}
-	if got, want := len(model.state.Query.SessionHistory), 1; got != want {
+	if got, want := len(model.state.Query.SessionHistory), 0; got != want {
 		t.Fatalf("len(state.Query.SessionHistory) = %d, want %d", got, want)
 	}
-	if got, want := model.state.Query.SessionHistory[0].SQL, "/tables"; got != want {
-		t.Fatalf("state.Query.SessionHistory[0].SQL = %q, want %q", got, want)
+	if model.state.Query.LatestResult != nil {
+		t.Fatalf("state.Query.LatestResult = %#v, want nil", model.state.Query.LatestResult)
 	}
 	if got, want := model.state.Query.LastAction, "slash:/tables"; got != want {
 		t.Fatalf("state.Query.LastAction = %q, want %q", got, want)
 	}
-	if model.state.Query.LatestResult == nil || model.state.Query.LatestResult.PreservedResult == nil {
-		t.Fatal("state.Query.LatestResult = nil, want slash command result context")
+	wantStatus := "Expanded /tables for current database into command mode. Review it, then press ctrl+g to run."
+	if got := model.state.Status; got != wantStatus {
+		t.Fatalf("state.Status = %q, want %q", got, wantStatus)
 	}
-	if got, want := model.state.Query.LatestResult.Query, "/tables"; got != want {
-		t.Fatalf("latest.Query = %q, want %q", got, want)
-	}
-	if got, want := model.state.Status, "Listed 1 table."; got != want {
-		t.Fatalf("state.Status = %q, want %q", got, want)
-	}
-	if got, want := model.state.Query.SessionHistory[0].ConnectionName, "local"; got != want {
-		t.Fatalf("state.Query.SessionHistory[0].ConnectionName = %q, want %q", got, want)
-	}
-
-	view := model.View().Content
-	for _, want := range []string{"schema", "name", "type", "widgets", "table"} {
-		if !containsLine(view, want) {
-			t.Fatalf("View() = %q, want to contain %q", view, want)
+	// Editor should now contain the SQL to list tables
+	for _, want := range []string{"sqlite_master", "IN ('table', 'view')"} {
+		if got := model.command.editor.Value(); !containsLine(got, want) {
+			t.Fatalf("editor.Value() = %q, want to contain %q", got, want)
 		}
 	}
 }
 
-func TestModelSubmitSlashCommandPersistsBoundedResultSummary(t *testing.T) {
+func TestModelSubmitSlashCommandExpandToEditorDoesNotPersistHistory(t *testing.T) {
 	adapter := openTestAdapter(t)
 	defer func() {
 		if err := adapter.Close(); err != nil {
@@ -461,29 +452,12 @@ func TestModelSubmitSlashCommandPersistsBoundedResultSummary(t *testing.T) {
 	next, _ = model.Update(firstCommandMessageForTest[slashCommandExecutedMsg](t, cmd))
 	model = next.(Model)
 
-	data, err := os.ReadFile(historyPath)
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
+	// /tables expands to SQL — it should NOT be persisted to history (same as /select, /insert, etc.)
+	if _, err := os.ReadFile(historyPath); err == nil {
+		t.Fatal("ReadFile() succeeded, want history file to not exist for expand-to-editor commands")
 	}
-
-	var persisted struct {
-		Command string `json:"command"`
-		Result  string `json:"result"`
-	}
-	if err := json.Unmarshal(data, &persisted); err != nil {
-		t.Fatalf("Unmarshal() error = %v", err)
-	}
-	if got, want := persisted.Command, "/tables"; got != want {
-		t.Fatalf("persisted command = %q, want %q", got, want)
-	}
-	if got, want := persisted.Result, "Listed 1 table."; got != want {
-		t.Fatalf("persisted result = %q, want %q", got, want)
-	}
-	if runeCount := len([]rune(persisted.Result)); runeCount > 120 {
-		t.Fatalf("len([]rune(persisted.Result)) = %d, want <= 120", runeCount)
-	}
-	if got := model.state.Query.SessionHistory[0].SQL; got != "/tables" {
-		t.Fatalf("state.Query.SessionHistory[0].SQL = %q, want %q", got, "/tables")
+	if got, want := len(model.state.Query.SessionHistory), 0; got != want {
+		t.Fatalf("len(state.Query.SessionHistory) = %d, want %d", got, want)
 	}
 }
 
@@ -618,7 +592,7 @@ func TestModelSubmitCommandsWizardDispatchesResultCommand(t *testing.T) {
 	if model.state.Query.SlashWizard != nil {
 		t.Fatalf("state.Query.SlashWizard = %#v, want nil", model.state.Query.SlashWizard)
 	}
-	if got, want := model.state.Status, "Listed 1 table."; got != want {
+	if got, want := model.state.Status, "Expanded /tables for current database into command mode. Review it, then press ctrl+g to run."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
