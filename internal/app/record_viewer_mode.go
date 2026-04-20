@@ -541,7 +541,7 @@ func formatRecordViewerValue(value db.ResultValue) string {
 			return "false"
 		}
 	case db.ValueKindInteger, db.ValueKindFloat, db.ValueKindDecimal, db.ValueKindString:
-		return fmt.Sprint(value.Value)
+		return truncateNewlines(fmt.Sprint(value.Value))
 	case db.ValueKindBytes:
 		if typed, ok := value.Value.([]byte); ok {
 			return fmt.Sprintf("0x%x", typed)
@@ -556,7 +556,14 @@ func formatRecordViewerValue(value db.ResultValue) string {
 		return "NULL"
 	}
 
-	return fmt.Sprint(value.Value)
+	return truncateNewlines(fmt.Sprint(value.Value))
+}
+
+func truncateNewlines(s string) string {
+	if i := strings.IndexAny(s, "\n\r"); i >= 0 {
+		return s[:i] + "..."
+	}
+	return s
 }
 
 func recordViewerRowCount(latest *LatestResultContext) int {

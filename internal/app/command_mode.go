@@ -908,7 +908,7 @@ func formatInlineResultValue(value db.ResultValue) string {
 			return "false"
 		}
 	case db.ValueKindInteger, db.ValueKindFloat, db.ValueKindDecimal, db.ValueKindString:
-		return fmt.Sprint(value.Value)
+		return truncateNewlines(fmt.Sprint(value.Value))
 	case db.ValueKindBytes:
 		if typed, ok := value.Value.([]byte); ok {
 			return fmt.Sprintf("0x%x", typed)
@@ -923,7 +923,7 @@ func formatInlineResultValue(value db.ResultValue) string {
 		return "NULL"
 	}
 
-	return fmt.Sprint(value.Value)
+	return truncateNewlines(fmt.Sprint(value.Value))
 }
 
 func runeWidth(value string) int {

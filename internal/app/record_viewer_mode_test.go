@@ -600,6 +600,70 @@ func TestRecordViewerModeViewCJKCharacters(t *testing.T) {
 	}
 }
 
+func TestFormatRecordViewerValueTruncatesNewlines(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value db.ResultValue
+		want  string
+	}{
+		{
+			name:  "LF newline truncated",
+			value: db.ResultValue{Kind: db.ValueKindString, Value: "line1\nline2\nline3"},
+			want:  "line1...",
+		},
+		{
+			name:  "CRLF newline truncated",
+			value: db.ResultValue{Kind: db.ValueKindString, Value: "line1\r\nline2"},
+			want:  "line1...",
+		},
+		{
+			name:  "no newline unchanged",
+			value: db.ResultValue{Kind: db.ValueKindString, Value: "just a plain value"},
+			want:  "just a plain value",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := formatRecordViewerValue(tc.value); got != tc.want {
+				t.Fatalf("formatRecordViewerValue() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRecordViewerTableTruncatesMultilineValues(t *testing.T) {
+	mode := newRecordViewerModeModel()
+	mode.SetSize(80, 8)
+
+	view := ansi.Strip(mode.View(QueryContext{
+		LatestResult: &LatestResultContext{
+			Query: "select id, note from widgets",
+			PreservedResult: &db.ResultSet{
+				Columns: []db.ResultColumn{{Name: "id"}, {Name: "note"}},
+				Rows: []db.ResultRow{
+					{Values: []db.ResultValue{
+						{Kind: db.ValueKindInteger, Value: int64(1)},
+						{Kind: db.ValueKindString, Value: "first line\nsecond line"},
+					}},
+					{Values: []db.ResultValue{
+						{Kind: db.ValueKindInteger, Value: int64(2)},
+						{Kind: db.ValueKindString, Value: "only line"},
+					}},
+				},
+			},
+		},
+	}))
+
+	if !strings.Contains(view, "first line...") {
+		t.Fatalf("View() = %q, want multiline value truncated to 'first line...'", view)
+	}
+	if strings.Contains(view, "second line") {
+		t.Fatalf("View() = %q, want second line of multiline value not shown", view)
+	}
+	if !strings.Contains(view, "only line") {
+		t.Fatalf("View() = %q, want single-line value unchanged", view)
+	}
+}
+
 func BenchmarkRecordViewerModeViewLargePage(b *testing.B) {
 	mode := newRecordViewerModeModel()
 	mode.SetSize(140, 24)
