@@ -10,3 +10,10 @@
 - [x] whole rows should be highlighted when selected; hightlight should change the color of the text not apply background color
 - [x] when "cc" is triggered in the results pane, the WHERE conditions for the UPDATE statement should only contain the primary key columns
 - [x] slash commands should be expanded to a SQL statement instead of executing the command immediately
+- [ ] (skip) revamp status bar
+- [ ] (skip) mouse support
+- [ ] (skip) multirow select in result pane support
+- [ ] column name in autocomplete menu should show the type of the column
+- [ ] fix result pane horizontal scrolling
+- [ ] command history selection does not scroll
+- [ ] replace "ctrl-g" keybind with "enter" to accept

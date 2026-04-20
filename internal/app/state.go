@@ -99,11 +99,12 @@ const (
 )
 
 type SlashCommandWizardContext struct {
-	Step            SlashCommandWizardStep
-	Commands        []SlashCommandWizardCommand
-	Targets         []SlashCommandWizardTarget
-	SelectedCommand int
-	SelectedTarget  int
+	Step             SlashCommandWizardStep
+	Commands         []SlashCommandWizardCommand
+	Targets          []SlashCommandWizardTarget
+	SelectedCommand  int
+	SelectedTarget   int
+	DirectInvocation bool
 }
 
 type SlashCommandWizardCommand struct {
@@ -340,11 +341,12 @@ func cloneSlashCommandWizardContext(context *SlashCommandWizardContext) *SlashCo
 	}
 
 	clone := &SlashCommandWizardContext{
-		Step:            context.Step,
-		SelectedCommand: context.SelectedCommand,
-		SelectedTarget:  context.SelectedTarget,
-		Commands:        make([]SlashCommandWizardCommand, len(context.Commands)),
-		Targets:         make([]SlashCommandWizardTarget, len(context.Targets)),
+		Step:             context.Step,
+		SelectedCommand:  context.SelectedCommand,
+		SelectedTarget:   context.SelectedTarget,
+		DirectInvocation: context.DirectInvocation,
+		Commands:         make([]SlashCommandWizardCommand, len(context.Commands)),
+		Targets:          make([]SlashCommandWizardTarget, len(context.Targets)),
 	}
 	copy(clone.Commands, context.Commands)
 	copy(clone.Targets, context.Targets)

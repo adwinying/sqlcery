@@ -751,10 +751,16 @@ func renderSlashWizard(query QueryContext) string {
 	switch wizard.Step {
 	case SlashCommandWizardStepTarget:
 		selectedCommand, _ := slashWizardCommandByIndex(wizard)
-		lines = append(lines,
-			appTheme.panelMuted.Render(fmt.Sprintf("Step 1/2 complete: %s", selectedCommand.DisplayName)),
-			appTheme.panelText.Render(fmt.Sprintf("Step 2/2: choose a table for %s", selectedCommand.DisplayName)),
-		)
+		if wizard.DirectInvocation {
+			lines = append(lines,
+				appTheme.panelText.Render(fmt.Sprintf("Choose a table for %s:", selectedCommand.DisplayName)),
+			)
+		} else {
+			lines = append(lines,
+				appTheme.panelMuted.Render(fmt.Sprintf("Step 1/2 complete: %s", selectedCommand.DisplayName)),
+				appTheme.panelText.Render(fmt.Sprintf("Step 2/2: choose a table for %s", selectedCommand.DisplayName)),
+			)
+		}
 		for i, target := range wizard.Targets {
 			if i == clampWizardIndex(wizard.SelectedTarget, len(wizard.Targets)) {
 				lines = append(lines, appTheme.panelSelected.Render("> "+target.Display))
@@ -762,7 +768,11 @@ func renderSlashWizard(query QueryContext) string {
 			}
 			lines = append(lines, appTheme.panelText.Render("  "+target.Display))
 		}
-		lines = append(lines, appTheme.panelHint.Render("ctrl+g confirm | alt+n next | alt+p prev | esc back"))
+		if wizard.DirectInvocation {
+			lines = append(lines, appTheme.panelHint.Render("ctrl+g confirm | alt+n next | alt+p prev | esc close"))
+		} else {
+			lines = append(lines, appTheme.panelHint.Render("ctrl+g confirm | alt+n next | alt+p prev | esc back"))
+		}
 	default:
 		lines = append(lines, appTheme.panelText.Render("Step 1/2: choose a slash command"))
 		for i, command := range wizard.Commands {

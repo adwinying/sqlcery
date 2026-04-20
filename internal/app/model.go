@@ -238,6 +238,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if parsedSlash != nil {
+			if spec, ok := defaultSlashCommandRegistry.byName[parsedSlash.Name]; ok && spec.NeedsTarget && len(parsedSlash.Args) == 0 {
+				return m.openTableSelectionForCommand(parsedSlash)
+			}
 			return m, m.startExecution(parsedSlash.DisplayName, fmt.Sprintf("Dispatching %s.", parsedSlash.DisplayName), executeSlashCommandCmd(slashCommandContext{
 				Session: m.session,
 				Adapter: m.adapter,
@@ -730,6 +733,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		if wizard := m.state.Query.SlashWizard; wizard != nil {
 			if wizard.Step == SlashCommandWizardStepTarget {
+				if wizard.DirectInvocation {
+					return func() tea.Msg { return slashWizardCloseIntentMsg{} }
+				}
 				return func() tea.Msg { return slashWizardBackIntentMsg{} }
 			}
 			return func() tea.Msg { return slashWizardCloseIntentMsg{} }
@@ -1137,6 +1143,46 @@ func summarizeSlashCommandResult(command slashCommand, result slashCommandResult
 	}
 
 	return status
+}
+
+func (m *Model) openTableSelectionForCommand(parsed *slashCommand) (Model, tea.Cmd) {
+	commandCtx := slashCommandContext{
+		Session: m.session,
+		Adapter: m.adapter,
+		Dialect: m.adapterDialect(),
+		Query:   m.state.Query.snapshot(),
+	}
+
+	commands := buildSlashWizardCommands()
+	selectedIdx := 0
+	for i, cmd := range commands {
+		if cmd.Name == parsed.Name {
+			selectedIdx = i
+			break
+		}
+	}
+
+	targets, err := buildSlashWizardTargets(context.Background(), commandCtx)
+	if err != nil {
+		m.state.SetReady(fmt.Sprintf("%s failed: %v", parsed.DisplayName, err))
+		return *m, nil
+	}
+	if len(targets) == 0 {
+		m.state.SetReady(fmt.Sprintf("%s: no tables available.", parsed.DisplayName))
+		return *m, nil
+	}
+
+	wizard := &SlashCommandWizardContext{
+		Step:             SlashCommandWizardStepTarget,
+		Commands:         commands,
+		SelectedCommand:  selectedIdx,
+		Targets:          targets,
+		SelectedTarget:   0,
+		DirectInvocation: true,
+	}
+	m.state.SetSlashWizardContext(wizard)
+	m.state.SetReady(fmt.Sprintf("Choose a table for %s and press ctrl+g.", parsed.DisplayName))
+	return *m, nil
 }
 
 func (m *Model) submitSlashWizard(wizard *SlashCommandWizardContext) (Model, tea.Cmd) {

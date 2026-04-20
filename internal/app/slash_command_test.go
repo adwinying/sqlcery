@@ -798,3 +798,149 @@ func TestSlashCommandCancellationUsesFriendlyStatus(t *testing.T) {
 func containsLine(value, want string) bool {
 	return strings.Contains(value, want)
 }
+
+func TestModelSubmitNeedsTargetCommandWithoutArgOpensTableSelection(t *testing.T) {
+	adapter := openTestAdapter(t)
+	defer func() {
+		if err := adapter.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	}()
+
+	if _, err := adapter.ExecContext(context.Background(), `create table widgets (id integer primary key)`); err != nil {
+		t.Fatalf("ExecContext(create table) error = %v", err)
+	}
+
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model.state.SetReady("")
+	{
+		m, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+		model = m.(Model)
+	}
+	model.command.editor.SetValue("/select")
+	model.syncCurrentSQL()
+
+	next, cmd := model.Update(submitIntentMsg{})
+	if cmd != nil {
+		t.Fatalf("Update(submitIntentMsg{}) cmd = %v, want nil (wizard opened synchronously)", cmd)
+	}
+	model = next.(Model)
+
+	wizard := model.state.Query.SlashWizard
+	if wizard == nil {
+		t.Fatal("state.Query.SlashWizard = nil, want table selection wizard")
+	}
+	if got, want := wizard.Step, SlashCommandWizardStepTarget; got != want {
+		t.Fatalf("wizard.Step = %q, want %q", got, want)
+	}
+	if !wizard.DirectInvocation {
+		t.Fatal("wizard.DirectInvocation = false, want true")
+	}
+	if len(wizard.Targets) == 0 {
+		t.Fatal("wizard.Targets = empty, want at least one table")
+	}
+	selectedCommand, ok := slashWizardCommandByIndex(wizard)
+	if !ok {
+		t.Fatal("slashWizardCommandByIndex() = false, want selected command")
+	}
+	if got, want := selectedCommand.Name, "select"; got != want {
+		t.Fatalf("selectedCommand.Name = %q, want %q", got, want)
+	}
+	if got, want := model.state.Status, "Choose a table for /select and press ctrl+g."; got != want {
+		t.Fatalf("state.Status = %q, want %q", got, want)
+	}
+
+	// The popup should render with a simpler header (no step labels) and "esc close".
+	view := model.View().Content
+	for _, want := range []string{"Choose a table for /select:", "> main.widgets", "esc close"} {
+		if !containsLine(view, want) {
+			t.Fatalf("View() does not contain %q\nFull view:\n%s", want, view)
+		}
+	}
+	for _, notWant := range []string{"Step 1/2", "Step 2/2", "esc back"} {
+		if containsLine(view, notWant) {
+			t.Fatalf("View() contains unexpected %q", notWant)
+		}
+	}
+}
+
+func TestModelSubmitNeedsTargetCommandWithoutArgConfirmDispatchesCommand(t *testing.T) {
+	adapter := openTestAdapter(t)
+	defer func() {
+		if err := adapter.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	}()
+
+	if _, err := adapter.ExecContext(context.Background(), `create table widgets (id integer primary key)`); err != nil {
+		t.Fatalf("ExecContext(create table) error = %v", err)
+	}
+
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model.state.SetReady("")
+	model.command.editor.SetValue("/select")
+	model.syncCurrentSQL()
+
+	// Open the table picker
+	next, _ := model.Update(submitIntentMsg{})
+	model = next.(Model)
+
+	if model.state.Query.SlashWizard == nil {
+		t.Fatal("wizard not opened after /select without args")
+	}
+
+	// Confirm with the pre-selected table
+	next, cmd := model.Update(submitIntentMsg{})
+	if cmd == nil {
+		t.Fatal("Update(submitIntentMsg{}) cmd = nil after confirming table, want dispatch command")
+	}
+	model = next.(Model)
+	if got, want := model.state.Query.Running.Label, "/select"; got != want {
+		t.Fatalf("Running.Label = %q, want %q", got, want)
+	}
+
+	next, _ = model.Update(firstCommandMessageForTest[slashCommandExecutedMsg](t, cmd))
+	model = next.(Model)
+
+	if model.state.Query.SlashWizard != nil {
+		t.Fatalf("wizard still open after dispatch; want nil")
+	}
+	for _, want := range []string{"SELECT", `FROM "main"."widgets"`, "LIMIT 50;"} {
+		if got := model.command.editor.Value(); !containsLine(got, want) {
+			t.Fatalf("editor.Value() = %q, want to contain %q", got, want)
+		}
+	}
+}
+
+func TestModelSubmitNeedsTargetCommandWithoutArgEscClosesWizard(t *testing.T) {
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model.state.SetReady("")
+	model.state.SetSlashWizardContext(&SlashCommandWizardContext{
+		Step: SlashCommandWizardStepTarget,
+		Commands: []SlashCommandWizardCommand{{
+			Name:        "select",
+			DisplayName: "/select",
+			Summary:     "compose a SELECT statement",
+			Usage:       "/select <table>",
+			NeedsTarget: true,
+		}},
+		Targets:          []SlashCommandWizardTarget{{Value: "users", Display: "users"}},
+		DirectInvocation: true,
+	})
+
+	// ESC on a direct-invocation wizard at target step should close, not go back.
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	if cmd == nil {
+		t.Fatal("Update(esc) cmd = nil, want close command")
+	}
+	model = next.(Model)
+	next, _ = model.Update(cmd())
+	model = next.(Model)
+
+	if model.state.Query.SlashWizard != nil {
+		t.Fatalf("state.Query.SlashWizard = %#v, want nil (closed)", model.state.Query.SlashWizard)
+	}
+	if got, want := model.state.Status, "Closed the slash command wizard."; got != want {
+		t.Fatalf("state.Status = %q, want %q", got, want)
+	}
+}
