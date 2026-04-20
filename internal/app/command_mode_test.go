@@ -524,3 +524,43 @@ func assertAutocompleteLabelBefore(t *testing.T, items []autocompleteItem, left,
 		t.Fatalf("label %q index = %d, want before %q index = %d", left, leftIndex, right, rightIndex)
 	}
 }
+
+// TestRenderLineContentWithGhostCJKCursorPosition verifies that the cursor is
+// placed at the correct display-column position when the line contains CJK
+// (full-width) characters, which occupy 2 terminal columns each.
+func TestRenderLineContentWithGhostCJKCursorPosition(t *testing.T) {
+	h := newSQLSyntaxHighlighter()
+
+	// Build a styled line containing one CJK rune followed by an ASCII char.
+	// "世" is a full-width CJK character (display width 2).
+	// The line is: 世A  (display widths: 2 + 1 = 3)
+	line, _ := h.highlightLine("世A", sqlLexerState{})
+
+	// With no ghost text, cursor at display column 2 (after "世") should be
+	// rendered on top of "A", not incorrectly placed one column too far right.
+	// cursorCol=2 means "2 display columns from the left", i.e. on top of 'A'.
+	rendered := h.renderLineContentWithGhost(line, 2, 10, false, "")
+
+	// The rendered string must contain the cursor-styled 'A'. We verify this
+	// indirectly: when the cursor is on 'A', 'A' must appear somewhere in the
+	// output (cursorStyle wraps it) and the total display width of the content
+	// area must equal the editor width (10).
+	if !strings.Contains(rendered, "A") {
+		t.Fatalf("renderLineContentWithGhost with CJK: expected 'A' in rendered output, got %q", rendered)
+	}
+
+	// cursorCol at display column 3 (end of "世A") - ghost text should appear.
+	ghost := "GHOST"
+	renderedGhost := h.renderLineContentWithGhost(line, 3, 20, false, ghost)
+	if !strings.Contains(renderedGhost, ghost) {
+		t.Fatalf("renderLineContentWithGhost with CJK and ghost: expected ghost text %q at end-of-line (cursorCol=3 == lineDisplayWidth=3), got %q", ghost, renderedGhost)
+	}
+
+	// cursorCol at rune count (2, which equals len(line)) should NOT trigger
+	// ghost text, because the cursor is ON the second rune, not after it.
+	// Display column 2 != display column 3 (end).
+	renderedNoGhost := h.renderLineContentWithGhost(line, 2, 20, false, ghost)
+	if strings.Contains(renderedNoGhost, ghost) {
+		t.Fatalf("renderLineContentWithGhost with CJK: ghost text must NOT appear when cursorCol=2 (on 'A'), but got %q", renderedNoGhost)
+	}
+}

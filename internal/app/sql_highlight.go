@@ -174,16 +174,22 @@ func (h sqlSyntaxHighlighter) renderLineContentWithGhost(line sqlStyledLine, cur
 		cursorRendered = true
 	}
 
-	// Ghost text appears right after the cursor when cursor is at end of line
-	if ghostText != "" && cursorCol >= 0 && cursorCol == len(line) {
+	// lineDisplayWidth is the total display width of the line (before ghost text).
+	lineDisplayWidth := currentWidth
+
+	// Ghost text appears right after the cursor when cursor is at end of line.
+	// Use display-column comparison (cursorCol == lineDisplayWidth) rather than
+	// rune-count comparison (cursorCol == len(line)) so CJK full-width characters
+	// are handled correctly.
+	if ghostText != "" && cursorCol >= 0 && cursorCol == lineDisplayWidth {
 		builder.WriteString(h.ghostTextStyle.Render(ghostText))
-		currentWidth += len([]rune(ghostText))
+		currentWidth += rw.StringWidth(ghostText)
 	}
 
 	paddingWidth := max(0, width-currentWidth)
-	if cursorCol == currentWidth-len([]rune(ghostText)) && cursorRendered && paddingWidth > 0 && ghostText == "" {
+	if cursorCol == currentWidth-rw.StringWidth(ghostText) && cursorRendered && paddingWidth > 0 && ghostText == "" {
 		paddingWidth--
-	} else if cursorCol == len(line) && cursorRendered && ghostText == "" {
+	} else if cursorCol == lineDisplayWidth && cursorRendered && ghostText == "" {
 		paddingWidth = max(0, width-currentWidth-1)
 	}
 

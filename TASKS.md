@@ -5,5 +5,5 @@
 - [x] remove the border and the ">" selection from the autocomplete menu
 - [x] fix ctrl-n and ctrl-p not working when trying to change the autocomplete selection
 - [x] fix CJK characters not being displayed correctly in the results pane
-- [ ] fix cursor position wrong in command pane when CJK full width characters are used
+- [x] fix cursor position wrong in command pane when CJK full width characters are used
 - [ ] ensure each row in result pane only uses one row; if a column is multi-line, truncate it and add "..." to the end
