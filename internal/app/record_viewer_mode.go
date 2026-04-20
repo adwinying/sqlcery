@@ -642,11 +642,10 @@ func summarizeViewerQuery(query string, width int) string {
 		return trimmed
 	}
 
-	runes := []rune(trimmed)
 	if maxWidth <= 3 {
-		return string(runes[:maxWidth])
+		return ansi.Truncate(trimmed, maxWidth, "")
 	}
-	return string(runes[:maxWidth-3]) + "..."
+	return ansi.Truncate(trimmed, maxWidth, "...")
 }
 
 func trimRenderedWidth(value string, width int) string {

@@ -680,11 +680,11 @@ func (m Model) statusBarView() string {
 }
 
 func padOrTruncate(s string, width int) string {
-	runes := []rune(s)
-	if len(runes) >= width {
-		return string(runes[:width])
+	displayWidth := ansi.StringWidth(s)
+	if displayWidth >= width {
+		return ansi.Truncate(s, width, "")
 	}
-	return s + strings.Repeat(" ", width-len(runes))
+	return s + strings.Repeat(" ", width-displayWidth)
 }
 
 func (m Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
