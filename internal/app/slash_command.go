@@ -67,6 +67,7 @@ var slashCommandInfos = []slashCommandInfo{
 	{Name: "commands", Summary: "open the guided slash command wizard", Usage: "/commands"},
 	{Name: "tables", Summary: "list tables in the current database", Usage: "/tables"},
 	{Name: "columns", Summary: "list columns for a table", Usage: "/columns <table>"},
+	{Name: "indices", Summary: "list indices for a table", Usage: "/indices <table>"},
 	{Name: "select", Summary: "compose a SELECT statement", Usage: "/select <table>"},
 	{Name: "insert", Summary: "compose an INSERT statement", Usage: "/insert <table>"},
 	{Name: "update", Summary: "compose an UPDATE statement", Usage: "/update <table>"},
@@ -83,6 +84,7 @@ func slashCommandSpecs() []slashCommandSpec {
 		{Name: "commands", Summary: "open the guided slash command wizard", Usage: "/commands", Handler: handleSlashCommands},
 		{Name: "tables", Summary: "list tables in the current database", Usage: "/tables", Handler: handleSlashTables},
 		{Name: "columns", Summary: "list columns for a table", Usage: "/columns <table>", Handler: handleSlashColumns, NeedsTarget: true},
+		{Name: "indices", Summary: "list indices for a table", Usage: "/indices <table>", Handler: handleSlashIndices, NeedsTarget: true},
 		{Name: "select", Summary: "compose a SELECT statement", Usage: "/select <table>", Handler: handleSlashSelect, NeedsTarget: true},
 		{Name: "insert", Summary: "compose an INSERT statement", Usage: "/insert <table>", Handler: handleSlashInsert, NeedsTarget: true},
 		{Name: "update", Summary: "compose an UPDATE statement", Usage: "/update <table>", Handler: handleSlashUpdate, NeedsTarget: true},
@@ -328,6 +330,37 @@ func slashColumnsSQL(dialect db.Dialect, table db.TableRef) string {
 		return fmt.Sprintf("DESCRIBE %s;", quoteSlashTableRef(dialect, table))
 	default: // sqlite
 		return fmt.Sprintf("PRAGMA table_info(%s);", quoteSlashTableRef(dialect, table))
+	}
+}
+
+func handleSlashIndices(_ context.Context, command slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
+	if err := validateSlashCommandArgs(parsed, 1); err != nil {
+		return slashCommandResult{}, err
+	}
+
+	table := parseSlashTableRef(parsed.Args[0])
+	sql := slashIndicesSQL(command.Dialect, table)
+	qualified := displaySlashTableRef(table)
+	return slashCommandResult{
+		Status:        slashTemplateStatus(parsed.DisplayName, qualified),
+		ReplaceEditor: sql,
+		ShouldReplace: true,
+	}, nil
+}
+
+func slashIndicesSQL(dialect db.Dialect, table db.TableRef) string {
+	tableName := table.Name
+	schemaName := table.Schema
+	switch slashDialectOrFallback(dialect).Name() {
+	case "postgres":
+		if strings.TrimSpace(schemaName) != "" {
+			return fmt.Sprintf("SELECT indexname, indexdef\nFROM pg_indexes\nWHERE schemaname = '%s'\n  AND tablename = '%s'\nORDER BY indexname;", schemaName, tableName)
+		}
+		return fmt.Sprintf("SELECT indexname, indexdef\nFROM pg_indexes\nWHERE tablename = '%s'\nORDER BY indexname;", tableName)
+	case "mysql":
+		return fmt.Sprintf("SHOW INDEX FROM %s;", quoteSlashTableRef(dialect, table))
+	default: // sqlite
+		return fmt.Sprintf("PRAGMA index_list(%s);", quoteSlashTableRef(dialect, table))
 	}
 }
 

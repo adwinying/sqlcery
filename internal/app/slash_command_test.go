@@ -51,7 +51,7 @@ func TestDispatchSlashCommandHelpReturnsSyntheticResult(t *testing.T) {
 	if result.Statement == nil || result.Statement.ResultSet == nil {
 		t.Fatal("result.Statement = nil, want synthetic result set")
 	}
-	if got, want := result.Status, "Listed 10 slash commands."; got != want {
+	if got, want := result.Status, "Listed 11 slash commands."; got != want {
 		t.Fatalf("result.Status = %q, want %q", got, want)
 	}
 	if got, want := result.Statement.ResultSet.Columns[0].Name, "command"; got != want {
@@ -95,8 +95,8 @@ func TestDispatchSlashCommandCommandsReturnsWizard(t *testing.T) {
 	if got, want := result.Wizard.Step, SlashCommandWizardStepCommand; got != want {
 		t.Fatalf("result.Wizard.Step = %q, want %q", got, want)
 	}
-	if len(result.Wizard.Commands) != 8 {
-		t.Fatalf("len(result.Wizard.Commands) = %d, want 8", len(result.Wizard.Commands))
+	if len(result.Wizard.Commands) != 9 {
+		t.Fatalf("len(result.Wizard.Commands) = %d, want 9", len(result.Wizard.Commands))
 	}
 	if got, want := result.Wizard.Commands[0].DisplayName, "/tables"; got != want {
 		t.Fatalf("commands[0].DisplayName = %q, want %q", got, want)
