@@ -8,5 +8,4 @@
 - [x] fix cursor position wrong in command pane when CJK full width characters are used
 - [x] ensure each row in result pane only uses one row; if a column is multi-line, truncate it and add "..." to the end
 - [x] whole rows should be highlighted when selected; hightlight should change the color of the text not apply background color
-- [ ] (skip) /commands should be expanded to a SQL statement
-- [ ] (skip) revamp status bar
+- [x] when "cc" is triggered in the results pane, the WHERE conditions for the UPDATE statement should only contain the primary key columns

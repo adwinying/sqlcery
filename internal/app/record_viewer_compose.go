@@ -61,6 +61,9 @@ func composeRecordViewerUpdateSQL(dialect db.Dialect, latest *LatestResultContex
 	if len(assignments) == 0 {
 		return recordViewerComposeResult{}, fmt.Errorf("selected row has no columns to update")
 	}
+	if !usedPrimaryKeys {
+		return recordViewerComposeResult{}, fmt.Errorf("selected row has no primary key columns; cannot compose a safe UPDATE")
+	}
 	if len(predicates) == 0 {
 		return recordViewerComposeResult{}, fmt.Errorf("selected row has no identifying predicate")
 	}

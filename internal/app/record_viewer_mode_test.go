@@ -287,30 +287,16 @@ func TestComposeRecordViewerUpdateSQLUsesPrimaryKeys(t *testing.T) {
 	}
 }
 
-func TestComposeRecordViewerUpdateSQLFallsBackToVisibleColumnPredicate(t *testing.T) {
-	result, err := composeRecordViewerUpdateSQL(db.SQLiteDialect(), &LatestResultContext{
+func TestComposeRecordViewerUpdateSQLRejectsNoPrimaryKeys(t *testing.T) {
+	_, err := composeRecordViewerUpdateSQL(db.SQLiteDialect(), &LatestResultContext{
 		Query: "select name, note, payload from widgets;",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "name"}, {Name: "note"}, {Name: "payload"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindString, Value: "Ada's"}, {Kind: db.ValueKindNull}, {Kind: db.ValueKindBytes, Value: []byte{0xde, 0xad}}}}},
 		},
 	}, 0)
-	if err != nil {
-		t.Fatalf("composeRecordViewerUpdateSQL() error = %v", err)
-	}
-	if result.UsedPrimaryKeys {
-		t.Fatal("UsedPrimaryKeys = true, want false")
-	}
-	for _, want := range []string{
-		"UPDATE \"widgets\"",
-		"\"name\" = 'Ada''s'",
-		"\"note\" = NULL",
-		"\"payload\" = X'dead'",
-		"\"note\" IS NULL",
-	} {
-		if !containsLine(result.SQL, want) {
-			t.Fatalf("SQL = %q, want to contain %q", result.SQL, want)
-		}
+	if err == nil {
+		t.Fatal("composeRecordViewerUpdateSQL() error = nil, want error when no primary key columns")
 	}
 }
 

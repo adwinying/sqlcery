@@ -1743,7 +1743,7 @@ func TestModelUpdateCCComposesUpdateAndReturnsToCommandMode(t *testing.T) {
 	}
 }
 
-func TestModelUpdateCCKeepsSplitLayoutWhenComposingUpdate(t *testing.T) {
+func TestModelUpdateCCRejectsUpdateWhenNoPrimaryKeys(t *testing.T) {
 	model := NewModel(Session{}, nil)
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
@@ -1762,17 +1762,11 @@ func TestModelUpdateCCKeepsSplitLayoutWhenComposingUpdate(t *testing.T) {
 	next, _ = model.Update(tea.KeyPressMsg{Text: "c"})
 	model = next.(Model)
 
-	if got, want := model.state.Query.Layout, LayoutSplit; got != want {
-		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
-	}
-	if got, want := model.state.Query.ActiveMode, ModeCommand; got != want {
+	if got, want := model.state.Query.ActiveMode, ModeRecordViewer; got != want {
 		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, "Loaded UPDATE for row 1 from widgets into command mode using visible column predicate."; got != want {
-		t.Fatalf("state.Status = %q, want %q", got, want)
-	}
-	if got := model.command.Value(); !strings.Contains(got, "UPDATE \"widgets\"") || !strings.Contains(got, "\"name\" = 'one'") {
-		t.Fatalf("command.Value() = %q, want generated UPDATE", got)
+	if !strings.Contains(model.state.Status, "Could not compose UPDATE") {
+		t.Fatalf("state.Status = %q, want error about missing primary key", model.state.Status)
 	}
 }
 
