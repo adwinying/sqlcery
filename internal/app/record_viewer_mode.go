@@ -17,7 +17,6 @@ const (
 	minimumRecordViewerHeight         = 8
 	recordViewerPageSize              = 300
 	recordViewerViewportClipThreshold = 20
-	recordViewerPrimaryKeyTag         = "[pk] "
 )
 
 // sqlceryLogo is the "SQLcery" ASCII art rendered in ANSI Shadow style.
@@ -522,11 +521,7 @@ func viewerColumns(columns []db.ResultColumn) []recordViewerColumn {
 		if name == "" {
 			name = fmt.Sprintf("column_%d", i+1)
 		}
-		header := name
-		if column.PrimaryKey != nil {
-			header = recordViewerPrimaryKeyTag + header
-		}
-		names = append(names, recordViewerColumn{Header: header, PrimaryKey: column.PrimaryKey != nil})
+		names = append(names, recordViewerColumn{Header: name, PrimaryKey: column.PrimaryKey != nil})
 	}
 	return names
 }

@@ -35,10 +35,10 @@ func TestRecordViewerModeViewRendersFullResultSet(t *testing.T) {
 		"Record viewer",
 		"Rows: 3  Columns: 3",
 		"Page: 1/1  Showing rows 1-3",
-		"[pk] id | name  | created_at",
-		"1       | Ada   | 2026-04-07 11:30:00",
-		"2       | Grace | 2026-04-08 09:00:00",
-		"3       | Linus | 2026-04-09 15:45:00",
+		"id | name  | created_at",
+		"1  | Ada   | 2026-04-07 11:30:00",
+		"2  | Grace | 2026-04-08 09:00:00",
+		"3  | Linus | 2026-04-09 15:45:00",
 	} {
 		if !strings.Contains(plainView, want) {
 			t.Fatalf("View() = %q, want to contain %q", plainView, want)
@@ -316,14 +316,11 @@ func TestRenderRecordViewerTableOnlyStylesPrimaryKeyColumns(t *testing.T) {
 	}, 0, 80, 10, recordViewerRenderState{})
 
 	plain := ansi.Strip(table)
-	if !strings.Contains(plain, "[pk] id | name") {
-		t.Fatalf("renderRecordViewerTable() = %q, want primary key marker in header", plain)
+	if !strings.Contains(plain, "id | name") {
+		t.Fatalf("renderRecordViewerTable() = %q, want id and name columns in header", plain)
 	}
-	if !strings.Contains(plain, "7       | Ada") {
-		t.Fatalf("renderRecordViewerTable() = %q, want primary key values aligned", plain)
-	}
-	if strings.Contains(plain, "[pk] name") {
-		t.Fatalf("renderRecordViewerTable() = %q, want non-primary key columns unchanged", plain)
+	if !strings.Contains(plain, "7  | Ada") {
+		t.Fatalf("renderRecordViewerTable() = %q, want row values aligned", plain)
 	}
 }
 
