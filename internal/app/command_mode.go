@@ -321,25 +321,7 @@ func (m commandModeModel) renderView(query QueryContext) string {
 		editorView = m.renderVisibleLines(wrappedLines, scrollTop, ghost)
 	}
 
-	// When an overlay is active, hide the transcript and show the overlay instead.
-	historySearch := renderHistorySearch(query)
-	wizard := renderSlashWizard(query)
-	if historySearch != "" || wizard != "" {
-		sections := make([]string, 0, 4)
-		if historySearch != "" {
-			sections = append(sections, historySearch)
-		}
-		if wizard != "" {
-			sections = append(sections, wizard)
-		}
-		sections = append(sections, editorView)
-		if dropdown != "" {
-			sections = append(sections, dropdown)
-		}
-		return strings.Join(sections, "\n")
-	}
-
-	// No overlay — show transcript above the editor.
+	// Show transcript above the editor.
 	transcriptH := max(0, m.innerHeight-editorHeight-dropdownLines)
 	allTranscriptLines := m.renderReplTranscriptLines()
 	totalTranscriptLines := len(allTranscriptLines)

@@ -606,6 +606,7 @@ func (m Model) readyStateView(totalHeight int) string {
 
 	helpOverlay := renderHelpSurface(query)
 
+	var base string
 	switch query.Layout {
 	case LayoutSplit:
 		viewerOuterH := int(float64(totalHeight) * m.splitRatio)
@@ -621,26 +622,35 @@ func (m Model) readyStateView(totalHeight int) string {
 		viewerActive := query.ActiveMode == ModeRecordViewer
 		viewerPane := m.renderBorderedPane(viewerContent, "[1] Results", viewerActive, w, viewerOuterH-2)
 		commandPane := m.renderBorderedPane(commandContent, "[2] Commands", !viewerActive, w, commandOuterH-2)
-		layout := viewerPane + "\n" + commandPane
-		if helpOverlay != "" {
-			return helpOverlay + "\n" + layout
-		}
-		return layout
+		base = viewerPane + "\n" + commandPane
 	case LayoutViewerOnly:
 		viewerContent := m.viewer.View(query)
-		viewerPane := m.renderBorderedPane(viewerContent, "[1] Results", true, w, totalHeight-2)
-		if helpOverlay != "" {
-			return helpOverlay + "\n" + viewerPane
-		}
-		return viewerPane
+		base = m.renderBorderedPane(viewerContent, "[1] Results", true, w, totalHeight-2)
 	default: // LayoutCommandOnly
 		commandContent := m.command.View(query)
-		commandPane := m.renderBorderedPane(commandContent, "[2] Commands", true, w, totalHeight-2)
-		if helpOverlay != "" {
-			return helpOverlay + "\n" + commandPane
-		}
-		return commandPane
+		base = m.renderBorderedPane(commandContent, "[2] Commands", true, w, totalHeight-2)
 	}
+
+	baseH := totalHeight
+	if helpOverlay != "" {
+		base = helpOverlay + "\n" + base
+		baseH = strings.Count(base, "\n") + 1
+	}
+
+	// Overlay popup window for history search and slash wizard.
+	popupContent := renderHistorySearch(query)
+	if popupContent == "" {
+		popupContent = renderSlashWizard(query)
+	}
+	if popupContent != "" {
+		maxW := min(popupBoxMaxWidth, w-4)
+		if maxW >= popupBoxMinWidth {
+			popupBox := renderPopupBox(popupContent, maxW)
+			base = overlayCenter(base, popupBox, w, baseH)
+		}
+	}
+
+	return base
 }
 
 func (m Model) statusBarView() string {

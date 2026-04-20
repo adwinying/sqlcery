@@ -10,6 +10,7 @@ type tuiTheme struct {
 	footer                lipgloss.Style
 	paneBorderActive      lipgloss.Style
 	paneBorderInactive    lipgloss.Style
+	popupBorder           lipgloss.Style
 	sectionHeading        lipgloss.Style
 	activeSectionHeading  lipgloss.Style
 	separator             lipgloss.Style
@@ -69,6 +70,7 @@ func newTUITheme() tuiTheme {
 		footer:                lipgloss.NewStyle().Foreground(footerForeground).Background(footerBackground),
 		paneBorderActive:      lipgloss.NewStyle().Foreground(accent),
 		paneBorderInactive:    lipgloss.NewStyle().Foreground(mutedSoft),
+		popupBorder:           lipgloss.NewStyle().Foreground(accent),
 		sectionHeading:        lipgloss.NewStyle().Foreground(accentSoft).Bold(true),
 		activeSectionHeading:  lipgloss.NewStyle().Foreground(accentWarm).Bold(true).Underline(true),
 		separator:             lipgloss.NewStyle().Foreground(mutedSoft),

@@ -260,9 +260,7 @@ func TestCommandModeViewRendersAutocompletePanel(t *testing.T) {
 }
 
 func TestCommandModeViewRendersSlashWizard(t *testing.T) {
-	mode := newCommandModeModel()
-	mode.SetSize(80, 20)
-	view := mode.View(QueryContext{
+	query := QueryContext{
 		SlashWizard: &SlashCommandWizardContext{
 			Step: SlashCommandWizardStepCommand,
 			Commands: []SlashCommandWizardCommand{{
@@ -272,30 +270,30 @@ func TestCommandModeViewRendersSlashWizard(t *testing.T) {
 				Usage:       "/tables",
 			}},
 		},
-	})
+	}
+	popup := renderSlashWizard(query)
 
 	for _, want := range []string{"Command wizard:", "Step 1/2: choose a slash command", "> /tables - list tables in the current database", "ctrl+g confirm | alt+n next | alt+p prev | esc close"} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("View() = %q, want to contain %q", view, want)
+		if !strings.Contains(popup, want) {
+			t.Fatalf("renderSlashWizard() = %q, want to contain %q", popup, want)
 		}
 	}
 }
 
 func TestCommandModeViewRendersHistorySearch(t *testing.T) {
-	mode := newCommandModeModel()
-	mode.SetSize(80, 20)
-	view := mode.View(QueryContext{
+	query := QueryContext{
 		ActiveMode: ModeHistorySearch,
 		HistorySearch: &HistorySearchContext{
 			Query:         "su",
 			SelectedIndex: 0,
 		},
 		SessionHistory: []HistoryEntryContext{{SQL: "select * from user_sessions"}, {SQL: "select * from users"}},
-	})
+	}
+	popup := renderHistorySearch(query)
 
 	for _, want := range []string{"Reverse search:", "query> su", "2 match(es); newest first.", "> select * from users", "enter restore | ctrl+r older | alt+p newer | esc close"} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("View() = %q, want to contain %q", view, want)
+		if !strings.Contains(popup, want) {
+			t.Fatalf("renderHistorySearch() = %q, want to contain %q", popup, want)
 		}
 	}
 }
