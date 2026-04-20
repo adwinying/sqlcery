@@ -29,7 +29,7 @@ func TestMarshalSupportsCSVTSVJSONAndMarkdown(t *testing.T) {
 	if rows != 2 {
 		t.Fatalf("Marshal(csv) rows = %d, want 2", rows)
 	}
-	if got := string(csvData); got != "id,name,created_at,payload\n1,Ada,2026-04-08T12:34:56Z,0xdead\n2,NULL,2026-04-08T13:34:56Z,0x6f6b\n" {
+	if got := string(csvData); got != "id,name,created_at,payload\n1,Ada,2026-04-08 12:34:56,0xdead\n2,NULL,2026-04-08 13:34:56,0x6f6b\n" {
 		t.Fatalf("Marshal(csv) = %q", got)
 	}
 
@@ -37,7 +37,7 @@ func TestMarshalSupportsCSVTSVJSONAndMarkdown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal(tsv) error = %v", err)
 	}
-	if got := string(tsvData); got != "id\tname\tcreated_at\tpayload\n2\tNULL\t2026-04-08T13:34:56Z\t0x6f6b\n" {
+	if got := string(tsvData); got != "id\tname\tcreated_at\tpayload\n2\tNULL\t2026-04-08 13:34:56\t0x6f6b\n" {
 		t.Fatalf("Marshal(tsv) = %q", got)
 	}
 
@@ -67,7 +67,7 @@ func TestMarshalSupportsCSVTSVJSONAndMarkdown(t *testing.T) {
 	for _, want := range []string{
 		"| id | name | created_at | payload |",
 		"| --- | --- | --- | --- |",
-		"| 1 | Ada | 2026-04-08T12:34:56Z | 0xdead |",
+		"| 1 | Ada | 2026-04-08 12:34:56 | 0xdead |",
 	} {
 		if !strings.Contains(markdown, want) {
 			t.Fatalf("Marshal(markdown) = %q, want to contain %q", markdown, want)

@@ -318,7 +318,7 @@ func TestCommandModeViewRendersInlineSelectResult(t *testing.T) {
 		},
 	}
 	result := renderInlineResult(query)
-	for _, want := range []string{"Results:", "id | name | created_at", "1  | Ada  | 2026-04-07T11:30:00Z", "1 row."} {
+	for _, want := range []string{"Results:", "id | name | created_at", "1  | Ada  | 2026-04-07 11:30:00", "1 row."} {
 		if !strings.Contains(result, want) {
 			t.Fatalf("renderInlineResult() = %q, want to contain %q", result, want)
 		}

@@ -36,9 +36,9 @@ func TestRecordViewerModeViewRendersFullResultSet(t *testing.T) {
 		"Rows: 3  Columns: 3",
 		"Page: 1/1  Showing rows 1-3",
 		"[pk] id | name  | created_at",
-		"1       | Ada   | 2026-04-07T11:30:00Z",
-		"2       | Grace | 2026-04-08T09:00:00Z",
-		"3       | Linus | 2026-04-09T15:45:00Z",
+		"1       | Ada   | 2026-04-07 11:30:00",
+		"2       | Grace | 2026-04-08 09:00:00",
+		"3       | Linus | 2026-04-09 15:45:00",
 	} {
 		if !strings.Contains(plainView, want) {
 			t.Fatalf("View() = %q, want to contain %q", plainView, want)

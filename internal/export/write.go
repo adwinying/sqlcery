@@ -318,7 +318,7 @@ func formatTextValue(value db.ResultValue) string {
 		}
 	case db.ValueKindTime:
 		if typed, ok := value.Value.(time.Time); ok {
-			return typed.Format(time.RFC3339)
+			return typed.Format("2006-01-02 15:04:05")
 		}
 	}
 
