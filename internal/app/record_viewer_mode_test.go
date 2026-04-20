@@ -486,6 +486,120 @@ func TestRecordViewerModeToggleSelectedRowTracksMultipleRows(t *testing.T) {
 	}
 }
 
+// TestPrepareRecordViewerPageCJKColumnWidths verifies that CJK characters are
+// measured at display width 2 each when computing column widths.
+func TestPrepareRecordViewerPageCJKColumnWidths(t *testing.T) {
+	// "名前" = 2 CJK chars → display width 4
+	// "中文テスト" = 5 CJK chars → display width 10
+	result := &db.ResultSet{
+		Columns: []db.ResultColumn{{Name: "名前"}, {Name: "id"}},
+		Rows: []db.ResultRow{
+			{Values: []db.ResultValue{
+				{Kind: db.ValueKindString, Value: "中文"},   // display width 4
+				{Kind: db.ValueKindInteger, Value: int64(1)},
+			}},
+			{Values: []db.ResultValue{
+				{Kind: db.ValueKindString, Value: "テスト長い値"}, // display width 12
+				{Kind: db.ValueKindInteger, Value: int64(2)},
+			}},
+		},
+	}
+
+	prepared := prepareRecordViewerPage(result, 0, false)
+
+	// "名前" header has display width 4; cell "テスト長い値" has display width 12 → column 0 width = 12
+	if got, want := prepared.Widths[0], 12; got != want {
+		t.Fatalf("Widths[0] = %d, want %d (CJK display widths must be counted as 2 each)", got, want)
+	}
+	// "id" header has display width 2; cell "1" has display width 1 → column 1 width = 2
+	if got, want := prepared.Widths[1], 2; got != want {
+		t.Fatalf("Widths[1] = %d, want %d", got, want)
+	}
+}
+
+// TestRenderInlineResultLineCJKPadding verifies that CJK values are padded
+// correctly so columns align despite multi-byte characters.
+func TestRenderInlineResultLineCJKPadding(t *testing.T) {
+	// Column widths: 4, 10
+	widths := []int{4, 10}
+
+	// Row 1: "ab" (width 2) padded to 4, "hello" (width 5) padded to 10
+	line1 := renderInlineResultLine([]string{"ab", "hello"}, widths)
+	// Row 2: "中文" (width 4) needs no extra padding, "テスト長い値" (width 12) > 10 but no truncation here
+	line2 := renderInlineResultLine([]string{"中文", "テスト長い値"}, widths)
+
+	// line1 col0: "ab  " (2 spaces of padding)
+	if !strings.Contains(line1, "ab  ") {
+		t.Fatalf("renderInlineResultLine() line1 = %q, want col0 padded to width 4", line1)
+	}
+	// line1 col1: "hello     " (5 spaces)
+	if !strings.Contains(line1, "hello     ") {
+		t.Fatalf("renderInlineResultLine() line1 = %q, want col1 padded to width 10", line1)
+	}
+
+	// line2 col0: "中文" display-width 4, column width 4 → padding=0.
+	// The join separator is " | " so the rendered output is "中文" + "" + " | " = "中文 | ".
+	if !strings.Contains(line2, "中文 | ") {
+		t.Fatalf("renderInlineResultLine() line2 = %q, want CJK value followed by \" | \" (no extra padding when display width equals column width)", line2)
+	}
+}
+
+// TestRecordViewerModeViewCJKCharacters is an end-to-end test ensuring the
+// record viewer renders CJK column headers and values with correct alignment.
+func TestRecordViewerModeViewCJKCharacters(t *testing.T) {
+	mode := newRecordViewerModeModel()
+	mode.SetSize(80, 12)
+
+	view := ansi.Strip(mode.View(QueryContext{
+		LatestResult: &LatestResultContext{
+			Query: "select 名前, score from users",
+			PreservedResult: &db.ResultSet{
+				Columns: []db.ResultColumn{{Name: "名前"}, {Name: "score"}},
+				Rows: []db.ResultRow{
+					{Values: []db.ResultValue{
+						{Kind: db.ValueKindString, Value: "中文"},
+						{Kind: db.ValueKindInteger, Value: int64(100)},
+					}},
+					{Values: []db.ResultValue{
+						{Kind: db.ValueKindString, Value: "Alice"},
+						{Kind: db.ValueKindInteger, Value: int64(99)},
+					}},
+				},
+			},
+		},
+	}))
+
+	// Header must contain "名前" and "score"
+	if !strings.Contains(view, "名前") {
+		t.Fatalf("View() = %q, want CJK column header 名前", view)
+	}
+	// Data values must appear
+	if !strings.Contains(view, "中文") {
+		t.Fatalf("View() = %q, want CJK cell value 中文", view)
+	}
+	// "Alice" must also appear
+	if !strings.Contains(view, "Alice") {
+		t.Fatalf("View() = %q, want ASCII cell value Alice", view)
+	}
+
+	// The header separator must be at least as wide as the CJK column header (display width 4).
+	// "名前" header → column width ≥ 4, separator uses max(3, width) dashes → at least 4 dashes.
+	if !strings.Contains(view, "----") {
+		t.Fatalf("View() = %q, want separator of at least 4 dashes for CJK header column", view)
+	}
+
+	// The separator is " | " and column 0 has width=5 (max of "名前"=4, "中文"=4, "Alice"=5).
+	// "中文" (display-width 4) gets 1 space of padding before " | " → "中文  | "
+	if !strings.Contains(view, "中文  | ") {
+		t.Fatalf("View() = %q, want '中文  | ' (1 space padding + separator space for CJK value)", view)
+	}
+
+	// "Alice" has display-width 5 = column width → 0 padding before " | " → "Alice | "
+	if !strings.Contains(view, "Alice | ") {
+		t.Fatalf("View() = %q, want 'Alice | ' (no extra padding for Alice)", view)
+	}
+}
+
 func BenchmarkRecordViewerModeViewLargePage(b *testing.B) {
 	mode := newRecordViewerModeModel()
 	mode.SetSize(140, 24)
