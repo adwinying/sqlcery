@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/adwinying/sqlcery/internal/config"
 	_ "modernc.org/sqlite"
@@ -30,8 +33,31 @@ func Open(ctx context.Context, connection config.Connection) (*SQLAdapter, error
 	}
 }
 
+// expandHomePath expands a leading ~ to the current user's home directory.
+func expandHomePath(path string) (string, error) {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
+		return path, nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home directory: %w", err)
+	}
+
+	if path == "~" {
+		return home, nil
+	}
+
+	return filepath.Join(home, path[2:]), nil
+}
+
 func openSQLite(ctx context.Context, connection config.Connection, settings lifecycleSettings) (*SQLAdapter, error) {
-	db, err := sql.Open(sqliteDriverName, connection.Database)
+	databasePath, err := expandHomePath(connection.Database)
+	if err != nil {
+		return nil, fmt.Errorf("expand sqlite database path %q: %w", connection.Database, err)
+	}
+
+	db, err := sql.Open(sqliteDriverName, databasePath)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite database %q: %w", connection.Database, err)
 	}
