@@ -9,7 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-const historySearchPreviewRows = 4
+const historySearchPreviewRows = popupBoxFixedRows - 4 // 4 = title + query + match-count + hint
 
 type historySearchMatch struct {
 	Entry HistoryEntryContext

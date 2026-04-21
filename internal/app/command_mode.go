@@ -736,22 +736,34 @@ func renderSlashWizard(query QueryContext) string {
 	switch wizard.Step {
 	case SlashCommandWizardStepTarget:
 		selectedCommand, _ := slashWizardCommandByIndex(wizard)
+		headerLines := 1 // title already added
 		if wizard.DirectInvocation {
 			lines = append(lines,
 				appTheme.panelText.Render(fmt.Sprintf("Choose a table for %s:", selectedCommand.DisplayName)),
 			)
+			headerLines++
 		} else {
 			lines = append(lines,
 				appTheme.panelMuted.Render(fmt.Sprintf("Step 1/2 complete: %s", selectedCommand.DisplayName)),
 				appTheme.panelText.Render(fmt.Sprintf("Step 2/2: choose a table for %s", selectedCommand.DisplayName)),
 			)
+			headerLines += 2
 		}
-		for i, target := range wizard.Targets {
-			if i == clampWizardIndex(wizard.SelectedTarget, len(wizard.Targets)) {
+		const footerLines = 1
+		listViewport := popupBoxFixedRows - headerLines - footerLines
+		if listViewport < 1 {
+			listViewport = 1
+		}
+		selected := clampWizardIndex(wizard.SelectedTarget, len(wizard.Targets))
+		scrollOffset := max(0, selected-listViewport+1)
+		viewEnd := min(len(wizard.Targets), scrollOffset+listViewport)
+		for i := scrollOffset; i < viewEnd; i++ {
+			target := wizard.Targets[i]
+			if i == selected {
 				lines = append(lines, appTheme.panelSelected.Render("> "+target.Display))
-				continue
+			} else {
+				lines = append(lines, appTheme.panelText.Render("  "+target.Display))
 			}
-			lines = append(lines, appTheme.panelText.Render("  "+target.Display))
 		}
 		if wizard.DirectInvocation {
 			lines = append(lines, appTheme.panelHint.Render("enter confirm | alt+n next | alt+p prev | esc close"))
@@ -760,16 +772,26 @@ func renderSlashWizard(query QueryContext) string {
 		}
 	default:
 		lines = append(lines, appTheme.panelText.Render("Step 1/2: choose a slash command"))
-		for i, command := range wizard.Commands {
+		const headerLines = 2 // title + step description
+		const footerLines = 1
+		listViewport := popupBoxFixedRows - headerLines - footerLines
+		if listViewport < 1 {
+			listViewport = 1
+		}
+		selected := clampWizardIndex(wizard.SelectedCommand, len(wizard.Commands))
+		scrollOffset := max(0, selected-listViewport+1)
+		viewEnd := min(len(wizard.Commands), scrollOffset+listViewport)
+		for i := scrollOffset; i < viewEnd; i++ {
+			command := wizard.Commands[i]
 			line := fmt.Sprintf("  %s - %s", command.DisplayName, command.Summary)
 			if command.NeedsTarget {
 				line += " (choose table next)"
 			}
-			if i == clampWizardIndex(wizard.SelectedCommand, len(wizard.Commands)) {
+			if i == selected {
 				lines = append(lines, appTheme.panelSelected.Render("> "+strings.TrimPrefix(line, "  ")))
-				continue
+			} else {
+				lines = append(lines, appTheme.panelText.Render(line))
 			}
-			lines = append(lines, appTheme.panelText.Render(line))
 		}
 		lines = append(lines, appTheme.panelHint.Render("enter confirm | alt+n next | alt+p prev | esc close"))
 	}

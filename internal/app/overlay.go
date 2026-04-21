@@ -8,32 +8,31 @@ import (
 )
 
 const (
-	popupBoxMinWidth = 30
-	popupBoxMaxWidth = 64
+	popupBoxMinWidth  = 30
+	popupBoxMaxWidth  = 64
+	popupBoxFixedRows = 16 // fixed inner height: content is padded or clipped to this many rows
 )
 
-// renderPopupBox wraps content in a rounded-border popup box.
-// maxOuterWidth is the maximum total visual width including the two border characters.
-// Each content line is padded or truncated to fit the computed inner width.
+// renderPopupBox wraps content in a rounded-border popup box with a fixed inner
+// height of popupBoxFixedRows rows and a fixed inner width derived from maxOuterWidth.
+// Content lines are padded or truncated to fit the inner width.
+// If there are fewer content lines than popupBoxFixedRows, blank lines are added.
+// If there are more, excess lines are silently dropped (the popup acts like a
+// fixed-size viewport — callers are responsible for pre-scrolling the slice).
 func renderPopupBox(content string, maxOuterWidth int) string {
 	lines := strings.Split(content, "\n")
 
-	// Determine inner width from content visual widths.
-	contentWidth := 0
-	for _, line := range lines {
-		if w := ansi.StringWidth(line); w > contentWidth {
-			contentWidth = w
-		}
-	}
-
 	// Inner width accounts for left and right border chars (│ = 1 char each).
-	innerWidth := contentWidth
-	if maxOuterWidth > 2 && innerWidth > maxOuterWidth-2 {
-		innerWidth = maxOuterWidth - 2
-	}
+	innerWidth := maxOuterWidth - 2
 	if innerWidth < 1 {
 		innerWidth = 1
 	}
+
+	// Pad or clip to exactly popupBoxFixedRows rows.
+	for len(lines) < popupBoxFixedRows {
+		lines = append(lines, "")
+	}
+	lines = lines[:popupBoxFixedRows]
 
 	bs := lipgloss.NewStyle().Foreground(appTheme.popupBorder.GetForeground())
 	topLine := bs.Render("╭" + strings.Repeat("─", innerWidth) + "╮")
