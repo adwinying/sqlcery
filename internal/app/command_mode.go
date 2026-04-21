@@ -19,7 +19,8 @@ const (
 	defaultEditorHeight   = 1
 	minimumEditorWidth    = 20
 	minimumEditorHeight   = 1
-	autocompletePanelRows = 4
+	autocompletePanelRows = 5
+	bottomPadding         = 5 // blank rows kept below the last editor line
 )
 
 type replTranscriptEntry struct {
@@ -29,14 +30,14 @@ type replTranscriptEntry struct {
 }
 
 type commandModeModel struct {
-	editor               textarea.Model
-	keys                 commandModeKeyMap
-	highlighter          sqlSyntaxHighlighter
-	selectedSuggestion   int
-	replTranscript       []replTranscriptEntry
-	innerWidth           int
-	innerHeight          int
-	transcriptFromBottom int // 0 = show latest; increases as user scrolls up
+	editor             textarea.Model
+	keys               commandModeKeyMap
+	highlighter        sqlSyntaxHighlighter
+	selectedSuggestion int
+	replTranscript     []replTranscriptEntry
+	innerWidth         int
+	innerHeight        int
+	scrollOffset       int // lines scrolled up from the natural bottom; 0 = follow latest
 }
 
 type commandModeKeyMap struct {
@@ -112,11 +113,11 @@ func (m commandModeModel) Update(msg tea.Msg, query QueryContext) (commandModeMo
 				return m, nil
 			}
 		case key.Matches(keyMsg, m.keys.ScrollTranscriptUp):
-			m.transcriptFromBottom++
+			m.scrollOffset++
 			return m, nil
 		case key.Matches(keyMsg, m.keys.ScrollTranscriptDown):
-			if m.transcriptFromBottom > 0 {
-				m.transcriptFromBottom--
+			if m.scrollOffset > 0 {
+				m.scrollOffset--
 			}
 			return m, nil
 		}
@@ -163,8 +164,7 @@ func (m *commandModeModel) setEditorHeight() {
 	if logicalLines < 1 {
 		logicalLines = 1
 	}
-	cap := max(1, m.innerHeight)
-	m.editor.SetHeight(max(minimumEditorHeight, min(logicalLines, cap)))
+	m.editor.SetHeight(max(minimumEditorHeight, logicalLines))
 }
 
 func (m commandModeModel) Focused() bool {
@@ -240,7 +240,7 @@ func (m *commandModeModel) AppendReplEntry(prompt, sql, output string) {
 		SQL:    sql,
 		Output: output,
 	})
-	m.transcriptFromBottom = 0 // auto-scroll to latest
+	m.scrollOffset = 0 // auto-scroll to latest
 }
 
 func bindingSummary(binding key.Binding) string {
@@ -282,55 +282,63 @@ func adjustedScrollTop(current, cursorRow, totalRows, height int) int {
 }
 
 func (m commandModeModel) renderView(query QueryContext) string {
-	// Compute autocomplete dropdown (may be empty)
+	// Compute autocomplete dropdown first so we know how many rows it takes.
 	dropdown := m.renderAutocompleteDropdown(query)
 	dropdownLines := 0
 	if dropdown != "" {
 		dropdownLines = strings.Count(dropdown, "\n") + 1
 	}
 
-	// Update editor height based on current content (local copy for rendering)
-	logicalLines := len(strings.Split(m.editor.Value(), "\n"))
-	if logicalLines < 1 {
-		logicalLines = 1
-	}
-	editorCap := max(1, m.innerHeight-dropdownLines)
-	editorHeight := max(minimumEditorHeight, min(logicalLines, editorCap))
-	m.editor.SetHeight(editorHeight)
+	viewportH := max(1, m.innerHeight-dropdownLines)
 
-	// Compute ghost text for the editor cursor line
+	// Build the unified line list: transcript + editor.
+	transcriptLines := m.renderReplTranscriptLines()
+
 	ghost := m.ghostText(query)
 
-	// Render the editor view
-	var editorView string
+	var editorStrings []string
+	var cursorRowInEditor int
+	var totalEditorRows int
 	if m.editor.Value() == "" && strings.TrimSpace(m.editor.Placeholder) != "" {
-		editorView = m.renderPlaceholderView()
+		editorStrings = []string{m.renderPlaceholderView()}
+		cursorRowInEditor = 0
+		totalEditorRows = 1
 	} else {
-		wrappedLines, cursorRow, totalRows := m.renderedLines()
-		scrollTop := adjustedScrollTop(0, cursorRow, totalRows, editorHeight)
-		editorView = m.renderVisibleLines(wrappedLines, scrollTop, ghost)
+		wrappedLines, editorCursor, editorTotal := m.renderedLines()
+		editorStrings = m.renderAllEditorLines(wrappedLines, ghost)
+		cursorRowInEditor = editorCursor
+		totalEditorRows = editorTotal
 	}
 
-	// Show transcript above the editor.
-	transcriptH := max(0, m.innerHeight-editorHeight-dropdownLines)
-	allTranscriptLines := m.renderReplTranscriptLines()
-	totalTranscriptLines := len(allTranscriptLines)
+	allLines := make([]string, 0, len(transcriptLines)+totalEditorRows)
+	allLines = append(allLines, transcriptLines...)
+	allLines = append(allLines, editorStrings...)
 
-	// Clamp scroll offset so we never scroll past the top.
-	maxOffset := max(0, totalTranscriptLines-transcriptH)
-	fromBottom := min(m.transcriptFromBottom, maxOffset)
-	scrollTop := max(0, maxOffset-fromBottom)
+	cursorRow := len(transcriptLines) + cursorRowInEditor
+	lastEditorRow := len(transcriptLines) + totalEditorRows - 1
 
-	visibleEnd := min(totalTranscriptLines, scrollTop+transcriptH)
-	var visibleTranscript []string
-	if scrollTop < visibleEnd {
-		visibleTranscript = allTranscriptLines[scrollTop:visibleEnd]
+	// naturalScrollTop: scroll position that leaves exactly bottomPadding blank
+	// rows below the last editor line.
+	naturalScrollTop := max(0, lastEditorRow+bottomPadding-viewportH+1)
+
+	// Apply manual scroll offset (lines scrolled up from natural bottom).
+	rawScroll := max(0, naturalScrollTop-m.scrollOffset)
+
+	// Ensure cursor is visible with minimal adjustment.
+	scrollTop := adjustedScrollTop(rawScroll, cursorRow, len(allLines), viewportH)
+
+	// Never go below the natural bottom (preserves bottomPadding when possible).
+	scrollTop = min(scrollTop, naturalScrollTop)
+
+	// Render the visible slice.
+	visEnd := min(len(allLines), scrollTop+viewportH)
+	var visible []string
+	if scrollTop < visEnd {
+		visible = allLines[scrollTop:visEnd]
 	}
 
-	// Build final output: transcript lines, then editor, then dropdown.
-	parts := make([]string, 0, len(visibleTranscript)+2)
-	parts = append(parts, visibleTranscript...)
-	parts = append(parts, editorView)
+	parts := make([]string, 0, len(visible)+1)
+	parts = append(parts, visible...)
 	if dropdown != "" {
 		parts = append(parts, dropdown)
 	}
@@ -474,6 +482,20 @@ func (m commandModeModel) renderVisibleLines(lines []renderedEditorLine, scrollT
 	}
 
 	return builder.String()
+}
+
+// renderAllEditorLines renders every visual editor line into a []string without
+// any height-based clipping. The unified viewport in renderView does the slicing.
+func (m commandModeModel) renderAllEditorLines(lines []renderedEditorLine, ghostText string) []string {
+	result := make([]string, len(lines))
+	for i, line := range lines {
+		lineGhost := ""
+		if line.isCursor {
+			lineGhost = ghostText
+		}
+		result[i] = m.renderLine(line, lineGhost)
+	}
+	return result
 }
 
 func (m commandModeModel) renderLine(line renderedEditorLine, ghostText string) string {
