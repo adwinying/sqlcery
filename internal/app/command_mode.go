@@ -330,15 +330,15 @@ func (m commandModeModel) renderView(query QueryContext) string {
 		visible = allLines[scrollTop:visEnd]
 	}
 
-	// Insert the autocomplete dropdown right below the cursor line so it
-	// appears at the cursor position rather than stuck at the pane bottom.
+	// Insert the autocomplete dropdown right below the last editor line so it
+	// floats beneath the full prompt rather than splitting it at the cursor.
 	dropdown := m.renderAutocompleteDropdown(query)
 	if dropdown == "" {
 		return strings.Join(visible, "\n")
 	}
 
-	cursorVisualRow := cursorRow - scrollTop
-	cutpoint := min(len(visible), max(0, cursorVisualRow+1))
+	lastEditorVisualRow := lastEditorRow - scrollTop
+	cutpoint := min(len(visible), max(0, lastEditorVisualRow+1))
 	dropLines := strings.Split(dropdown, "\n")
 
 	parts := make([]string, 0, viewportH)
