@@ -11,9 +11,10 @@ import (
 )
 
 type Session struct {
-	ConnectionName string
-	ConnectionType string
-	WorkingDir     string
+	ConnectionName  string
+	ConnectionType  string
+	ConnectionColor string
+	WorkingDir      string
 }
 
 type Program interface {

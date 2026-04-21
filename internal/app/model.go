@@ -673,6 +673,9 @@ func (m Model) statusBarView() string {
 
 	// Connection name
 	if name := strings.TrimSpace(m.session.ConnectionName); name != "" {
+		if color := strings.TrimSpace(m.session.ConnectionColor); color != "" {
+			name = lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Render(name)
+		}
 		parts = append(parts, name)
 	}
 

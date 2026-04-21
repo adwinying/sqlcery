@@ -63,6 +63,7 @@ type Connection struct {
 	Password  string                     `toml:"password"`
 	Lifecycle ConnectionLifecycleOptions `toml:"lifecycle"`
 	SSHHost   string                     `toml:"ssh_host"`
+	Color     string                     `toml:"color"`
 }
 
 func (c Connection) Validate() error {
