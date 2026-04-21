@@ -701,17 +701,6 @@ func (m Model) statusBarView() string {
 		parts = append(parts, name)
 	}
 
-	// Row range indicator (when results are available)
-	if latest := query.LatestResult; latest != nil && latest.PreservedResult != nil {
-		totalRows := len(latest.PreservedResult.Rows)
-		page := recordViewerPageContextFor(query.ViewerPage, totalRows)
-		if totalRows == 0 {
-			parts = append(parts, "Showing rows 0 of 0")
-		} else {
-			parts = append(parts, fmt.Sprintf("Showing rows %s of %d", formatRecordViewerRowRange(page), totalRows))
-		}
-	}
-
 	// Keybind hints
 	if m.state.App.Current == StateReady {
 		parts = append(parts, m.command.FooterHints(query))
