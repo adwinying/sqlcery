@@ -701,6 +701,17 @@ func (m Model) statusBarView() string {
 		parts = append(parts, name)
 	}
 
+	// Row range indicator (when results are available)
+	if latest := query.LatestResult; latest != nil && latest.PreservedResult != nil {
+		totalRows := len(latest.PreservedResult.Rows)
+		page := recordViewerPageContextFor(query.ViewerPage, totalRows)
+		if totalRows == 0 {
+			parts = append(parts, "Showing rows 0 of 0")
+		} else {
+			parts = append(parts, fmt.Sprintf("Showing rows %s of %d", formatRecordViewerRowRange(page), totalRows))
+		}
+	}
+
 	// Keybind hints
 	if m.state.App.Current == StateReady {
 		parts = append(parts, m.command.FooterHints(query))
@@ -740,7 +751,7 @@ func padOrTruncate(s string, width int) string {
 	return s + strings.Repeat(" ", width-displayWidth)
 }
 
-func (m Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
+func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	keys := m.command.KeyMap()
 
 	switch {
@@ -778,10 +789,10 @@ func (m Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if wizard := m.state.Query.SlashWizard; wizard != nil {
 			if wizard.Step == SlashCommandWizardStepTarget {
 				// If a filter is active, clear it first
-				if strings.TrimSpace(wizard.TargetFilter) != "" {
-					m.updateWizardTargetFilter("")
-					return nil
-				}
+			if strings.TrimSpace(wizard.TargetFilter) != "" {
+				m.updateWizardTargetFilter("")
+				return nopCmd
+			}
 				if wizard.DirectInvocation {
 					return func() tea.Msg { return slashWizardCloseIntentMsg{} }
 				}
