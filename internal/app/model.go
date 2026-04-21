@@ -714,6 +714,10 @@ func (m Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	switch {
 	case msg.String() == "enter":
+		// Enter always submits when a slash wizard popup is open.
+		if m.state.Query.SlashWizard != nil {
+			return func() tea.Msg { return submitIntentMsg{} }
+		}
 		// Enter submits when statement is complete (ends with ;), otherwise
 		// falls through to textarea to insert a newline for multi-line SQL.
 		m.syncCurrentSQL()
