@@ -32,7 +32,6 @@ type replTranscriptEntry struct {
 type commandModeModel struct {
 	editor               textarea.Model
 	keys                 commandModeKeyMap
-	scrollTop            int
 	highlighter          sqlSyntaxHighlighter
 	selectedSuggestion   int
 	replTranscript       []replTranscriptEntry
@@ -127,7 +126,6 @@ func (m commandModeModel) Update(msg tea.Msg, query QueryContext) (commandModeMo
 	var cmd tea.Cmd
 	m.editor, cmd = m.editor.Update(msg)
 	m.setEditorHeight()
-	m.syncScroll()
 	m.clampSuggestionSelection(query)
 	return m, cmd
 }
@@ -135,7 +133,6 @@ func (m commandModeModel) Update(msg tea.Msg, query QueryContext) (commandModeMo
 func (m *commandModeModel) Clear() {
 	m.editor.Reset()
 	m.editor.Focus()
-	m.scrollTop = 0
 	m.selectedSuggestion = 0
 }
 
@@ -160,7 +157,6 @@ func (m *commandModeModel) SetSize(innerWidth, innerHeight int) {
 	m.innerHeight = innerHeight
 	m.editor.SetWidth(m.innerWidth)
 	m.setEditorHeight()
-	m.syncScroll()
 }
 
 func (m *commandModeModel) setEditorHeight() {
@@ -261,11 +257,6 @@ func clampEditorSize(value, minimum int) int {
 	return value
 }
 
-func (m *commandModeModel) syncScroll() {
-	cursorRow, totalRows := m.cursorVisualPosition()
-	m.scrollTop = adjustedScrollTop(m.scrollTop, cursorRow, totalRows, m.editor.Height())
-}
-
 func adjustedScrollTop(current, cursorRow, totalRows, height int) int {
 	if height <= 0 {
 		return 0
@@ -317,7 +308,7 @@ func (m commandModeModel) renderView(query QueryContext) string {
 		editorView = m.renderPlaceholderView()
 	} else {
 		wrappedLines, cursorRow, totalRows := m.renderedLines()
-		scrollTop := adjustedScrollTop(m.scrollTop, cursorRow, totalRows, editorHeight)
+		scrollTop := adjustedScrollTop(0, cursorRow, totalRows, editorHeight)
 		editorView = m.renderVisibleLines(wrappedLines, scrollTop, ghost)
 	}
 
@@ -518,11 +509,6 @@ func (m commandModeModel) formatLineNumber(value any) string {
 	return fmt.Sprintf(" %*v ", digits, value)
 }
 
-func (m commandModeModel) cursorVisualPosition() (int, int) {
-	_, cursorRow, totalRows := m.renderedLines()
-	return cursorRow, totalRows
-}
-
 func (m commandModeModel) autocompleteItems(query QueryContext) []autocompleteItem {
 	return buildAutocompleteItems(m.editor.Value(), m.cursorOffset(), query)
 }
@@ -558,7 +544,6 @@ func (m *commandModeModel) applySuggestion(item autocompleteItem) {
 	cursor := start + len(insert)
 	m.editor.SetValue(updated)
 	m.setCursorOffset(cursor)
-	m.syncScroll()
 	m.selectedSuggestion = 0
 }
 

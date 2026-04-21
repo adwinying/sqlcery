@@ -45,7 +45,6 @@ func (m *Model) restoreSelectedHistoryEntry() {
 
 	m.command.editor.SetValue(selected.SQL)
 	m.command.editor.CursorEnd()
-	m.command.syncScroll()
 	m.command.selectedSuggestion = 0
 	m.syncCurrentSQL()
 	m.closeHistorySearch()

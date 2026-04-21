@@ -332,7 +332,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Result.ShouldReplace {
 			m.command.editor.SetValue(msg.Result.ReplaceEditor)
 			m.command.editor.CursorEnd()
-			m.command.syncScroll()
 			m.command.selectedSuggestion = 0
 			m.syncCurrentSQL()
 			m.state.SetLatestResultContext(nil)
@@ -917,7 +916,6 @@ func (m *Model) composeRecordViewerInsert() bool {
 
 	m.command.editor.SetValue(result.SQL)
 	m.command.editor.CursorEnd()
-	m.command.syncScroll()
 	m.command.selectedSuggestion = 0
 	m.syncCurrentSQL()
 	m.closeHistorySearch()
@@ -943,7 +941,6 @@ func (m *Model) composeRecordViewerUpdate() bool {
 
 	m.command.editor.SetValue(result.SQL)
 	m.command.editor.CursorEnd()
-	m.command.syncScroll()
 	m.command.selectedSuggestion = 0
 	m.syncCurrentSQL()
 	m.closeHistorySearch()
@@ -969,7 +966,6 @@ func (m *Model) composeRecordViewerDelete() bool {
 
 	m.command.editor.SetValue(result.SQL)
 	m.command.editor.CursorEnd()
-	m.command.syncScroll()
 	m.command.selectedSuggestion = 0
 	m.syncCurrentSQL()
 	m.closeHistorySearch()

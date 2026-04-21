@@ -17,7 +17,7 @@
 - [x] fix result pane horizontal scrolling not working
 - [x] command history selection does not scroll
 - [x] replace "ctrl-g" keybind with "enter" to accept
-- [ ] remove the scroll for the current command; only allow scrolling for the command pane itself and nothing else
+- [x] remove the scroll for the current command; only allow scrolling for the command pane itself and nothing else
 - [x] remove /help command
 - [x] ctrl-c in a popup window should close the popup instead of exiting the app
 - [ ] add color highlighting to connection name (configurable via config)

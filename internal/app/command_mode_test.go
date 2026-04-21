@@ -46,7 +46,6 @@ func TestCommandModeViewPreservesEditorLayout(t *testing.T) {
 	mode := newCommandModeModel()
 	mode.SetSize(80, 20)
 	mode.editor.SetValue("SELECT \"users\".name, 42, 'Ada', @id -- comment")
-	mode.syncScroll()
 
 	view := mode.View(QueryContext{})
 
