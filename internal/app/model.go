@@ -29,6 +29,7 @@ type Model struct {
 	width           int
 	height          int
 	splitRatio      float64
+	pendingQuit     bool
 }
 
 type autocompleteSchemaLoader func(context.Context, *db.SQLAdapter) (*AutocompleteSchemaContext, error)
@@ -167,10 +168,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.state.Query.ActiveMode == ModeHistorySearch {
+			if msg.String() != "ctrl+c" {
+				m.pendingQuit = false
+			}
 			if cmd := m.handleLayoutKey(msg); cmd != nil {
 				return m, cmd
 			}
 			return m, m.handleHistorySearchKey(msg)
+		}
+
+		if msg.String() != "ctrl+c" {
+			m.pendingQuit = false
 		}
 
 		if m.handleRecordViewerNavigationKey(msg) {
@@ -201,13 +209,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			// If a popup/overlay is open, close it instead of quitting
 			if m.state.Query.SlashWizard != nil {
+				m.pendingQuit = false
 				return m, func() tea.Msg { return slashWizardCloseIntentMsg{} }
 			}
-			// If in command mode with text, clear the input; otherwise quit
+			// If in command mode with text, clear the input
 			if m.state.App.Current == StateReady && m.command.Focused() && strings.TrimSpace(m.command.Value()) != "" {
+				m.pendingQuit = false
 				return m, func() tea.Msg { return clearInputIntentMsg{} }
 			}
-			return m, tea.Quit
+			// Double ctrl-c to quit: first press shows hint, second press exits
+			if m.pendingQuit {
+				return m, tea.Quit
+			}
+			m.pendingQuit = true
+			m.state.SetPendingIntent(IntentNone, "quit", "Press ctrl+c again to exit.")
+			return m, nil
 		case "q":
 			if !m.command.Focused() {
 				return m, tea.Quit
