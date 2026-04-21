@@ -40,6 +40,11 @@ type modelDependencies struct {
 	history *apphistory.Session
 }
 
+// nopCmd is a non-nil tea.Cmd that produces no message. Use it when a key
+// event has been fully handled but no further action is needed — returning a
+// non-nil cmd prevents the event from falling through to the command pane.
+var nopCmd tea.Cmd = func() tea.Msg { return nil }
+
 type submitIntentMsg struct{}
 
 type cancelRunningIntentMsg struct{}
@@ -803,17 +808,17 @@ func (m Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		(msg.String() == "backspace" || msg.String() == "ctrl+h" || msg.String() == "delete"):
 		wizard := m.state.Query.SlashWizard
 		m.updateWizardTargetFilter(trimLastRune(wizard.TargetFilter))
-		return nil
+		return nopCmd
 	case m.state.Query.SlashWizard != nil && m.state.Query.SlashWizard.Step == SlashCommandWizardStepTarget &&
 		msg.String() == "space":
 		wizard := m.state.Query.SlashWizard
 		m.updateWizardTargetFilter(wizard.TargetFilter + " ")
-		return nil
+		return nopCmd
 	case m.state.Query.SlashWizard != nil && m.state.Query.SlashWizard.Step == SlashCommandWizardStepTarget &&
 		len(msg.Text) > 0 && !msg.Mod.Contains(tea.ModAlt):
 		wizard := m.state.Query.SlashWizard
 		m.updateWizardTargetFilter(wizard.TargetFilter + msg.Text)
-		return nil
+		return nopCmd
 	default:
 		return nil
 	}
