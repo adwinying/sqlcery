@@ -19,5 +19,5 @@
 - [x] replace "ctrl-g" keybind with "enter" to accept
 - [ ] remove the scroll for the current command; only allow scrolling for the command pane itself and nothing else
 - [x] remove /help command
-- [ ] ctrl-c in a popup window should close the popup instead of exiting the app
+- [x] ctrl-c in a popup window should close the popup instead of exiting the app
 - [ ] add color highlighting to connection name (configurable via config)

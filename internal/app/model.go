@@ -199,6 +199,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "ctrl+c":
+			// If a popup/overlay is open, close it instead of quitting
+			if m.state.Query.SlashWizard != nil {
+				return m, func() tea.Msg { return slashWizardCloseIntentMsg{} }
+			}
 			// If in command mode with text, clear the input; otherwise quit
 			if m.state.App.Current == StateReady && m.command.Focused() && strings.TrimSpace(m.command.Value()) != "" {
 				return m, func() tea.Msg { return clearInputIntentMsg{} }

@@ -110,7 +110,8 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	switch {
 	case msg.String() == "ctrl+c":
-		return tea.Quit
+		m.closeHistorySearch()
+		return nil
 	case key.Matches(msg, keys.Help):
 		return func() tea.Msg { return toggleHelpIntentMsg{} }
 	case key.Matches(msg, keys.RestoreHistory):
