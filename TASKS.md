@@ -15,7 +15,7 @@
 - [ ] (skip) multirow select in result pane support
 - [ ] column name in autocomplete menu should show the type of the column
 - [x] fix result pane horizontal scrolling not working
-- [ ] command history selection does not scroll
+- [x] command history selection does not scroll
 - [x] replace "ctrl-g" keybind with "enter" to accept
 - [ ] remove the scroll for the current command; only allow scrolling for the command pane itself and nothing else
 - [x] remove /help command

@@ -179,7 +179,11 @@ func renderHistorySearch(query QueryContext) string {
 
 	selected := wrapHistorySearchIndex(search.SelectedIndex, len(matches))
 	lines = append(lines, appTheme.panelMuted.Render(fmt.Sprintf("%d match(es); newest first.", len(matches))))
-	for i := 0; i < min(len(matches), historySearchPreviewRows); i++ {
+
+	// Compute viewport scroll offset so the selected item is always visible.
+	scrollOffset := max(0, selected-historySearchPreviewRows+1)
+	viewEnd := min(len(matches), scrollOffset+historySearchPreviewRows)
+	for i := scrollOffset; i < viewEnd; i++ {
 		line := "  " + matches[i].SQL
 		if i == selected {
 			line = appTheme.panelSelected.Render("> " + matches[i].SQL)
