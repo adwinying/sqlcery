@@ -1184,7 +1184,7 @@ func (m *Model) openTableSelectionForCommand(parsed *slashCommand) (Model, tea.C
 		DirectInvocation: true,
 	}
 	m.state.SetSlashWizardContext(wizard)
-	m.state.SetReady(fmt.Sprintf("Choose a table for %s and press ctrl+g.", parsed.DisplayName))
+	m.state.SetReady(fmt.Sprintf("Choose a table for %s and press enter.", parsed.DisplayName))
 	return *m, nil
 }
 
@@ -1199,7 +1199,7 @@ func (m *Model) openCommandWizard() (Model, tea.Cmd) {
 		Commands: commands,
 	}
 	m.state.SetSlashWizardContext(wizard)
-	m.state.SetReady("Choose a slash command and press ctrl+g.")
+	m.state.SetReady("Choose a slash command and press enter.")
 	return *m, nil
 }
 
@@ -1231,7 +1231,7 @@ func (m *Model) submitSlashWizard(wizard *SlashCommandWizardContext) (Model, tea
 				return *m, nil
 			}
 			m.state.SetSlashWizardContext(nextWizard)
-			m.state.SetReady(fmt.Sprintf("Choose a table for %s and press ctrl+g.", selectedCommand.DisplayName))
+			m.state.SetReady(fmt.Sprintf("Choose a table for %s and press enter.", selectedCommand.DisplayName))
 			return *m, nil
 		}
 
@@ -1680,7 +1680,7 @@ func renderHelpSurface(query QueryContext) string {
 	}}
 
 	commandLines := []string{
-		"ctrl+g submit SQL or slash command",
+		"enter submit SQL or slash command",
 		"ctrl+r open history search",
 		"ctrl+y accept suggestion; alt+n/alt+p/ctrl+n/ctrl+p move suggestion",
 		"ctrl+x switch focus; ctrl+z zoom; ctrl+1 focus results; ctrl+2 focus command; ctrl+3 command layout",
@@ -1697,7 +1697,7 @@ func renderHelpSurface(query QueryContext) string {
 		"ctrl+u/ctrl+d page; ctrl+x focus command",
 	}
 	if query.SlashWizard != nil {
-		viewerLines = append(viewerLines, "slash wizard: ctrl+g confirm; alt+n/alt+p move; esc back or close")
+		viewerLines = append(viewerLines, "slash wizard: enter confirm; alt+n/alt+p move; esc back or close")
 	}
 	sections = append(sections, helpSection{Title: "Record viewer", Lines: viewerLines})
 
@@ -1722,7 +1722,7 @@ func renderHelpSurface(query QueryContext) string {
 	if query.SlashWizard != nil {
 		sections = append(sections, helpSection{Title: "Command wizard", Lines: []string{
 			"/commands opens the guided slash command wizard",
-			"ctrl+g confirm selection; alt+n/alt+p move selection",
+			"enter confirm selection; alt+n/alt+p move selection",
 			"esc closes command selection or steps back from table selection",
 		}})
 	}

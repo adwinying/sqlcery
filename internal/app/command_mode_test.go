@@ -273,7 +273,7 @@ func TestCommandModeViewRendersSlashWizard(t *testing.T) {
 	}
 	popup := renderSlashWizard(query)
 
-	for _, want := range []string{"Command wizard:", "Step 1/2: choose a slash command", "> /tables - list tables in the current database", "ctrl+g confirm | alt+n next | alt+p prev | esc close"} {
+	for _, want := range []string{"Command wizard:", "Step 1/2: choose a slash command", "> /tables - list tables in the current database", "enter confirm | alt+n next | alt+p prev | esc close"} {
 		if !strings.Contains(popup, want) {
 			t.Fatalf("renderSlashWizard() = %q, want to contain %q", popup, want)
 		}

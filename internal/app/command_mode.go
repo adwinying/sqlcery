@@ -71,7 +71,7 @@ func newCommandModeModel() commandModeModel {
 		innerWidth:  defaultEditorWidth,
 		innerHeight: defaultEditorHeight,
 		keys: commandModeKeyMap{
-			Submit:               key.NewBinding(key.WithKeys("ctrl+g"), key.WithHelp("ctrl+g", "submit")),
+			Submit:               key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit")),
 			Cancel:               key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear/cancel")),
 			Help:                 key.NewBinding(key.WithKeys("alt+h"), key.WithHelp("alt+h", "help")),
 			History:              key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "history")),
@@ -769,9 +769,9 @@ func renderSlashWizard(query QueryContext) string {
 			lines = append(lines, appTheme.panelText.Render("  "+target.Display))
 		}
 		if wizard.DirectInvocation {
-			lines = append(lines, appTheme.panelHint.Render("ctrl+g confirm | alt+n next | alt+p prev | esc close"))
+			lines = append(lines, appTheme.panelHint.Render("enter confirm | alt+n next | alt+p prev | esc close"))
 		} else {
-			lines = append(lines, appTheme.panelHint.Render("ctrl+g confirm | alt+n next | alt+p prev | esc back"))
+			lines = append(lines, appTheme.panelHint.Render("enter confirm | alt+n next | alt+p prev | esc back"))
 		}
 	default:
 		lines = append(lines, appTheme.panelText.Render("Step 1/2: choose a slash command"))
@@ -786,7 +786,7 @@ func renderSlashWizard(query QueryContext) string {
 			}
 			lines = append(lines, appTheme.panelText.Render(line))
 		}
-		lines = append(lines, appTheme.panelHint.Render("ctrl+g confirm | alt+n next | alt+p prev | esc close"))
+		lines = append(lines, appTheme.panelHint.Render("enter confirm | alt+n next | alt+p prev | esc close"))
 	}
 
 	return strings.Join(lines, "\n")

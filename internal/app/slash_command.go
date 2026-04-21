@@ -259,7 +259,7 @@ func handleSlashCommands(_ context.Context, _ slashCommandContext, parsed slashC
 	}
 
 	return slashCommandResult{
-		Status: "Opened the slash command wizard. Choose a command and press ctrl+g.",
+		Status: "Opened the slash command wizard. Choose a command and press enter.",
 		Wizard: &SlashCommandWizardContext{
 			Step:     SlashCommandWizardStepCommand,
 			Commands: commands,
@@ -488,7 +488,7 @@ func handleSlashDrop(_ context.Context, command slashCommandContext, parsed slas
 }
 
 func slashTemplateStatus(displayName, target string) string {
-	return fmt.Sprintf("Expanded %s for %s into command mode. Review it, then press ctrl+g to run.", displayName, target)
+	return fmt.Sprintf("Expanded %s for %s into command mode. Review it, then press enter to run.", displayName, target)
 }
 
 func slashTargetTable(parsed slashCommand) (db.TableRef, error) {

@@ -477,7 +477,7 @@ func TestModelUpdateSubmitSetsPendingIntent(t *testing.T) {
 	next, _ = model.Update(tea.KeyPressMsg{Text: ";"})
 	model = next.(Model)
 
-	next, cmd := model.Update(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("Update() cmd = nil, want submit intent command")
 	}
@@ -2203,7 +2203,7 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 		"Help:",
 		"alt+h toggle help",
 		"Command mode:",
-		"ctrl+g submit SQL or slash command",
+		"enter submit SQL or slash command",
 		"Record viewer:",
 		"yy/cc/dd load INSERT/UPDATE/DELETE into command mode",
 		"Slash commands:",
@@ -2254,7 +2254,7 @@ func TestModelToggleHelpShowsSplitAndWizardSpecificGuidance(t *testing.T) {
 
 	view := renderHelpSurface(model.state.Query)
 	for _, want := range []string{
-		"slash wizard: ctrl+g confirm; alt+n/alt+p move; esc back or close",
+		"slash wizard: enter confirm; alt+n/alt+p move; esc back or close",
 		"Record viewer [active]",
 		"Command line",
 	} {

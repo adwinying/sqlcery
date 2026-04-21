@@ -371,7 +371,7 @@ func TestModelSubmitDispatchesSlashTablesExpandsToSQL(t *testing.T) {
 	if got, want := model.state.Query.LastAction, "slash:/tables"; got != want {
 		t.Fatalf("state.Query.LastAction = %q, want %q", got, want)
 	}
-	wantStatus := "Expanded /tables for current database into command mode. Review it, then press ctrl+g to run."
+	wantStatus := "Expanded /tables for current database into command mode. Review it, then press enter to run."
 	if got := model.state.Status; got != wantStatus {
 		t.Fatalf("state.Status = %q, want %q", got, wantStatus)
 	}
@@ -455,7 +455,7 @@ func TestModelSubmitDispatchesSlashSelectIntoEditor(t *testing.T) {
 	if model.state.Query.LatestResult != nil {
 		t.Fatalf("state.Query.LatestResult = %#v, want nil", model.state.Query.LatestResult)
 	}
-	if got, want := model.state.Status, "Expanded /select for widgets into command mode. Review it, then press ctrl+g to run."; got != want {
+	if got, want := model.state.Status, "Expanded /select for widgets into command mode. Review it, then press enter to run."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	for _, want := range []string{"SELECT", `FROM "widgets"`, `"id"`, `"name"`, "LIMIT 50;"} {
@@ -491,11 +491,11 @@ func TestModelSubmitCommandsOpensWizard(t *testing.T) {
 	if model.state.Query.SlashWizard == nil {
 		t.Fatal("state.Query.SlashWizard = nil, want wizard context")
 	}
-	if got, want := model.state.Status, "Choose a slash command and press ctrl+g."; got != want {
+	if got, want := model.state.Status, "Choose a slash command and press enter."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	view := model.View().Content
-	for _, want := range []string{"Command wizard:", "Step 1/2: choose a slash command", "> /tables - list tables in the current database", "ctrl+g confirm | alt+n next | alt+p prev | esc close"} {
+	for _, want := range []string{"Command wizard:", "Step 1/2: choose a slash command", "> /tables - list tables in the current database", "enter confirm | alt+n next | alt+p prev | esc close"} {
 		if !containsLine(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
 		}
@@ -549,7 +549,7 @@ func TestModelSubmitCommandsWizardDispatchesResultCommand(t *testing.T) {
 	if model.state.Query.SlashWizard != nil {
 		t.Fatalf("state.Query.SlashWizard = %#v, want nil", model.state.Query.SlashWizard)
 	}
-	if got, want := model.state.Status, "Expanded /tables for current database into command mode. Review it, then press ctrl+g to run."; got != want {
+	if got, want := model.state.Status, "Expanded /tables for current database into command mode. Review it, then press enter to run."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
@@ -634,7 +634,7 @@ func TestModelSubmitCommandsWizardAdvancesToTargetSelection(t *testing.T) {
 	if model.state.Query.SlashWizard == nil || model.state.Query.SlashWizard.Step != SlashCommandWizardStepTarget {
 		t.Fatalf("state.Query.SlashWizard = %#v, want target step", model.state.Query.SlashWizard)
 	}
-	if got, want := model.state.Status, "Choose a table for /select and press ctrl+g."; got != want {
+	if got, want := model.state.Status, "Choose a table for /select and press enter."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	view := model.View().Content
@@ -803,7 +803,7 @@ func TestModelSubmitNeedsTargetCommandWithoutArgOpensTableSelection(t *testing.T
 	if got, want := selectedCommand.Name, "select"; got != want {
 		t.Fatalf("selectedCommand.Name = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, "Choose a table for /select and press ctrl+g."; got != want {
+	if got, want := model.state.Status, "Choose a table for /select and press enter."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
