@@ -20,7 +20,6 @@ const (
 	minimumEditorWidth    = 20
 	minimumEditorHeight   = 1
 	autocompletePanelRows = 4
-	maxEditorHeightRatio  = 3
 )
 
 type replTranscriptEntry struct {
@@ -164,7 +163,7 @@ func (m *commandModeModel) setEditorHeight() {
 	if logicalLines < 1 {
 		logicalLines = 1
 	}
-	cap := max(1, m.innerHeight/maxEditorHeightRatio)
+	cap := max(1, m.innerHeight)
 	m.editor.SetHeight(max(minimumEditorHeight, min(logicalLines, cap)))
 }
 
@@ -283,21 +282,21 @@ func adjustedScrollTop(current, cursorRow, totalRows, height int) int {
 }
 
 func (m commandModeModel) renderView(query QueryContext) string {
-	// Update editor height based on current content (local copy for rendering)
-	logicalLines := len(strings.Split(m.editor.Value(), "\n"))
-	if logicalLines < 1 {
-		logicalLines = 1
-	}
-	editorCap := max(1, m.innerHeight/maxEditorHeightRatio)
-	editorHeight := max(minimumEditorHeight, min(logicalLines, editorCap))
-	m.editor.SetHeight(editorHeight)
-
 	// Compute autocomplete dropdown (may be empty)
 	dropdown := m.renderAutocompleteDropdown(query)
 	dropdownLines := 0
 	if dropdown != "" {
 		dropdownLines = strings.Count(dropdown, "\n") + 1
 	}
+
+	// Update editor height based on current content (local copy for rendering)
+	logicalLines := len(strings.Split(m.editor.Value(), "\n"))
+	if logicalLines < 1 {
+		logicalLines = 1
+	}
+	editorCap := max(1, m.innerHeight-dropdownLines)
+	editorHeight := max(minimumEditorHeight, min(logicalLines, editorCap))
+	m.editor.SetHeight(editorHeight)
 
 	// Compute ghost text for the editor cursor line
 	ghost := m.ghostText(query)
