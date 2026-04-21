@@ -106,7 +106,7 @@ func TestRecordViewerModeViewClipsRowsToVisibleViewport(t *testing.T) {
 		},
 	}))
 
-	for _, want := range []string{"row-014", "row-018", "Viewport rows 14-18 of 30 on this page."} {
+	for _, want := range []string{"row-014", "row-018", "Showing rows 1-30 of 30"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
 		}

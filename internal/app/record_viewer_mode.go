@@ -377,9 +377,8 @@ func renderPreparedRecordViewerPage(prepared *recordViewerPreparedPage, width, h
 		lines = append(lines, renderInlineResultLine(values, widths))
 	}
 
-	if end-start < len(prepared.Rows) {
-		lines = append(lines, appTheme.panelHint.Render(fmt.Sprintf("Viewport rows %s of %d on this page.", formatRecordViewerViewportRange(start+1, end), len(prepared.Rows))))
-	}
+	ctx := prepared.Context
+	lines = append(lines, appTheme.panelHint.Render(fmt.Sprintf("Showing rows %s of %d", formatRecordViewerRowRange(ctx), ctx.TotalRows)))
 
 	return trimRenderedWidth(strings.Join(lines, "\n"), width)
 }
