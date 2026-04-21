@@ -660,7 +660,7 @@ func TestModelSlashWizardNavigationKeysMoveBackAndClose(t *testing.T) {
 		Targets: []SlashCommandWizardTarget{{Value: "users", Display: "users"}, {Value: "widgets", Display: "widgets"}},
 	})
 
-	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyCtrlN})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("Update(ctrl+n) cmd = nil, want move command")
 	}

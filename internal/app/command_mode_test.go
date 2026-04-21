@@ -231,12 +231,12 @@ func TestCommandModeSuggestionNavigationCyclesSelection(t *testing.T) {
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}, {Name: "orders"}}},
 	}
 
-	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModAlt}, query)
+	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}, query)
 	if got, want := updated.selectedSuggestion, 1; got != want {
 		t.Fatalf("selectedSuggestion = %d, want %d", got, want)
 	}
 
-	updated, _ = updated.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModAlt}, query)
+	updated, _ = updated.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl}, query)
 	if got, want := updated.selectedSuggestion, 0; got != want {
 		t.Fatalf("selectedSuggestion = %d, want %d", got, want)
 	}
