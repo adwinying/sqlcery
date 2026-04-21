@@ -32,3 +32,5 @@
 - [x] press ctrl-c twice to exit the app
 - [x] ctrl-d and ctrl-u should scroll the results pane instead of showing the prev/next page, use a ctrl-p/ctrl-n for prev/next page instead
 - [x] add filter feature when selecting a table in the popup window similar to history filter
+- [ ] ctrl-d/ctrl-u should not scroll to the prev/next page of the results pane
+- [x] filter feature for table selection does not work; input goes into the command pane instead

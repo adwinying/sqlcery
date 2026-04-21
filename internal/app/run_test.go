@@ -1172,7 +1172,7 @@ func TestModelViewRecordViewerShowsPaginatedRows(t *testing.T) {
 	}
 }
 
-func TestModelUpdateCtrlDPagesForwardInViewerOnlyLayout(t *testing.T) {
+func TestModelUpdateCtrlDScrollsWithinPageInViewerOnlyLayout(t *testing.T) {
 	model := NewModel(Session{}, nil)
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutViewerOnly)
@@ -1184,6 +1184,10 @@ func TestModelUpdateCtrlDPagesForwardInViewerOnlyLayout(t *testing.T) {
 			Rows:    make([]db.ResultRow, 605),
 		},
 	})
+	// Start on page 0 (rows 1-300).
+	if got, want := model.state.Query.ViewerPage, 0; got != want {
+		t.Fatalf("initial state.Query.ViewerPage = %d, want %d", got, want)
+	}
 
 	next, cmd := model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	model = next.(Model)
@@ -1191,30 +1195,22 @@ func TestModelUpdateCtrlDPagesForwardInViewerOnlyLayout(t *testing.T) {
 	if cmd != nil {
 		t.Fatalf("Update(ctrl+d) cmd = %#v, want nil", cmd)
 	}
-	if got, want := model.state.Query.ViewerPage, 1; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
-	}
-	if got, want := model.state.Status, "Showing record viewer page 2/3 (301-600)."; got != want {
-		t.Fatalf("state.Status = %q, want %q", got, want)
+	// Page must NOT change — ctrl+d only scrolls within the current page.
+	if got, want := model.state.Query.ViewerPage, 0; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d (ctrl+d must not change page)", got, want)
 	}
 
-	next, _ = model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
-	model = next.(Model)
-	if got, want := model.state.Query.ViewerPage, 2; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	// Repeated ctrl+d presses must not push past page boundary.
+	for i := 0; i < 20; i++ {
+		next, _ = model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+		model = next.(Model)
 	}
-
-	next, _ = model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
-	model = next.(Model)
-	if got, want := model.state.Query.ViewerPage, 2; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
-	}
-	if got, want := model.state.Status, "Already at the last record viewer page (601-605)."; got != want {
-		t.Fatalf("state.Status = %q, want %q", got, want)
+	if got, want := model.state.Query.ViewerPage, 0; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d after many ctrl+d presses", got, want)
 	}
 }
 
-func TestModelUpdateCtrlUPagesBackwardInViewerOnlyLayout(t *testing.T) {
+func TestModelUpdateCtrlUScrollsWithinPageInViewerOnlyLayout(t *testing.T) {
 	model := NewModel(Session{}, nil)
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutViewerOnly)
@@ -1234,30 +1230,22 @@ func TestModelUpdateCtrlUPagesBackwardInViewerOnlyLayout(t *testing.T) {
 	if cmd != nil {
 		t.Fatalf("Update(ctrl+u) cmd = %#v, want nil", cmd)
 	}
-	if got, want := model.state.Query.ViewerPage, 1; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
-	}
-	if got, want := model.state.Status, "Showing record viewer page 2/3 (301-600)."; got != want {
-		t.Fatalf("state.Status = %q, want %q", got, want)
+	// Page must NOT change — ctrl+u only scrolls within the current page.
+	if got, want := model.state.Query.ViewerPage, 2; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d (ctrl+u must not change page)", got, want)
 	}
 
-	next, _ = model.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
-	model = next.(Model)
-	if got, want := model.state.Query.ViewerPage, 0; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	// Repeated ctrl+u presses must not push past page boundary.
+	for i := 0; i < 20; i++ {
+		next, _ = model.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
+		model = next.(Model)
 	}
-
-	next, _ = model.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
-	model = next.(Model)
-	if got, want := model.state.Query.ViewerPage, 0; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
-	}
-	if got, want := model.state.Status, "Already at the first record viewer page (1-300)."; got != want {
-		t.Fatalf("state.Status = %q, want %q", got, want)
+	if got, want := model.state.Query.ViewerPage, 2; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d after many ctrl+u presses", got, want)
 	}
 }
 
-func TestModelUpdateCtrlDPagesOnlyWhenViewerFocusedInSplitLayout(t *testing.T) {
+func TestModelUpdateCtrlDScrollsOnlyWhenViewerFocusedInSplitLayout(t *testing.T) {
 	model := NewModel(Session{}, nil)
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
@@ -1273,20 +1261,19 @@ func TestModelUpdateCtrlDPagesOnlyWhenViewerFocusedInSplitLayout(t *testing.T) {
 	model.command.editor.CursorEnd()
 	model.syncCurrentSQL()
 
+	// Without record viewer focus, ctrl+d must not affect the viewer page.
 	next, _ := model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	model = next.(Model)
 	if got, want := model.state.Query.ViewerPage, 1; got != want {
 		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
 	}
 
+	// With record viewer focus, ctrl+d scrolls within the current page — page must stay the same.
 	model.state.SetActiveMode(ModeRecordViewer)
 	next, _ = model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	model = next.(Model)
-	if got, want := model.state.Query.ViewerPage, 2; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
-	}
-	if got, want := model.state.Status, "Showing record viewer page 3/3 (601-605)."; got != want {
-		t.Fatalf("state.Status = %q, want %q", got, want)
+	if got, want := model.state.Query.ViewerPage, 1; got != want {
+		t.Fatalf("state.Query.ViewerPage = %d, want %d (ctrl+d must not change page)", got, want)
 	}
 }
 

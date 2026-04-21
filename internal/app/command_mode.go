@@ -215,7 +215,7 @@ func (m commandModeModel) Footer(connectionName, dialect string, query QueryCont
 	parts = append(parts, fmt.Sprintf("line %d col %d", m.editor.Line()+1, m.editor.LineInfo().ColumnOffset+1))
 	parts = append(parts, bindingSummary(m.keys.Submit), bindingSummary(m.keys.Cancel), bindingSummary(m.keys.Help), bindingSummary(m.keys.History), bindingSummary(m.keys.SwitchMode), bindingSummary(m.keys.LayoutCommandOnly))
 	if query.ActiveMode == ModeRecordViewer {
-		parts = append(parts, "ctrl+u prev page", "ctrl+d next page")
+		parts = append(parts, "ctrl+u scroll up", "ctrl+d scroll down")
 	}
 	if query.ActiveMode == ModeHistorySearch {
 		parts = append(parts, bindingSummary(m.keys.RestoreHistory), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))

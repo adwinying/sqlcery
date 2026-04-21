@@ -862,20 +862,24 @@ func (m *Model) handleRecordViewerPagingKey(msg tea.KeyPressMsg) bool {
 
 	if isScroll {
 		// ctrl+d scrolls down, ctrl+u scrolls up (vim-style half-page scroll)
+		// Scrolling must NOT change the current page; it only moves the selection
+		// within the bounds of the currently visible page.
 		result := latest.PreservedResult
 		if len(result.Rows) == 0 {
 			return true
 		}
 		m.viewer.syncSelection(m.state.Query)
+		page := recordViewerPageContextFor(m.state.Query.ViewerPage, len(result.Rows))
+		pageMinRow := page.StartRow - 1 // inclusive lower bound (0-indexed)
+		pageMaxRow := page.EndRow - 1   // inclusive upper bound (0-indexed)
 		scrollAmount := max(1, m.viewer.height/2)
 		if key == "ctrl+d" {
-			m.viewer.selectedRow = min(m.viewer.selectedRow+scrollAmount, len(result.Rows)-1)
+			m.viewer.selectedRow = min(m.viewer.selectedRow+scrollAmount, pageMaxRow)
 		} else {
-			m.viewer.selectedRow = max(m.viewer.selectedRow-scrollAmount, 0)
+			m.viewer.selectedRow = max(m.viewer.selectedRow-scrollAmount, pageMinRow)
 		}
 		m.viewer.selectionActive = true
-		newPage := clampRecordViewerPage(m.viewer.selectedRow/recordViewerPageSize, len(result.Rows))
-		m.state.SetViewerPage(newPage)
+		// Do not call SetViewerPage — the page must not change on scroll.
 		return true
 	}
 
@@ -1794,7 +1798,7 @@ func renderHelpSurface(query QueryContext) string {
 		"arrows/hjkl move cell; space toggle selected row",
 		"yy/cc/dd load INSERT/UPDATE/DELETE into command mode",
 		":w [file] export selected rows or current result rows",
-		"ctrl+u/ctrl+d page; ctrl+x focus command",
+		"ctrl+u/ctrl+d scroll; ctrl+p/ctrl+n page; ctrl+x focus command",
 	}
 	if query.SlashWizard != nil {
 		viewerLines = append(viewerLines, "slash wizard: enter confirm; ctrl+n/ctrl+p move; esc back or close")

@@ -372,7 +372,7 @@ func TestCommandModeFooterShowsViewerPagingWhenViewerFocusedInSplit(t *testing.T
 		ActiveMode: ModeRecordViewer,
 	})
 
-	for _, want := range []string{"Command line hidden focus", "layout split", "alt+h help", "ctrl+u prev page", "ctrl+d next page"} {
+	for _, want := range []string{"Command line hidden focus", "layout split", "alt+h help", "ctrl+u scroll up", "ctrl+d scroll down"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
 		}
