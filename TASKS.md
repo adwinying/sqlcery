@@ -14,6 +14,10 @@
 - [ ] (skip) mouse support
 - [ ] (skip) multirow select in result pane support
 - [ ] column name in autocomplete menu should show the type of the column
-- [ ] fix result pane horizontal scrolling
+- [ ] fix result pane horizontal scrolling not working
 - [ ] command history selection does not scroll
 - [ ] replace "ctrl-g" keybind with "enter" to accept
+- [ ] remove the scroll for the current command; only allow scrolling for the command pane itself and nothing else
+- [x] remove /help command
+- [ ] ctrl-c in a popup window should close the popup instead of exiting the app
+- [ ] add color highlighting to connection name (configurable via config)

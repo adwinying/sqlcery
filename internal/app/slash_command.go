@@ -63,7 +63,6 @@ type helpSection struct {
 }
 
 var slashCommandInfos = []slashCommandInfo{
-	{Name: "help", Summary: "show available slash commands", Usage: "/help"},
 	{Name: "commands", Summary: "open the guided slash command wizard", Usage: "/commands"},
 	{Name: "tables", Summary: "list tables in the current database", Usage: "/tables"},
 	{Name: "columns", Summary: "list columns for a table", Usage: "/columns <table>"},
@@ -80,7 +79,6 @@ var defaultSlashCommandRegistry = newSlashCommandRegistry()
 
 func slashCommandSpecs() []slashCommandSpec {
 	return []slashCommandSpec{
-		{Name: "help", Summary: "show available slash commands", Usage: "/help", Handler: handleSlashHelp},
 		{Name: "commands", Summary: "open the guided slash command wizard", Usage: "/commands", Handler: handleSlashCommands},
 		{Name: "tables", Summary: "list tables in the current database", Usage: "/tables", Handler: handleSlashTables},
 		{Name: "columns", Summary: "list columns for a table", Usage: "/columns <table>", Handler: handleSlashColumns, NeedsTarget: true},
@@ -240,18 +238,6 @@ func dispatchSlashCommand(ctx context.Context, command slashCommandContext, pars
 	}
 
 	return result, nil
-}
-
-func handleSlashHelp(_ context.Context, _ slashCommandContext, _ slashCommand) (slashCommandResult, error) {
-	rows := make([][]string, 0, len(slashCommandInfos))
-	for _, info := range slashCommandInfos {
-		rows = append(rows, []string{"/" + info.Name, info.Summary, info.Usage})
-	}
-
-	return slashCommandResult{
-		Status:    fmt.Sprintf("Listed %d slash commands.", len(rows)),
-		Statement: buildSlashQueryResult([]string{"command", "summary", "usage"}, rows),
-	}, nil
 }
 
 func slashCommandHelpLines() []string {
@@ -544,7 +530,7 @@ func buildSlashWizardCommands() []SlashCommandWizardCommand {
 	specs := slashCommandSpecs()
 	commands := make([]SlashCommandWizardCommand, 0, len(specs))
 	for _, spec := range specs {
-		if spec.Name == "help" || spec.Name == "commands" {
+		if spec.Name == "commands" {
 			continue
 		}
 		commands = append(commands, SlashCommandWizardCommand{

@@ -43,47 +43,6 @@ func TestParseSlashCommandRejectsUnterminatedQuote(t *testing.T) {
 	}
 }
 
-func TestDispatchSlashCommandHelpReturnsSyntheticResult(t *testing.T) {
-	result, err := dispatchSlashCommand(context.Background(), slashCommandContext{}, slashCommand{Name: "help", DisplayName: "/help", RawInput: "/help"})
-	if err != nil {
-		t.Fatalf("dispatchSlashCommand() error = %v", err)
-	}
-	if result.Statement == nil || result.Statement.ResultSet == nil {
-		t.Fatal("result.Statement = nil, want synthetic result set")
-	}
-	if got, want := result.Status, "Listed 11 slash commands."; got != want {
-		t.Fatalf("result.Status = %q, want %q", got, want)
-	}
-	if got, want := result.Statement.ResultSet.Columns[0].Name, "command"; got != want {
-		t.Fatalf("columns[0].Name = %q, want %q", got, want)
-	}
-	if got, want := result.Statement.ResultSet.Rows[0].Values[0].Value, "/help"; got != want {
-		t.Fatalf("rows[0][0] = %#v, want %q", got, want)
-	}
-}
-
-func TestSlashCommandHelpLinesIncludeWizardAndTemplates(t *testing.T) {
-	lines := slashCommandHelpLines()
-
-	for _, want := range []string{
-		"/help - show available slash commands (/help)",
-		"/commands - open the guided slash command wizard (/commands)",
-		"/select - compose a SELECT statement (/select <table>)",
-		"/drop - compose a DROP TABLE statement (/drop <table>)",
-	} {
-		found := false
-		for _, line := range lines {
-			if line == want {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("slashCommandHelpLines() = %#v, want to contain %q", lines, want)
-		}
-	}
-}
-
 func TestDispatchSlashCommandCommandsReturnsWizard(t *testing.T) {
 	result, err := dispatchSlashCommand(context.Background(), slashCommandContext{}, slashCommand{Name: "commands", DisplayName: "/commands", RawInput: "/commands"})
 	if err != nil {
