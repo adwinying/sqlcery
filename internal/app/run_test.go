@@ -2254,7 +2254,7 @@ func TestModelToggleHelpShowsSplitAndWizardSpecificGuidance(t *testing.T) {
 
 	view := renderHelpSurface(model.state.Query)
 	for _, want := range []string{
-		"slash wizard: enter confirm; alt+n/alt+p move; esc back or close",
+		"slash wizard: enter confirm; ctrl+n/ctrl+p move; esc back or close",
 		"Record viewer [active]",
 		"Command line",
 	} {
@@ -2283,7 +2283,7 @@ func TestModelToggleHelpShowsHistorySearchGuidance(t *testing.T) {
 	for _, want := range []string{
 		"History search:",
 		"type to filter recent commands; enter restore selected entry",
-		"ctrl+r or up select older match; alt+p or down select newer match",
+		"ctrl+r or up select older match; ctrl+n or down select newer match",
 	} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("renderHelpSurface() = %q, want to contain %q", view, want)

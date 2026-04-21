@@ -495,7 +495,7 @@ func TestModelSubmitCommandsOpensWizard(t *testing.T) {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	view := model.View().Content
-	for _, want := range []string{"Command wizard:", "Step 1/2: choose a slash command", "> /tables - list tables in the current database", "enter confirm | alt+n next | alt+p prev | esc close"} {
+	for _, want := range []string{"Command wizard:", "Step 1/2: choose a slash command", "> /tables - list tables in the current database", "enter confirm | ctrl+n next | ctrl+p prev | esc close"} {
 		if !containsLine(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
 		}
@@ -660,9 +660,9 @@ func TestModelSlashWizardNavigationKeysMoveBackAndClose(t *testing.T) {
 		Targets: []SlashCommandWizardTarget{{Value: "users", Display: "users"}, {Value: "widgets", Display: "widgets"}},
 	})
 
-	next, cmd := model.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModAlt})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyCtrlN})
 	if cmd == nil {
-		t.Fatal("Update(alt+n) cmd = nil, want move command")
+		t.Fatal("Update(ctrl+n) cmd = nil, want move command")
 	}
 	model = next.(Model)
 	next, _ = model.Update(cmd())

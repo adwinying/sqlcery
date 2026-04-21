@@ -21,7 +21,7 @@
 - [x] remove /help command
 - [x] ctrl-c in a popup window should close the popup instead of exiting the app
 - [x] add color highlighting to connection name (configurable via config)
-- [ ] remove alt-n and alt-p keybindings
+- [x] remove alt-n and alt-p keybindings
 - [x] popup window does not show up when a command in the /commands popup is selected
 - [x] popup window size should be constant regardless of the action taken in the popup; ie. it should behave in web terms, like a scroll overflow div
 - [x] add support for color strings like "red", "green" etc. to color highlighting for connection names

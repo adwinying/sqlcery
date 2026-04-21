@@ -78,8 +78,8 @@ func newCommandModeModel() commandModeModel {
 			SwitchMode:           key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "focus")),
 			LayoutCommandOnly:    key.NewBinding(key.WithKeys("ctrl+3"), key.WithHelp("ctrl+3", "command")),
 			AcceptSuggestion:     key.NewBinding(key.WithKeys("tab", "ctrl+y"), key.WithHelp("tab/ctrl+y", "accept")),
-			NextSuggestion:       key.NewBinding(key.WithKeys("alt+n", "ctrl+n"), key.WithHelp("alt+n/ctrl+n", "next suggestion")),
-			PrevSuggestion:       key.NewBinding(key.WithKeys("alt+p", "ctrl+p"), key.WithHelp("alt+p/ctrl+p", "prev suggestion")),
+			NextSuggestion:       key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "next suggestion")),
+			PrevSuggestion:       key.NewBinding(key.WithKeys("ctrl+p"), key.WithHelp("ctrl+p", "prev suggestion")),
 			ScrollTranscriptUp:   key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "scroll up")),
 			ScrollTranscriptDown: key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "scroll down")),
 		},
@@ -766,9 +766,9 @@ func renderSlashWizard(query QueryContext) string {
 			}
 		}
 		if wizard.DirectInvocation {
-			lines = append(lines, appTheme.panelHint.Render("enter confirm | alt+n next | alt+p prev | esc close"))
+			lines = append(lines, appTheme.panelHint.Render("enter confirm | ctrl+n next | ctrl+p prev | esc close"))
 		} else {
-			lines = append(lines, appTheme.panelHint.Render("enter confirm | alt+n next | alt+p prev | esc back"))
+			lines = append(lines, appTheme.panelHint.Render("enter confirm | ctrl+n next | ctrl+p prev | esc back"))
 		}
 	default:
 		lines = append(lines, appTheme.panelText.Render("Step 1/2: choose a slash command"))
@@ -793,7 +793,7 @@ func renderSlashWizard(query QueryContext) string {
 				lines = append(lines, appTheme.panelText.Render(line))
 			}
 		}
-		lines = append(lines, appTheme.panelHint.Render("enter confirm | alt+n next | alt+p prev | esc close"))
+		lines = append(lines, appTheme.panelHint.Render("enter confirm | ctrl+n next | ctrl+p prev | esc close"))
 	}
 
 	return strings.Join(lines, "\n")

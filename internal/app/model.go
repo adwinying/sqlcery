@@ -1692,11 +1692,11 @@ func renderHelpSurface(query QueryContext) string {
 	commandLines := []string{
 		"enter submit SQL or slash command",
 		"ctrl+r open history search",
-		"ctrl+y accept suggestion; alt+n/alt+p/ctrl+n/ctrl+p move suggestion",
+		"ctrl+y accept suggestion; ctrl+n/ctrl+p move suggestion",
 		"ctrl+x switch focus; ctrl+z zoom; ctrl+1 focus results; ctrl+2 focus command; ctrl+3 command layout",
 	}
 	if query.ActiveMode == ModeHistorySearch {
-		commandLines = append(commandLines, "history search: enter restore; ctrl+r older; alt+p newer; esc close")
+		commandLines = append(commandLines, "history search: enter restore; ctrl+r older; ctrl+n newer; esc close")
 	}
 	sections = append(sections, helpSection{Title: "Command mode", Lines: commandLines})
 
@@ -1707,7 +1707,7 @@ func renderHelpSurface(query QueryContext) string {
 		"ctrl+u/ctrl+d page; ctrl+x focus command",
 	}
 	if query.SlashWizard != nil {
-		viewerLines = append(viewerLines, "slash wizard: enter confirm; alt+n/alt+p move; esc back or close")
+		viewerLines = append(viewerLines, "slash wizard: enter confirm; ctrl+n/ctrl+p move; esc back or close")
 	}
 	sections = append(sections, helpSection{Title: "Record viewer", Lines: viewerLines})
 
@@ -1724,7 +1724,7 @@ func renderHelpSurface(query QueryContext) string {
 	if query.ActiveMode == ModeHistorySearch {
 		sections = append(sections, helpSection{Title: "History search", Lines: []string{
 			"type to filter recent commands; enter restore selected entry",
-			"ctrl+r or up select older match; alt+p or down select newer match",
+			"ctrl+r or up select older match; ctrl+n or down select newer match",
 			"esc close history search",
 		}})
 	}
@@ -1732,7 +1732,7 @@ func renderHelpSurface(query QueryContext) string {
 	if query.SlashWizard != nil {
 		sections = append(sections, helpSection{Title: "Command wizard", Lines: []string{
 			"/commands opens the guided slash command wizard",
-			"enter confirm selection; alt+n/alt+p move selection",
+			"enter confirm selection; ctrl+n/ctrl+p move selection",
 			"esc closes command selection or steps back from table selection",
 		}})
 	}

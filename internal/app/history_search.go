@@ -191,7 +191,7 @@ func renderHistorySearch(query QueryContext) string {
 		}
 		lines = append(lines, line)
 	}
-	lines = append(lines, appTheme.panelHint.Render("enter restore | ctrl+r older | alt+p newer | esc close"))
+	lines = append(lines, appTheme.panelHint.Render("enter restore | ctrl+r older | ctrl+n newer | esc close"))
 
 	return strings.Join(lines, "\n")
 }

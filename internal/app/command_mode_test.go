@@ -272,7 +272,7 @@ func TestCommandModeViewRendersSlashWizard(t *testing.T) {
 	}
 	popup := renderSlashWizard(query)
 
-	for _, want := range []string{"Command wizard:", "Step 1/2: choose a slash command", "> /tables - list tables in the current database", "enter confirm | alt+n next | alt+p prev | esc close"} {
+	for _, want := range []string{"Command wizard:", "Step 1/2: choose a slash command", "> /tables - list tables in the current database", "enter confirm | ctrl+n next | ctrl+p prev | esc close"} {
 		if !strings.Contains(popup, want) {
 			t.Fatalf("renderSlashWizard() = %q, want to contain %q", popup, want)
 		}
@@ -290,7 +290,7 @@ func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 	}
 	popup := renderHistorySearch(query)
 
-	for _, want := range []string{"Reverse search:", "query> su", "2 match(es); newest first.", "> select * from users", "enter restore | ctrl+r older | alt+p newer | esc close"} {
+	for _, want := range []string{"Reverse search:", "query> su", "2 match(es); newest first.", "> select * from users", "enter restore | ctrl+r older | ctrl+n newer | esc close"} {
 		if !strings.Contains(popup, want) {
 			t.Fatalf("renderHistorySearch() = %q, want to contain %q", popup, want)
 		}
