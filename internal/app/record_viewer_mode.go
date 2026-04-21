@@ -204,7 +204,7 @@ func (m recordViewerModeModel) FooterHints(query QueryContext) string {
 	if m.pendingAction == recordViewerPendingActionWrite {
 		parts = append(parts, ":w [file] export", "enter save", "esc cancel")
 	}
-	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "ctrl+u prev page", "ctrl+d next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit")
+	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit")
 	return strings.Join(parts, " | ")
 }
 
@@ -229,7 +229,7 @@ func (m recordViewerModeModel) Footer(connectionName, dialect string, query Quer
 	if m.pendingAction == recordViewerPendingActionWrite {
 		parts = append(parts, ":w [file] export", "enter save", "esc cancel")
 	}
-	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u prev page", "ctrl+d next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit")
+	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit")
 	return appTheme.footer.Render(strings.Join(parts, " | "))
 }
 

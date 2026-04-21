@@ -791,7 +791,10 @@ func (m Model) handleLayoutKey(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 func (m *Model) handleRecordViewerPagingKey(msg tea.KeyPressMsg) bool {
-	if msg.String() != "ctrl+u" && msg.String() != "ctrl+d" {
+	key := msg.String()
+	isScroll := key == "ctrl+u" || key == "ctrl+d"
+	isPaging := key == "ctrl+p" || key == "ctrl+n"
+	if !isScroll && !isPaging {
 		return false
 	}
 	if m.state.Query.ActiveMode != ModeRecordViewer {
@@ -806,8 +809,28 @@ func (m *Model) handleRecordViewerPagingKey(msg tea.KeyPressMsg) bool {
 		return true
 	}
 
+	if isScroll {
+		// ctrl+d scrolls down, ctrl+u scrolls up (vim-style half-page scroll)
+		result := latest.PreservedResult
+		if len(result.Rows) == 0 {
+			return true
+		}
+		m.viewer.syncSelection(m.state.Query)
+		scrollAmount := max(1, m.viewer.height/2)
+		if key == "ctrl+d" {
+			m.viewer.selectedRow = min(m.viewer.selectedRow+scrollAmount, len(result.Rows)-1)
+		} else {
+			m.viewer.selectedRow = max(m.viewer.selectedRow-scrollAmount, 0)
+		}
+		m.viewer.selectionActive = true
+		newPage := clampRecordViewerPage(m.viewer.selectedRow/recordViewerPageSize, len(result.Rows))
+		m.state.SetViewerPage(newPage)
+		return true
+	}
+
+	// ctrl+p = prev page, ctrl+n = next page
 	previous := m.state.Query.ViewerPage
-	if msg.String() == "ctrl+u" {
+	if key == "ctrl+p" {
 		m.state.ChangeViewerPage(-1)
 	} else {
 		m.state.ChangeViewerPage(1)

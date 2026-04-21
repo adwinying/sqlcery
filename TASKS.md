@@ -13,6 +13,7 @@
 - [ ] (skip) revamp status bar
 - [ ] (skip) mouse support
 - [ ] (skip) multirow select in result pane support
+- [ ] (skip) history search does not scoll properly; when the query spans too many lines, the selection disappears when moving to the next suggestion
 - [x] column name in autocomplete menu should show the type of the column
 - [x] fix result pane horizontal scrolling not working
 - [x] command history selection does not scroll
@@ -27,3 +28,7 @@
 - [x] add support for color strings like "red", "green" etc. to color highlighting for connection names
 - [x] remove the background color for the status bar
 - [x] add color config to example config
+- [ ] move the status description next to the connection name to a new row below the status bar
+- [ ] press ctrl-c twice to exit the app
+- [x] ctrl-d and ctrl-u should scroll the results pane instead of showing the prev/next page, use a ctrl-p/ctrl-n for prev/next page instead
+- [ ] add filter feature when selecting a table in the popup window similar to history filter
