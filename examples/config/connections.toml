@@ -10,6 +10,13 @@
 [connection.local]
 type = "sqlite"
 database = "tmp/sqlcery.db"
+# color highlights the connection name in the UI.
+# Accepted values:
+#   - Named colors:     "red", "green", "blue", "yellow", "cyan", "magenta",
+#                       "white", "black", and bright variants like "bright-red"
+#   - ANSI 256 numbers: "196", "46", "21", etc.
+#   - Hex color codes:  "#ff0000", "#00cc44", etc.
+color = "blue"
 
 [connection.local.lifecycle]
 connect_timeout = "2s"

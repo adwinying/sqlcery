@@ -26,4 +26,4 @@
 - [x] popup window size should be constant regardless of the action taken in the popup; ie. it should behave in web terms, like a scroll overflow div
 - [x] add support for color strings like "red", "green" etc. to color highlighting for connection names
 - [x] remove the background color for the status bar
-- [ ] add color config to example config
+- [x] add color config to example config
