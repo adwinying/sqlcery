@@ -56,9 +56,10 @@ type autocompleteCatalog struct {
 }
 
 type autocompleteTable struct {
-	Schema  string
-	Name    string
-	Columns []string
+	Schema      string
+	Name        string
+	Columns     []string
+	ColumnTypes map[string]string // column name (lowercase) -> type
 }
 
 var slashCommandList = defaultSlashCommandRegistry.names()
@@ -119,11 +120,12 @@ func buildAutocompleteItems(value string, cursor int, query QueryContext) []auto
 			if !matchesAutocompletePrefix(column, ctx.Prefix) {
 				continue
 			}
+			colType := catalog.columnType(column, []string{ctx.Qualifier})
 			items = appendAutocompleteItem(items, seen, autocompleteItem{
 				Label:      column,
 				InsertText: column,
 				Kind:       "col",
-				Detail:     ctx.Qualifier,
+				Detail:     colType,
 			})
 		}
 		return finalizeAutocompleteItems(items, ctx, catalog)
@@ -149,11 +151,12 @@ func buildAutocompleteItems(value string, cursor int, query QueryContext) []auto
 			if !matchesAutocompletePrefix(column, ctx.Prefix) {
 				continue
 			}
+			colType := catalog.columnType(column, ctx.ActiveTables)
 			items = appendAutocompleteItem(items, seen, autocompleteItem{
 				Label:      column,
 				InsertText: column,
 				Kind:       "col",
-				Detail:     "column",
+				Detail:     colType,
 			})
 		}
 	}
@@ -716,11 +719,13 @@ func buildAutocompleteCatalog(query QueryContext) autocompleteCatalog {
 
 	if query.AutocompleteSchema != nil {
 		for _, table := range query.AutocompleteSchema.Tables {
-			catalog.Tables = append(catalog.Tables, autocompleteTable{
-				Schema:  table.Schema,
-				Name:    table.Name,
-				Columns: append([]string(nil), table.Columns...),
-			})
+			entry := autocompleteTable{
+				Schema:      table.Schema,
+				Name:        table.Name,
+				Columns:     append([]string(nil), table.Columns...),
+				ColumnTypes: table.ColumnTypes,
+			}
+			catalog.Tables = append(catalog.Tables, entry)
 		}
 	}
 
@@ -804,6 +809,26 @@ func (c autocompleteCatalog) columnSuggestions(activeTables []string) []string {
 	}
 
 	return results
+}
+
+func (c autocompleteCatalog) columnType(column string, activeTables []string) string {
+	for _, tableName := range activeTables {
+		for _, table := range c.Tables {
+			if !strings.EqualFold(table.Name, tableName) && !strings.EqualFold(table.displayName(), tableName) {
+				continue
+			}
+			if t, ok := table.ColumnTypes[strings.ToLower(column)]; ok && t != "" {
+				return t
+			}
+		}
+	}
+	// search all tables
+	for _, table := range c.Tables {
+		if t, ok := table.ColumnTypes[strings.ToLower(column)]; ok && t != "" {
+			return t
+		}
+	}
+	return ""
 }
 
 func appendUniqueFold(values []string, value string) []string {

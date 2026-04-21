@@ -13,7 +13,7 @@
 - [ ] (skip) revamp status bar
 - [ ] (skip) mouse support
 - [ ] (skip) multirow select in result pane support
-- [ ] column name in autocomplete menu should show the type of the column
+- [x] column name in autocomplete menu should show the type of the column
 - [x] fix result pane horizontal scrolling not working
 - [x] command history selection does not scroll
 - [x] replace "ctrl-g" keybind with "enter" to accept

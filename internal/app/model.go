@@ -1106,7 +1106,7 @@ func loadAutocompleteSchema(ctx context.Context, adapter *db.SQLAdapter) (*Autoc
 
 	schema := &AutocompleteSchemaContext{Tables: make([]AutocompleteTableContext, 0, len(tables))}
 	for _, table := range tables {
-		entry := AutocompleteTableContext{Schema: table.Schema, Name: table.Name}
+		entry := AutocompleteTableContext{Schema: table.Schema, Name: table.Name, ColumnTypes: make(map[string]string)}
 		columns, err := adapter.Columns(ctx, db.TableRef{Catalog: table.Catalog, Schema: table.Schema, Name: table.Name})
 		if err != nil {
 			if !errors.Is(err, db.ErrMetadataUnsupported) {
@@ -1115,6 +1115,9 @@ func loadAutocompleteSchema(ctx context.Context, adapter *db.SQLAdapter) (*Autoc
 		} else {
 			for _, column := range columns {
 				entry.Columns = append(entry.Columns, column.Name)
+				if column.Type != "" {
+					entry.ColumnTypes[strings.ToLower(column.Name)] = column.Type
+				}
 			}
 		}
 		schema.Tables = append(schema.Tables, entry)

@@ -125,9 +125,10 @@ type AutocompleteSchemaContext struct {
 }
 
 type AutocompleteTableContext struct {
-	Schema  string
-	Name    string
-	Columns []string
+	Schema      string
+	Name        string
+	Columns     []string
+	ColumnTypes map[string]string // column name (lowercase) -> type
 }
 
 type LatestResultContext struct {
@@ -360,11 +361,18 @@ func cloneAutocompleteSchemaContext(schema *AutocompleteSchemaContext) *Autocomp
 
 	clone := &AutocompleteSchemaContext{Tables: make([]AutocompleteTableContext, len(schema.Tables))}
 	for i, table := range schema.Tables {
-		clone.Tables[i] = AutocompleteTableContext{
+		entry := AutocompleteTableContext{
 			Schema:  table.Schema,
 			Name:    table.Name,
 			Columns: append([]string(nil), table.Columns...),
 		}
+		if table.ColumnTypes != nil {
+			entry.ColumnTypes = make(map[string]string, len(table.ColumnTypes))
+			for k, v := range table.ColumnTypes {
+				entry.ColumnTypes[k] = v
+			}
+		}
+		clone.Tables[i] = entry
 	}
 
 	return clone
