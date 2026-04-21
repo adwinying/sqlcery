@@ -24,6 +24,6 @@
 - [ ] remove alt-n and alt-p keybindings
 - [x] popup window does not show up when a command in the /commands popup is selected
 - [x] popup window size should be constant regardless of the action taken in the popup; ie. it should behave in web terms, like a scroll overflow div
-- [ ] add support for color strings like "red", "green" etc. to color highlighting for connection names
+- [x] add support for color strings like "red", "green" etc. to color highlighting for connection names
 - [ ] remove the background color for the status bar
 - [ ] add color config to example config
