@@ -749,20 +749,30 @@ func renderSlashWizard(query QueryContext) string {
 			)
 			headerLines += 2
 		}
+		// Filter input row
+		lines = append(lines, appTheme.panelText.Render(fmt.Sprintf("filter> %s", defaultWizardFilterQuery(wizard.TargetFilter))))
+		headerLines++
+
+		filteredTargets := filterWizardTargets(wizard.Targets, wizard.TargetFilter)
 		const footerLines = 1
 		listViewport := popupBoxFixedRows - headerLines - footerLines
 		if listViewport < 1 {
 			listViewport = 1
 		}
-		selected := clampWizardIndex(wizard.SelectedTarget, len(wizard.Targets))
+		selected := clampWizardIndex(wizard.SelectedTarget, len(filteredTargets))
 		scrollOffset := max(0, selected-listViewport+1)
-		viewEnd := min(len(wizard.Targets), scrollOffset+listViewport)
-		for i := scrollOffset; i < viewEnd; i++ {
-			target := wizard.Targets[i]
-			if i == selected {
-				lines = append(lines, appTheme.panelSelected.Render("> "+target.Display))
-			} else {
-				lines = append(lines, appTheme.panelText.Render("  "+target.Display))
+		viewEnd := min(len(filteredTargets), scrollOffset+listViewport)
+
+		if len(filteredTargets) == 0 {
+			lines = append(lines, appTheme.panelMuted.Render("No matching tables."))
+		} else {
+			for i := scrollOffset; i < viewEnd; i++ {
+				target := filteredTargets[i]
+				if i == selected {
+					lines = append(lines, appTheme.panelSelected.Render("> "+target.Display))
+				} else {
+					lines = append(lines, appTheme.panelText.Render("  "+target.Display))
+				}
 			}
 		}
 		if wizard.DirectInvocation {
@@ -927,4 +937,26 @@ func formatInlineResultValue(value db.ResultValue) string {
 
 func runeWidth(value string) int {
 	return ansi.StringWidth(value)
+}
+
+func filterWizardTargets(targets []SlashCommandWizardTarget, query string) []SlashCommandWizardTarget {
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return targets
+	}
+	lower := strings.ToLower(trimmed)
+	filtered := make([]SlashCommandWizardTarget, 0, len(targets))
+	for _, t := range targets {
+		if strings.Contains(strings.ToLower(t.Display), lower) {
+			filtered = append(filtered, t)
+		}
+	}
+	return filtered
+}
+
+func defaultWizardFilterQuery(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "(empty)"
+	}
+	return value
 }

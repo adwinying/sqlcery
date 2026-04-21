@@ -31,4 +31,4 @@
 - [ ] move the status description next to the connection name to a new row below the status bar
 - [ ] press ctrl-c twice to exit the app
 - [x] ctrl-d and ctrl-u should scroll the results pane instead of showing the prev/next page, use a ctrl-p/ctrl-n for prev/next page instead
-- [ ] add filter feature when selecting a table in the popup window similar to history filter
+- [x] add filter feature when selecting a table in the popup window similar to history filter

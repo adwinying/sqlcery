@@ -652,6 +652,24 @@ func slashWizardTargetByIndex(wizard *SlashCommandWizardContext) (SlashCommandWi
 	return wizard.Targets[index], true
 }
 
+func slashWizardFilteredTargetByIndex(wizard *SlashCommandWizardContext) (SlashCommandWizardTarget, bool) {
+	if wizard == nil {
+		return SlashCommandWizardTarget{}, false
+	}
+	filtered := filterWizardTargets(wizard.Targets, wizard.TargetFilter)
+	if len(filtered) == 0 {
+		return SlashCommandWizardTarget{}, false
+	}
+	index := wizard.SelectedTarget
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(filtered) {
+		index = len(filtered) - 1
+	}
+	return filtered[index], true
+}
+
 func buildSlashWizardCommand(command SlashCommandWizardCommand, target *SlashCommandWizardTarget) slashCommand {
 	parsed := slashCommand{
 		RawInput:    command.DisplayName,

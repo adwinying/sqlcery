@@ -746,6 +746,11 @@ func (m Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		if wizard := m.state.Query.SlashWizard; wizard != nil {
 			if wizard.Step == SlashCommandWizardStepTarget {
+				// If a filter is active, clear it first
+				if strings.TrimSpace(wizard.TargetFilter) != "" {
+					m.updateWizardTargetFilter("")
+					return nil
+				}
 				if wizard.DirectInvocation {
 					return func() tea.Msg { return slashWizardCloseIntentMsg{} }
 				}
@@ -768,6 +773,21 @@ func (m Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
 	case msg.String() == "ctrl+z":
 		return func() tea.Msg { return toggleZoomIntentMsg{} }
+	case m.state.Query.SlashWizard != nil && m.state.Query.SlashWizard.Step == SlashCommandWizardStepTarget &&
+		(msg.String() == "backspace" || msg.String() == "ctrl+h" || msg.String() == "delete"):
+		wizard := m.state.Query.SlashWizard
+		m.updateWizardTargetFilter(trimLastRune(wizard.TargetFilter))
+		return nil
+	case m.state.Query.SlashWizard != nil && m.state.Query.SlashWizard.Step == SlashCommandWizardStepTarget &&
+		msg.String() == "space":
+		wizard := m.state.Query.SlashWizard
+		m.updateWizardTargetFilter(wizard.TargetFilter + " ")
+		return nil
+	case m.state.Query.SlashWizard != nil && m.state.Query.SlashWizard.Step == SlashCommandWizardStepTarget &&
+		len(msg.Text) > 0 && !msg.Mod.Contains(tea.ModAlt):
+		wizard := m.state.Query.SlashWizard
+		m.updateWizardTargetFilter(wizard.TargetFilter + msg.Text)
+		return nil
 	default:
 		return nil
 	}
@@ -1268,7 +1288,7 @@ func (m *Model) submitSlashWizard(wizard *SlashCommandWizardContext) (Model, tea
 			return *m, nil
 		}
 
-		selectedTarget, ok := slashWizardTargetByIndex(wizard)
+		selectedTarget, ok := slashWizardFilteredTargetByIndex(wizard)
 		if !ok {
 			m.state.SetReady(fmt.Sprintf("/commands: choose a table for %s.", selectedCommand.DisplayName))
 			return *m, nil
@@ -1300,13 +1320,13 @@ func (m *Model) moveSlashWizardSelection(delta int) {
 
 	switch wizard.Step {
 	case SlashCommandWizardStepTarget:
-		if len(wizard.Targets) == 0 {
+		filtered := filterWizardTargets(wizard.Targets, wizard.TargetFilter)
+		if len(filtered) == 0 {
 			return
 		}
-		wizard.SelectedTarget = wrapSelection(wizard.SelectedTarget+delta, len(wizard.Targets))
-		selectedTarget, _ := slashWizardTargetByIndex(wizard)
+		wizard.SelectedTarget = wrapSelection(wizard.SelectedTarget+delta, len(filtered))
 		m.state.SetSlashWizardContext(wizard)
-		m.state.SetReady(fmt.Sprintf("Selected table %s.", selectedTarget.Display))
+		m.state.SetReady(fmt.Sprintf("Selected table %s.", filtered[wizard.SelectedTarget].Display))
 	default:
 		if len(wizard.Commands) == 0 {
 			return
@@ -1315,6 +1335,22 @@ func (m *Model) moveSlashWizardSelection(delta int) {
 		selectedCommand, _ := slashWizardCommandByIndex(wizard)
 		m.state.SetSlashWizardContext(wizard)
 		m.state.SetReady(fmt.Sprintf("Selected %s.", selectedCommand.DisplayName))
+	}
+}
+
+func (m *Model) updateWizardTargetFilter(query string) {
+	wizard := cloneSlashCommandWizardContext(m.state.Query.SlashWizard)
+	if wizard == nil || wizard.Step != SlashCommandWizardStepTarget {
+		return
+	}
+	wizard.TargetFilter = query
+	wizard.SelectedTarget = 0
+	m.state.SetSlashWizardContext(wizard)
+	filtered := filterWizardTargets(wizard.Targets, query)
+	if len(filtered) == 0 {
+		m.state.SetReady(fmt.Sprintf("No tables match %q.", query))
+	} else {
+		m.state.SetReady(fmt.Sprintf("%d table(s) match filter.", len(filtered)))
 	}
 }
 

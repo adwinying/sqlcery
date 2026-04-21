@@ -105,6 +105,7 @@ type SlashCommandWizardContext struct {
 	SelectedCommand  int
 	SelectedTarget   int
 	DirectInvocation bool
+	TargetFilter     string
 }
 
 type SlashCommandWizardCommand struct {
@@ -346,6 +347,7 @@ func cloneSlashCommandWizardContext(context *SlashCommandWizardContext) *SlashCo
 		SelectedCommand:  context.SelectedCommand,
 		SelectedTarget:   context.SelectedTarget,
 		DirectInvocation: context.DirectInvocation,
+		TargetFilter:     context.TargetFilter,
 		Commands:         make([]SlashCommandWizardCommand, len(context.Commands)),
 		Targets:          make([]SlashCommandWizardTarget, len(context.Targets)),
 	}
