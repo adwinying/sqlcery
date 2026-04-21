@@ -466,11 +466,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() tea.View {
-	// Status bar always occupies the last line
+	// Status bar always occupies the last two lines
 	statusBar := m.statusBarView()
+	statusDesc := m.statusDescriptionView()
 
 	// Content area above the status bar
-	contentHeight := m.height - 1
+	contentHeight := m.height - 2
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
@@ -516,7 +517,7 @@ func (m Model) View() tea.View {
 		content = m.readyStateView(contentHeight)
 	}
 
-	v := tea.NewView(content + "\n" + statusBar)
+	v := tea.NewView(content + "\n" + statusBar + "\n" + statusDesc)
 	v.KeyboardEnhancements.ReportAllKeysAsEscapeCodes = true
 	return v
 }
@@ -525,7 +526,7 @@ func (m Model) View() tea.View {
 func (m *Model) syncPaneSizes() {
 	w := m.width
 	h := m.height
-	statusBarHeight := 1
+	statusBarHeight := 2
 	contentHeight := h - statusBarHeight
 	if contentHeight < 2 {
 		contentHeight = 2
@@ -695,11 +696,6 @@ func (m Model) statusBarView() string {
 		parts = append(parts, name)
 	}
 
-	// Status message
-	if status := strings.TrimSpace(m.state.Status); status != "" {
-		parts = append(parts, status)
-	}
-
 	// Keybind hints
 	if m.state.App.Current == StateReady {
 		parts = append(parts, m.command.FooterHints(query))
@@ -715,6 +711,20 @@ func (m Model) statusBarView() string {
 	}
 
 	return appTheme.footer.Render(bar)
+}
+
+func (m Model) statusDescriptionView() string {
+	status := strings.TrimSpace(m.state.Status)
+	if status == "" {
+		status = " "
+	}
+
+	line := status
+	if m.width > 0 {
+		line = padOrTruncate(line, m.width)
+	}
+
+	return appTheme.metaLine.Render(line)
 }
 
 func padOrTruncate(s string, width int) string {
