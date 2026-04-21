@@ -59,7 +59,6 @@ func newTUITheme() tuiTheme {
 	mutedSoft := lipgloss.AdaptiveColor{Light: "245", Dark: "243"}
 	panelForeground := lipgloss.AdaptiveColor{Light: "237", Dark: "252"}
 	footerForeground := lipgloss.AdaptiveColor{Light: "238", Dark: "252"}
-	footerBackground := lipgloss.AdaptiveColor{Light: "254", Dark: "236"}
 	selectedForeground := lipgloss.AdaptiveColor{Light: "17", Dark: "231"}
 	selectedBackground := lipgloss.AdaptiveColor{Light: "153", Dark: "24"}
 	cursorLineBackground := lipgloss.AdaptiveColor{Light: "255", Dark: "236"}
@@ -67,7 +66,7 @@ func newTUITheme() tuiTheme {
 	return tuiTheme{
 		appTitle:              lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
 		metaLine:              lipgloss.NewStyle().Foreground(panelForeground),
-		footer:                lipgloss.NewStyle().Foreground(footerForeground).Background(footerBackground),
+		footer:                lipgloss.NewStyle().Foreground(footerForeground),
 		paneBorderActive:      lipgloss.NewStyle().Foreground(accent),
 		paneBorderInactive:    lipgloss.NewStyle().Foreground(mutedSoft),
 		popupBorder:           lipgloss.NewStyle().Foreground(accent),
