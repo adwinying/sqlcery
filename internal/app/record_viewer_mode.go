@@ -52,8 +52,9 @@ type recordViewerSelection struct {
 }
 
 type recordViewerRenderState struct {
-	Active       recordViewerSelection
-	SelectedRows map[int]struct{}
+	Active          recordViewerSelection
+	SelectedRows    map[int]struct{}
+	ColScrollOffset int
 }
 
 type recordViewerPreparedPageKey struct {
@@ -71,14 +72,15 @@ type recordViewerPreparedPage struct {
 }
 
 type recordViewerModeModel struct {
-	width           int
-	height          int
-	selectedRow     int
-	selectedColumn  int
-	selectionActive bool
-	pendingAction   recordViewerPendingAction
-	writeBuffer     string
-	cachedPage      *recordViewerPreparedPage
+	width            int
+	height           int
+	selectedRow      int
+	selectedColumn   int
+	colScrollOffset  int
+	selectionActive  bool
+	pendingAction    recordViewerPendingAction
+	writeBuffer      string
+	cachedPage       *recordViewerPreparedPage
 }
 
 func newRecordViewerModeModel() recordViewerModeModel {
@@ -150,8 +152,9 @@ func (m *recordViewerModeModel) View(query QueryContext) string {
 	if query.Layout == LayoutSplit {
 		preparedPage := m.preparePage(result, query.ViewerPage, len(latest.SelectedRows) > 0)
 		body := renderPreparedRecordViewerPage(preparedPage, m.width, m.height, recordViewerRenderState{
-			Active:       recordViewerSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
-			SelectedRows: selectedRowSet(latest.SelectedRows),
+			Active:          recordViewerSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
+			SelectedRows:    selectedRowSet(latest.SelectedRows),
+			ColScrollOffset: m.colScrollOffset,
 		})
 		if body == "" {
 			body = appTheme.viewerEmpty.Render("(no visible rows)")
@@ -175,8 +178,9 @@ func (m *recordViewerModeModel) View(query QueryContext) string {
 
 	preparedPage := m.preparePage(result, query.ViewerPage, len(latest.SelectedRows) > 0)
 	body := renderPreparedRecordViewerPage(preparedPage, m.width, m.height-len(header)-2, recordViewerRenderState{
-		Active:       recordViewerSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
-		SelectedRows: selectedRowSet(latest.SelectedRows),
+		Active:          recordViewerSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
+		SelectedRows:    selectedRowSet(latest.SelectedRows),
+		ColScrollOffset: m.colScrollOffset,
 	})
 	if body == "" {
 		body = appTheme.viewerEmpty.Render("(no visible rows)")
@@ -242,6 +246,7 @@ func (m *recordViewerModeModel) syncSelection(query QueryContext) {
 	if len(result.Rows) == 0 || len(result.Columns) == 0 {
 		m.selectedRow = 0
 		m.selectedColumn = 0
+		m.colScrollOffset = 0
 		m.selectionActive = false
 		return
 	}
@@ -292,6 +297,12 @@ func (m *recordViewerModeModel) Navigate(msg tea.KeyPressMsg, query QueryContext
 	m.selectedColumn = min(max(m.selectedColumn+deltaColumn, 0), len(result.Columns)-1)
 	m.selectionActive = true
 
+	// Update horizontal scroll offset to keep the selected column visible.
+	if deltaColumn != 0 {
+		preparedPage := m.preparePage(result, query.ViewerPage, false)
+		m.colScrollOffset = recordViewerColumnScrollOffset(m.colScrollOffset, m.selectedColumn, preparedPage.Widths, m.width)
+	}
+
 	return clampRecordViewerPage(m.selectedRow/recordViewerPageSize, len(result.Rows)), true
 }
 
@@ -327,9 +338,21 @@ func renderPreparedRecordViewerPage(prepared *recordViewerPreparedPage, width, h
 		return ""
 	}
 
+	// Apply horizontal column scroll offset.
+	colOffset := state.ColScrollOffset
+	if colOffset < 0 {
+		colOffset = 0
+	}
+	if colOffset >= len(prepared.Widths) {
+		colOffset = max(0, len(prepared.Widths)-1)
+	}
+
+	headers := prepared.Headers[colOffset:]
+	widths := prepared.Widths[colOffset:]
+
 	lines := []string{
-		renderInlineResultLine(prepared.Headers, prepared.Widths),
-		renderInlineSeparator(prepared.Widths),
+		renderInlineResultLine(headers, widths),
+		renderInlineSeparator(widths),
 	}
 
 	if len(prepared.Rows) == 0 {
@@ -340,17 +363,18 @@ func renderPreparedRecordViewerPage(prepared *recordViewerPreparedPage, width, h
 	start, end := recordViewerVisibleRowWindow(prepared.Context, len(prepared.Rows), height, state.Active)
 	for rowIndex := start; rowIndex < end; rowIndex++ {
 		absoluteRowIndex := prepared.Context.StartRow - 1 + rowIndex
-		values := append([]string(nil), prepared.Rows[rowIndex]...)
+		values := append([]string(nil), prepared.Rows[rowIndex][colOffset:]...)
 		isActiveRow := state.Active.Active && state.Active.Row == absoluteRowIndex
 		for columnIndex := range values {
-			if columnIndex == 0 && rowIndexSelectedSet(state.SelectedRows, absoluteRowIndex) {
+			absoluteColumnIndex := colOffset + columnIndex
+			if absoluteColumnIndex == 0 && rowIndexSelectedSet(state.SelectedRows, absoluteRowIndex) {
 				values[columnIndex] = appTheme.selectedRowMarker.Render("* ") + values[columnIndex]
 			}
 			if isActiveRow {
 				values[columnIndex] = renderRecordViewerActiveRowCell(values[columnIndex])
 			}
 		}
-		lines = append(lines, renderInlineResultLine(values, prepared.Widths))
+		lines = append(lines, renderInlineResultLine(values, widths))
 	}
 
 	if end-start < len(prepared.Rows) {
@@ -662,4 +686,51 @@ func trimRenderedWidth(value string, width int) string {
 		lines[i] = ansi.Truncate(line, width, "...")
 	}
 	return strings.Join(lines, "\n")
+}
+
+// recordViewerColumnScrollOffset computes a new column scroll offset that ensures
+// the selected column is visible within the given display width.
+// It returns the smallest offset such that the selected column fits within the viewport.
+func recordViewerColumnScrollOffset(current, selectedColumn int, widths []int, viewWidth int) int {
+	if len(widths) == 0 || viewWidth <= 0 {
+		return 0
+	}
+
+	// Clamp current offset.
+	if current < 0 {
+		current = 0
+	}
+	if current >= len(widths) {
+		current = len(widths) - 1
+	}
+
+	// If selected column is to the left of the offset, scroll left.
+	if selectedColumn < current {
+		return selectedColumn
+	}
+
+	// Find the rightmost column offset such that selected column is still visible.
+	// Walk from current offset forward and measure how many columns fit.
+	offset := current
+	for {
+		// Measure total width of columns from offset to selectedColumn (inclusive).
+		totalWidth := 0
+		for i := offset; i <= selectedColumn && i < len(widths); i++ {
+			if i > offset {
+				totalWidth += 3 // " | " separator
+			}
+			totalWidth += widths[i]
+		}
+		if totalWidth <= viewWidth {
+			break
+		}
+		// Selected column doesn't fit; advance offset by one.
+		offset++
+		if offset >= selectedColumn {
+			offset = selectedColumn
+			break
+		}
+	}
+
+	return offset
 }
