@@ -282,14 +282,7 @@ func adjustedScrollTop(current, cursorRow, totalRows, height int) int {
 }
 
 func (m commandModeModel) renderView(query QueryContext) string {
-	// Compute autocomplete dropdown first so we know how many rows it takes.
-	dropdown := m.renderAutocompleteDropdown(query)
-	dropdownLines := 0
-	if dropdown != "" {
-		dropdownLines = strings.Count(dropdown, "\n") + 1
-	}
-
-	viewportH := max(1, m.innerHeight-dropdownLines)
+	viewportH := max(1, m.innerHeight)
 
 	// Build the unified line list: transcript + editor.
 	transcriptLines := m.renderReplTranscriptLines()
@@ -337,11 +330,27 @@ func (m commandModeModel) renderView(query QueryContext) string {
 		visible = allLines[scrollTop:visEnd]
 	}
 
-	parts := make([]string, 0, len(visible)+1)
-	parts = append(parts, visible...)
-	if dropdown != "" {
-		parts = append(parts, dropdown)
+	// Insert the autocomplete dropdown right below the cursor line so it
+	// appears at the cursor position rather than stuck at the pane bottom.
+	dropdown := m.renderAutocompleteDropdown(query)
+	if dropdown == "" {
+		return strings.Join(visible, "\n")
 	}
+
+	cursorVisualRow := cursorRow - scrollTop
+	cutpoint := min(len(visible), max(0, cursorVisualRow+1))
+	dropLines := strings.Split(dropdown, "\n")
+
+	parts := make([]string, 0, viewportH)
+	parts = append(parts, visible[:cutpoint]...)
+	parts = append(parts, dropLines...)
+	parts = append(parts, visible[cutpoint:]...)
+
+	// Truncate to pane height so the dropdown overlays rather than expands.
+	if len(parts) > viewportH {
+		parts = parts[:viewportH]
+	}
+
 	return strings.Join(parts, "\n")
 }
 
