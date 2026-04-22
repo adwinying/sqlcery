@@ -1,7 +1,9 @@
 package app
 
 import (
+	"database/sql"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -304,15 +306,127 @@ func recordViewerValueLiteral(dialect db.Dialect, value db.ResultValue) string {
 			return recordViewerBytesLiteral(dialect, typed)
 		}
 	case db.ValueKindTime:
-		if typed, ok := value.Value.(time.Time); ok {
-			return recordViewerStringLiteral(typed.Format(time.RFC3339Nano))
+		t, state := extractTimeValue(value.Value)
+		switch state {
+		case timeValueValid:
+			return recordViewerTimeLiteral(t)
+		case timeValueNull:
+			return "NULL"
+		}
+		if s, ok := value.Value.(string); ok {
+			if t, ok := parseTimestampLiteral(s); ok {
+				return recordViewerTimeLiteral(t)
+			}
+			return recordViewerStringLiteral(s)
 		}
 	}
 
 	if value.Value == nil {
 		return "NULL"
 	}
+	t, state := extractTimeValue(value.Value)
+	switch state {
+	case timeValueValid:
+		return recordViewerTimeLiteral(t)
+	case timeValueNull:
+		return "NULL"
+	}
 	return recordViewerStringLiteral(fmt.Sprint(value.Value))
+}
+
+// recordViewerTimeLiteral renders a time.Time as a SQL string literal using a
+// space-separated ISO-8601 form with an explicit numeric timezone offset. The
+// resulting literal round-trips across PostgreSQL, MySQL (8.0.19+) and SQLite.
+func recordViewerTimeLiteral(t time.Time) string {
+	return recordViewerStringLiteral(t.Format("2006-01-02 15:04:05.999999999-07:00"))
+}
+
+type timeValueState int
+
+const (
+	// timeValueUnknown means the value was not recognised as a timestamp type
+	// and should be handled by the generic fallback.
+	timeValueUnknown timeValueState = iota
+	// timeValueValid means a time.Time was successfully extracted.
+	timeValueValid
+	// timeValueNull means the value was recognised as a timestamp type whose
+	// payload represents SQL NULL (e.g. sql.NullTime{Valid: false}).
+	timeValueNull
+)
+
+// extractTimeValue unwraps a driver-specific timestamp value into a time.Time.
+// It understands time.Time, *time.Time, sql.NullTime, and pgtype-style structs
+// exposing Time (time.Time) and optional Valid (bool) fields such as
+// pgtype.Timestamp and pgtype.Timestamptz.
+func extractTimeValue(value any) (time.Time, timeValueState) {
+	switch v := value.(type) {
+	case nil:
+		return time.Time{}, timeValueUnknown
+	case time.Time:
+		return v, timeValueValid
+	case *time.Time:
+		if v == nil {
+			return time.Time{}, timeValueNull
+		}
+		return *v, timeValueValid
+	case sql.NullTime:
+		if !v.Valid {
+			return time.Time{}, timeValueNull
+		}
+		return v.Time, timeValueValid
+	}
+
+	rv := reflect.ValueOf(value)
+	for rv.Kind() == reflect.Ptr {
+		if rv.IsNil() {
+			return time.Time{}, timeValueNull
+		}
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Struct {
+		return time.Time{}, timeValueUnknown
+	}
+	timeField := rv.FieldByName("Time")
+	if !timeField.IsValid() {
+		return time.Time{}, timeValueUnknown
+	}
+	if _, ok := timeField.Interface().(time.Time); !ok {
+		return time.Time{}, timeValueUnknown
+	}
+	if validField := rv.FieldByName("Valid"); validField.IsValid() && validField.Kind() == reflect.Bool && !validField.Bool() {
+		return time.Time{}, timeValueNull
+	}
+	return timeField.Interface().(time.Time), timeValueValid
+}
+
+var recordViewerTimestampParseLayouts = []string{
+	"2006-01-02 15:04:05.999999999-07:00",
+	"2006-01-02 15:04:05.999999999-0700",
+	"2006-01-02 15:04:05.999999999 -0700 MST",
+	"2006-01-02 15:04:05.999999999 -0700",
+	"2006-01-02 15:04:05.999999999",
+	"2006-01-02 15:04:05",
+	time.RFC3339Nano,
+	time.RFC3339,
+	"2006-01-02T15:04:05.999999999",
+	"2006-01-02T15:04:05",
+	"2006-01-02",
+}
+
+// parseTimestampLiteral best-effort parses a textual timestamp coming from the
+// driver into a time.Time so it can be reformatted into a canonical SQL
+// literal.
+func parseTimestampLiteral(value string) (time.Time, bool) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range recordViewerTimestampParseLayouts {
+		if t, err := time.Parse(layout, trimmed); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
 func recordViewerStringLiteral(value string) string {
