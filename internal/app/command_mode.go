@@ -38,6 +38,15 @@ type commandModeModel struct {
 	innerWidth         int
 	innerHeight        int
 	scrollOffset       int // lines scrolled up from the natural bottom; 0 = follow latest
+	// autocompleteSuppressed is set when the user explicitly dismisses the
+	// autocomplete dropdown (e.g. via Esc). While the editor value and cursor
+	// offset stay identical to the snapshot captured at dismissal time,
+	// autocompleteItems returns nil so the menu stays closed. Any edit or
+	// cursor movement naturally lifts the suppression because the captured
+	// snapshot no longer matches.
+	autocompleteSuppressed       bool
+	autocompleteSuppressedValue  string
+	autocompleteSuppressedCursor int
 }
 
 type commandModeKeyMap struct {
@@ -134,6 +143,29 @@ func (m *commandModeModel) Clear() {
 	m.editor.Reset()
 	m.editor.Focus()
 	m.selectedSuggestion = 0
+	m.clearAutocompleteSuppression()
+}
+
+// AutocompleteVisible reports whether the autocomplete dropdown is currently
+// showing suggestions to the user for the given query context.
+func (m commandModeModel) AutocompleteVisible(query QueryContext) bool {
+	return len(m.autocompleteItems(query)) > 0
+}
+
+// DismissAutocomplete suppresses the autocomplete dropdown while the editor
+// value and cursor position remain unchanged. Any subsequent edit or cursor
+// movement implicitly lifts the suppression.
+func (m *commandModeModel) DismissAutocomplete() {
+	m.autocompleteSuppressed = true
+	m.autocompleteSuppressedValue = m.editor.Value()
+	m.autocompleteSuppressedCursor = m.cursorOffset()
+	m.selectedSuggestion = 0
+}
+
+func (m *commandModeModel) clearAutocompleteSuppression() {
+	m.autocompleteSuppressed = false
+	m.autocompleteSuppressedValue = ""
+	m.autocompleteSuppressedCursor = 0
 }
 
 func (m *commandModeModel) Focus() {
@@ -540,6 +572,11 @@ func (m commandModeModel) formatLineNumber(value any) string {
 }
 
 func (m commandModeModel) autocompleteItems(query QueryContext) []autocompleteItem {
+	if m.autocompleteSuppressed &&
+		m.editor.Value() == m.autocompleteSuppressedValue &&
+		m.cursorOffset() == m.autocompleteSuppressedCursor {
+		return nil
+	}
 	return buildAutocompleteItems(m.editor.Value(), m.cursorOffset(), query)
 }
 

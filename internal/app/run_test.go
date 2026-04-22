@@ -738,6 +738,11 @@ func TestModelUpdateCancelClearsInput(t *testing.T) {
 	next, _ := model.Update(tea.KeyPressMsg{Text: "select"})
 	model = next.(Model)
 
+	// Typing "select" opens the autocomplete dropdown; the first Esc press now
+	// dismisses the menu instead of clearing the input. Dismiss it up-front so
+	// this test exercises the fallthrough clear-input behaviour.
+	model.command.DismissAutocomplete()
+
 	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	if cmd == nil {
 		t.Fatal("Update() cmd = nil, want clear intent command")
@@ -765,6 +770,86 @@ func TestModelUpdateCancelClearsInput(t *testing.T) {
 
 	if got, want := model.state.Status, "Cleared current input."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
+	}
+}
+
+func TestModelUpdateCancelDismissesAutocompleteBeforeClearingInput(t *testing.T) {
+	model := NewModel(Session{}, nil)
+	model.state.SetReady("")
+
+	// Type enough of a keyword to open the autocomplete dropdown.
+	next, _ := model.Update(tea.KeyPressMsg{Text: "sel"})
+	model = next.(Model)
+
+	if !model.command.AutocompleteVisible(model.state.Query) {
+		t.Fatal("AutocompleteVisible() = false after typing 'sel', want true")
+	}
+
+	// First Esc: should close the menu without emitting clearInputIntentMsg
+	// and preserve the current editor value.
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	if cmd != nil {
+		if msg := cmd(); msg != nil {
+			if _, bad := msg.(clearInputIntentMsg); bad {
+				t.Fatalf("Update() cmd() type = clearInputIntentMsg, want menu dismissal only")
+			}
+		}
+	}
+	model = next.(Model)
+
+	if got, want := model.command.editor.Value(), "sel"; got != want {
+		t.Fatalf("editor.Value() = %q, want %q", got, want)
+	}
+	if model.command.AutocompleteVisible(model.state.Query) {
+		t.Fatal("AutocompleteVisible() = true after Esc, want false")
+	}
+	if got, want := model.state.Query.PendingIntent, IntentClearInput; got == want {
+		t.Fatalf("state.Query.PendingIntent = %q, want anything but %q", got, want)
+	}
+
+	// Second Esc: menu already closed -> falls through to clear-input behaviour.
+	next, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	if cmd == nil {
+		t.Fatal("Update() cmd = nil on second Esc, want clearInputIntentMsg")
+	}
+
+	msg := cmd()
+	if _, ok := msg.(clearInputIntentMsg); !ok {
+		t.Fatalf("Update() cmd() type = %T, want %T", msg, clearInputIntentMsg{})
+	}
+
+	next, _ = next.(Model).Update(msg)
+	model = next.(Model)
+
+	if got := model.command.editor.Value(); got != "" {
+		t.Fatalf("editor.Value() = %q, want empty after clear", got)
+	}
+	if got, want := model.state.Query.PendingIntent, IntentClearInput; got != want {
+		t.Fatalf("state.Query.PendingIntent = %q, want %q", got, want)
+	}
+}
+
+func TestModelUpdateCancelAfterDismissTypingReopensAutocomplete(t *testing.T) {
+	model := NewModel(Session{}, nil)
+	model.state.SetReady("")
+
+	next, _ := model.Update(tea.KeyPressMsg{Text: "sel"})
+	model = next.(Model)
+
+	// Dismiss the menu.
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	model = next.(Model)
+
+	if model.command.AutocompleteVisible(model.state.Query) {
+		t.Fatal("AutocompleteVisible() = true after dismissal, want false")
+	}
+
+	// Typing should implicitly lift the dismissal.
+	next, _ = model.Update(tea.KeyPressMsg{Text: "e"})
+	model = next.(Model)
+
+	if !model.command.AutocompleteVisible(model.state.Query) {
+		t.Fatal("AutocompleteVisible() = false after typing more text, want true")
 	}
 }
 
