@@ -16,11 +16,12 @@ import (
 
 const (
 	defaultEditorWidth    = 80
-	defaultEditorHeight   = 1
 	minimumEditorWidth    = 20
-	minimumEditorHeight   = 1
 	autocompletePanelRows = 5
-	bottomPadding         = 5 // blank rows kept below the last editor line
+	// bottomPadding reserves rows below the last editor line for the
+	// autocomplete dropdown so the prompt never bounces when the menu opens.
+	bottomPadding   = 5
+	editorLargeHeight = 9999 // fixed height so the textarea never runs its own viewport
 )
 
 type replTranscriptEntry struct {
@@ -78,14 +79,14 @@ func newCommandModeModel() commandModeModel {
 	editor.Placeholder = "Write SQL here"
 	editor.ShowLineNumbers = false
 	editor.SetWidth(defaultEditorWidth)
-	editor.SetHeight(defaultEditorHeight)
+	editor.SetHeight(editorLargeHeight)
 	editor.Focus()
 
 	return commandModeModel{
 		editor:      editor,
 		highlighter: newSQLSyntaxHighlighter(),
 		innerWidth:  defaultEditorWidth,
-		innerHeight: defaultEditorHeight,
+		innerHeight: 1,
 		keys: commandModeKeyMap{
 			Submit:               key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit")),
 			Cancel:               key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
@@ -133,27 +134,35 @@ func (m commandModeModel) Update(msg tea.Msg, query QueryContext) (commandModeMo
 				return m, nil
 			}
 		case key.Matches(keyMsg, m.keys.ScrollTranscriptUp):
-			m.scrollOffset++
+			step := max(1, m.innerHeight/2)
+			maxOff := m.computeNaturalScrollTop(max(1, m.innerHeight))
+			m.scrollOffset = min(m.scrollOffset+step, maxOff)
 			m.autocompleteOpenedByTyping = false
 			return m, nil
 		case key.Matches(keyMsg, m.keys.ScrollTranscriptDown):
-			if m.scrollOffset > 0 {
-				m.scrollOffset--
-			}
+			step := max(1, m.innerHeight/2)
+			m.scrollOffset = max(0, m.scrollOffset-step)
 			m.autocompleteOpenedByTyping = false
 			return m, nil
 		}
 	}
 
 	priorValue := m.editor.Value()
+	priorCursor := m.cursorOffset()
 	_, isKeyPress := msg.(tea.KeyPressMsg)
 
 	var cmd tea.Cmd
 	m.editor, cmd = m.editor.Update(msg)
-	m.setEditorHeight()
 
 	if isKeyPress {
-		if m.editor.Value() != priorValue {
+		valueChanged := m.editor.Value() != priorValue
+		cursorMoved := m.cursorOffset() != priorCursor
+		if valueChanged || cursorMoved {
+			// Any edit or cursor movement snaps back to follow latest output,
+			// matching terminal-shell behaviour.
+			m.scrollOffset = 0
+		}
+		if valueChanged {
 			// A key event that actually mutated the buffer — printable text,
 			// backspace, delete, or a newline in multi-line SQL. This is the
 			// only path that opens the autocomplete menu.
@@ -237,15 +246,7 @@ func (m *commandModeModel) SetSize(innerWidth, innerHeight int) {
 	m.innerWidth = clampEditorSize(innerWidth, minimumEditorWidth)
 	m.innerHeight = innerHeight
 	m.editor.SetWidth(m.innerWidth)
-	m.setEditorHeight()
-}
-
-func (m *commandModeModel) setEditorHeight() {
-	logicalLines := len(strings.Split(m.editor.Value(), "\n"))
-	if logicalLines < 1 {
-		logicalLines = 1
-	}
-	m.editor.SetHeight(max(minimumEditorHeight, logicalLines))
+	m.editor.SetHeight(editorLargeHeight)
 }
 
 func (m commandModeModel) Focused() bool {
@@ -362,6 +363,22 @@ func adjustedScrollTop(current, cursorRow, totalRows, height int) int {
 	return current
 }
 
+// computeNaturalScrollTop returns the scroll-top value that keeps the last
+// editor row on screen with bottomPadding blank rows below it. This is the
+// upper bound for scrollOffset: scrolling further would show empty space above
+// the first transcript line.
+func (m commandModeModel) computeNaturalScrollTop(viewportH int) int {
+	transcriptLen := len(m.renderReplTranscriptLines())
+	var totalEditorRows int
+	if m.editor.Value() == "" {
+		totalEditorRows = 1
+	} else {
+		_, _, totalEditorRows = m.renderedLines()
+	}
+	lastEditorRow := transcriptLen + totalEditorRows - 1
+	return max(0, lastEditorRow+bottomPadding-viewportH+1)
+}
+
 func (m commandModeModel) renderView(query QueryContext) string {
 	viewportH := max(1, m.innerHeight)
 
@@ -392,47 +409,50 @@ func (m commandModeModel) renderView(query QueryContext) string {
 	lastEditorRow := len(transcriptLines) + totalEditorRows - 1
 
 	// naturalScrollTop: scroll position that leaves exactly bottomPadding blank
-	// rows below the last editor line.
+	// rows below the last editor line (reserved for the autocomplete dropdown).
 	naturalScrollTop := max(0, lastEditorRow+bottomPadding-viewportH+1)
 
-	// Apply manual scroll offset (lines scrolled up from natural bottom).
+	// Apply manual scroll offset (lines scrolled up from the natural position).
 	rawScroll := max(0, naturalScrollTop-m.scrollOffset)
 
-	// Ensure cursor is visible with minimal adjustment.
-	scrollTop := adjustedScrollTop(rawScroll, cursorRow, len(allLines), viewportH)
-
-	// Never go below the natural bottom (preserves bottomPadding when possible).
-	scrollTop = min(scrollTop, naturalScrollTop)
-
-	// Render the visible slice.
-	visEnd := min(len(allLines), scrollTop+viewportH)
-	var visible []string
-	if scrollTop < visEnd {
-		visible = allLines[scrollTop:visEnd]
+	var scrollTop int
+	if m.scrollOffset == 0 {
+		// Not manually scrolled: ensure the cursor is always visible.
+		scrollTop = adjustedScrollTop(rawScroll, cursorRow, len(allLines), viewportH)
+		scrollTop = min(scrollTop, naturalScrollTop)
+	} else {
+		// Explicitly scrolled: let the view stay where the user put it.
+		// The cursor is allowed to go off-screen (terminal-shell behaviour).
+		scrollTop = max(0, min(rawScroll, naturalScrollTop))
 	}
 
-	// Insert the autocomplete dropdown right below the last editor line so it
-	// floats beneath the full prompt rather than splitting it at the cursor.
+	// Build the visible grid: exactly viewportH rows, blank where allLines
+	// has no content. The autocomplete overlay and renderBorderedPane both
+	// rely on a fixed-size slice rather than variable-length content.
+	visible := make([]string, viewportH)
+	for i := range visible {
+		if idx := scrollTop + i; idx < len(allLines) {
+			visible[i] = allLines[idx]
+		}
+	}
+
+	// Overlay the autocomplete dropdown directly below the cursor line.
+	// It replaces whatever rows are there (editor rows or reserve blanks),
+	// so the prompt never shifts vertically when the menu opens or closes.
 	dropdown := m.renderAutocompleteDropdown(query)
 	if dropdown == "" {
 		return strings.Join(visible, "\n")
 	}
 
-	lastEditorVisualRow := lastEditorRow - scrollTop
-	cutpoint := min(len(visible), max(0, lastEditorVisualRow+1))
-	dropLines := strings.Split(dropdown, "\n")
-
-	parts := make([]string, 0, viewportH)
-	parts = append(parts, visible[:cutpoint]...)
-	parts = append(parts, dropLines...)
-	parts = append(parts, visible[cutpoint:]...)
-
-	// Truncate to pane height so the dropdown overlays rather than expands.
-	if len(parts) > viewportH {
-		parts = parts[:viewportH]
+	cursorVisualRow := cursorRow - scrollTop
+	overlayStart := cursorVisualRow + 1
+	for i, dl := range strings.Split(dropdown, "\n") {
+		if row := overlayStart + i; row >= 0 && row < len(visible) {
+			visible[row] = dl
+		}
 	}
 
-	return strings.Join(parts, "\n")
+	return strings.Join(visible, "\n")
 }
 
 func (m commandModeModel) renderReplTranscriptLines() []string {

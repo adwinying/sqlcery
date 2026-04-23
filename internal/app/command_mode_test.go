@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -563,5 +564,140 @@ func TestRenderLineContentWithGhostCJKCursorPosition(t *testing.T) {
 	renderedNoGhost := h.renderLineContentWithGhost(line, 2, 20, false, ghost)
 	if strings.Contains(renderedNoGhost, ghost) {
 		t.Fatalf("renderLineContentWithGhost with CJK: ghost text must NOT appear when cursorCol=2 (on 'A'), but got %q", renderedNoGhost)
+	}
+}
+
+// --- Scroll behaviour tests ---
+
+func TestCommandModeScrollStepIsHalfPage(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 20) // innerHeight=20, half-page=10
+	for i := 0; i < 30; i++ {
+		mode.AppendReplEntry("> ", fmt.Sprintf("SELECT %d;", i), fmt.Sprintf("%d row.", i))
+	}
+
+	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}, QueryContext{})
+	want := max(1, 20/2) // 10
+	if got := updated.scrollOffset; got != want {
+		t.Fatalf("scrollOffset = %d after ctrl+u with innerHeight=20, want %d (half-page)", got, want)
+	}
+}
+
+func TestCommandModeScrollOffsetBoundedByContent(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 10)
+	mode.AppendReplEntry("> ", "SELECT 1;", "1 row.")
+
+	// Press ctrl+u many times — scrollOffset must never exceed naturalScrollTop.
+	for i := 0; i < 100; i++ {
+		mode, _ = mode.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}, QueryContext{})
+	}
+	natural := mode.computeNaturalScrollTop(max(1, mode.innerHeight))
+	if mode.scrollOffset > natural {
+		t.Fatalf("scrollOffset = %d exceeds naturalScrollTop = %d", mode.scrollOffset, natural)
+	}
+}
+
+func TestCommandModeTypingSnapsScrollToZero(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 10)
+	for i := 0; i < 20; i++ {
+		mode.AppendReplEntry("> ", fmt.Sprintf("SELECT %d;", i), fmt.Sprintf("%d row.", i))
+	}
+
+	mode, _ = mode.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}, QueryContext{})
+	if mode.scrollOffset == 0 {
+		t.Fatal("expected scrollOffset > 0 after ctrl+u")
+	}
+
+	// Type a printable character — scrollOffset must snap back to 0.
+	mode, _ = mode.Update(tea.KeyPressMsg{Text: "S"}, QueryContext{})
+	if got := mode.scrollOffset; got != 0 {
+		t.Fatalf("scrollOffset = %d after typing, want 0", got)
+	}
+}
+
+func TestCommandModeScrollDownIsNoOpAtBottom(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 10)
+	// scrollOffset starts at 0; ctrl+d should leave it at 0.
+	mode, _ = mode.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl}, QueryContext{})
+	if got := mode.scrollOffset; got != 0 {
+		t.Fatalf("scrollOffset = %d after ctrl+d at bottom, want 0", got)
+	}
+}
+
+func TestCommandModeAutocompleteDropdownHeightCappedAtFive(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 20)
+	mode.editor.SetValue("SELECT * FROM ")
+	mode.editor.CursorEnd()
+	mode.autocompleteOpenedByTyping = true
+
+	// 10 tables → dropdown must show at most autocompletePanelRows rows.
+	tables := make([]AutocompleteTableContext, 10)
+	for i := range tables {
+		tables[i] = AutocompleteTableContext{Name: fmt.Sprintf("table_%02d", i)}
+	}
+	query := QueryContext{AutocompleteSchema: &AutocompleteSchemaContext{Tables: tables}}
+
+	dropdown := mode.renderAutocompleteDropdown(query)
+	if dropdown == "" {
+		t.Fatal("expected non-empty dropdown with 10 table suggestions")
+	}
+	rows := strings.Split(dropdown, "\n")
+	if len(rows) > autocompletePanelRows {
+		t.Fatalf("dropdown has %d rows, want at most %d", len(rows), autocompletePanelRows)
+	}
+}
+
+func TestCommandModeAutocompleteOverlaysLinesBelowCursor(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 20)
+	// Two-line editor. After CursorEnd the cursor is on line 1 ("WHERE id = 1;").
+	// CursorUp moves it to line 0 near the end of "SELECT * FROM us".
+	mode.editor.SetValue("SELECT * FROM us\nWHERE id = 1;")
+	mode.editor.CursorEnd()
+	mode.editor.CursorUp()
+	mode.autocompleteOpenedByTyping = true
+
+	if line := mode.editor.Line(); line != 0 {
+		t.Skipf("cursor ended on line %d instead of 0 — skipping overlay geometry test", line)
+	}
+
+	query := QueryContext{
+		AutocompleteSchema: &AutocompleteSchemaContext{
+			Tables: []AutocompleteTableContext{{Name: "users"}, {Name: "user_sessions"}},
+		},
+	}
+
+	// Autocomplete must fire for this test to be meaningful.
+	if items := mode.autocompleteItems(query); len(items) == 0 {
+		t.Skip("autocomplete produced no items for this cursor position — skipping overlay geometry test")
+	}
+
+	view := mode.View(query)
+	viewLines := strings.Split(view, "\n")
+
+	// Find the cursor line (contains "SELECT" and "FROM").
+	cursorIdx := -1
+	for i, l := range viewLines {
+		if strings.Contains(l, "SELECT") && strings.Contains(l, "FROM") {
+			cursorIdx = i
+			break
+		}
+	}
+	if cursorIdx < 0 {
+		t.Fatal("cursor line (SELECT * FROM us) not found in view")
+	}
+	if cursorIdx+1 >= len(viewLines) {
+		t.Fatal("cursor line is at the bottom of the view — no room for overlay")
+	}
+
+	// The line immediately below the cursor must be a dropdown entry,
+	// not the second editor line ("WHERE id = 1;").
+	lineAfterCursor := viewLines[cursorIdx+1]
+	if strings.Contains(lineAfterCursor, "WHERE") {
+		t.Fatalf("overlay failed: line after cursor is %q — expected autocomplete dropdown row, not editor line 2", lineAfterCursor)
 	}
 }
