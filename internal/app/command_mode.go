@@ -38,6 +38,14 @@ type commandModeModel struct {
 	innerWidth         int
 	innerHeight        int
 	scrollOffset       int // lines scrolled up from the natural bottom; 0 = follow latest
+	// autocompleteOpenedByTyping is the primary gate for the autocomplete
+	// dropdown: the menu is only allowed to appear when the most recent key
+	// event modified the editor buffer (printable characters, backspace,
+	// delete). Focus changes, pane switches, cursor movement, history recall,
+	// slash-command expansion, record-viewer compose and submit/clear flows
+	// all reset it to false. The flag lifts the moment the user types the
+	// next character.
+	autocompleteOpenedByTyping bool
 	// autocompleteSuppressed is set when the user explicitly dismisses the
 	// autocomplete dropdown (e.g. via Esc). While the editor value and cursor
 	// offset stay identical to the snapshot captured at dismissal time,
@@ -106,6 +114,9 @@ func (m commandModeModel) Update(msg tea.Msg, query QueryContext) (commandModeMo
 		case key.Matches(keyMsg, m.keys.AcceptSuggestion):
 			if len(suggestions) > 0 {
 				m.applySuggestion(suggestions[m.selectedSuggestionIndex(len(suggestions))])
+				// Accepting a suggestion commits text but should close the
+				// menu; it shouldn't linger until the user types again.
+				m.autocompleteOpenedByTyping = false
 				return m, textarea.Blink
 			}
 		case key.Matches(keyMsg, m.keys.NextSuggestion):
@@ -123,18 +134,38 @@ func (m commandModeModel) Update(msg tea.Msg, query QueryContext) (commandModeMo
 			}
 		case key.Matches(keyMsg, m.keys.ScrollTranscriptUp):
 			m.scrollOffset++
+			m.autocompleteOpenedByTyping = false
 			return m, nil
 		case key.Matches(keyMsg, m.keys.ScrollTranscriptDown):
 			if m.scrollOffset > 0 {
 				m.scrollOffset--
 			}
+			m.autocompleteOpenedByTyping = false
 			return m, nil
 		}
 	}
 
+	priorValue := m.editor.Value()
+	_, isKeyPress := msg.(tea.KeyPressMsg)
+
 	var cmd tea.Cmd
 	m.editor, cmd = m.editor.Update(msg)
 	m.setEditorHeight()
+
+	if isKeyPress {
+		if m.editor.Value() != priorValue {
+			// A key event that actually mutated the buffer — printable text,
+			// backspace, delete, or a newline in multi-line SQL. This is the
+			// only path that opens the autocomplete menu.
+			m.autocompleteOpenedByTyping = true
+		} else {
+			// Any key press that did not change the buffer (arrow keys, Home,
+			// End, Ctrl+A/E, modifier-only presses, ignored shortcuts) closes
+			// the menu. The user must type again to reopen it.
+			m.autocompleteOpenedByTyping = false
+		}
+	}
+
 	m.clampSuggestionSelection(query)
 	return m, cmd
 }
@@ -143,6 +174,7 @@ func (m *commandModeModel) Clear() {
 	m.editor.Reset()
 	m.editor.Focus()
 	m.selectedSuggestion = 0
+	m.autocompleteOpenedByTyping = false
 	m.clearAutocompleteSuppression()
 }
 
@@ -160,6 +192,7 @@ func (m *commandModeModel) DismissAutocomplete() {
 	m.autocompleteSuppressedValue = m.editor.Value()
 	m.autocompleteSuppressedCursor = m.cursorOffset()
 	m.selectedSuggestion = 0
+	m.autocompleteOpenedByTyping = false
 }
 
 func (m *commandModeModel) clearAutocompleteSuppression() {
@@ -170,10 +203,26 @@ func (m *commandModeModel) clearAutocompleteSuppression() {
 
 func (m *commandModeModel) Focus() {
 	m.editor.Focus()
+	// Refocusing the command pane must not re-open a menu that was already
+	// closed when the pane lost focus.
+	m.autocompleteOpenedByTyping = false
 }
 
 func (m *commandModeModel) Blur() {
 	m.editor.Blur()
+	m.autocompleteOpenedByTyping = false
+}
+
+// SetEditorValue replaces the editor buffer programmatically (history recall,
+// slash-command expansion, record-viewer compose) without marking the change
+// as a typing event, so the autocomplete menu stays closed until the user
+// types the next character.
+func (m *commandModeModel) SetEditorValue(value string) {
+	m.editor.SetValue(value)
+	m.editor.CursorEnd()
+	m.selectedSuggestion = 0
+	m.autocompleteOpenedByTyping = false
+	m.clearAutocompleteSuppression()
 }
 
 func (m commandModeModel) KeyMap() commandModeKeyMap {
@@ -572,6 +621,13 @@ func (m commandModeModel) formatLineNumber(value any) string {
 }
 
 func (m commandModeModel) autocompleteItems(query QueryContext) []autocompleteItem {
+	// Primary gate: the menu is only allowed to appear as a direct result of
+	// a typing key event. Cursor movement, focus changes, pane switches,
+	// history recall, slash-command expansion, compose flows and submits all
+	// leave this flag false, so the menu stays closed until the user types.
+	if !m.autocompleteOpenedByTyping {
+		return nil
+	}
 	if m.autocompleteSuppressed &&
 		m.editor.Value() == m.autocompleteSuppressedValue &&
 		m.cursorOffset() == m.autocompleteSuppressedCursor {

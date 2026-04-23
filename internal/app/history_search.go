@@ -43,9 +43,7 @@ func (m *Model) restoreSelectedHistoryEntry() {
 		return
 	}
 
-	m.command.editor.SetValue(selected.SQL)
-	m.command.editor.CursorEnd()
-	m.command.selectedSuggestion = 0
+	m.command.SetEditorValue(selected.SQL)
 	m.syncCurrentSQL()
 	m.closeHistorySearch()
 	m.state.SetPendingIntent(IntentNone, "history", "Restored selected history entry into the editor.")

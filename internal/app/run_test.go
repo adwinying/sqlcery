@@ -853,6 +853,140 @@ func TestModelUpdateCancelAfterDismissTypingReopensAutocomplete(t *testing.T) {
 	}
 }
 
+func TestAutocompleteMenuOpensAfterTypingOneCharacter(t *testing.T) {
+	model := NewModel(Session{}, nil)
+	model.state.SetReady("")
+
+	if model.command.AutocompleteVisible(model.state.Query) {
+		t.Fatal("AutocompleteVisible() = true on a fresh model, want false")
+	}
+
+	next, _ := model.Update(tea.KeyPressMsg{Text: "s"})
+	model = next.(Model)
+
+	if !model.command.AutocompleteVisible(model.state.Query) {
+		t.Fatal("AutocompleteVisible() = false after typing one character, want true")
+	}
+}
+
+func TestAutocompleteMenuStaysClosedOnCursorMovement(t *testing.T) {
+	model := NewModel(Session{}, nil)
+	model.state.SetReady("")
+
+	// Type enough to open the menu.
+	next, _ := model.Update(tea.KeyPressMsg{Text: "sel"})
+	model = next.(Model)
+
+	if !model.command.AutocompleteVisible(model.state.Query) {
+		t.Fatal("AutocompleteVisible() = false after typing 'sel', want true")
+	}
+
+	// Arrow keys are pure cursor movement: the menu must close and stay
+	// closed until the next typing key.
+	for _, code := range []rune{tea.KeyLeft, tea.KeyRight, tea.KeyHome, tea.KeyEnd} {
+		next, _ = model.Update(tea.KeyPressMsg{Code: code})
+		model = next.(Model)
+		if model.command.AutocompleteVisible(model.state.Query) {
+			t.Fatalf("AutocompleteVisible() = true after cursor key %v, want false", code)
+		}
+	}
+
+	// Ctrl+A / Ctrl+E are also cursor movement.
+	next, _ = model.Update(tea.KeyPressMsg{Code: 'a', Mod: tea.ModCtrl})
+	model = next.(Model)
+	if model.command.AutocompleteVisible(model.state.Query) {
+		t.Fatal("AutocompleteVisible() = true after Ctrl+A, want false")
+	}
+	next, _ = model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	model = next.(Model)
+	if model.command.AutocompleteVisible(model.state.Query) {
+		t.Fatal("AutocompleteVisible() = true after Ctrl+E, want false")
+	}
+
+	// Typing again reopens the menu.
+	next, _ = model.Update(tea.KeyPressMsg{Text: "e"})
+	model = next.(Model)
+	if !model.command.AutocompleteVisible(model.state.Query) {
+		t.Fatal("AutocompleteVisible() = false after typing another character, want true")
+	}
+}
+
+func TestAutocompleteMenuStaysClosedOnHistoryRecall(t *testing.T) {
+	model := NewModel(Session{}, nil)
+	model.state.SetReady("")
+	model.state.SetSessionHistory([]HistoryEntryContext{{SQL: "select * from users"}})
+
+	// Open history search, select the entry (auto-selected), then restore.
+	next, _ := model.Update(historyIntentMsg{})
+	model = next.(Model)
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = next.(Model)
+
+	if got, want := model.command.editor.Value(), "select * from users"; got != want {
+		t.Fatalf("editor.Value() = %q, want %q", got, want)
+	}
+	if model.command.AutocompleteVisible(model.state.Query) {
+		t.Fatal("AutocompleteVisible() = true after history recall, want false")
+	}
+
+	// Focusing the command pane must also not re-open the menu on its own.
+	model.command.Focus()
+	if model.command.AutocompleteVisible(model.state.Query) {
+		t.Fatal("AutocompleteVisible() = true after Focus() following history recall, want false")
+	}
+
+	// The next typed character should open the menu.
+	next, _ = model.Update(tea.KeyPressMsg{Text: " "})
+	model = next.(Model)
+	if !model.command.AutocompleteVisible(model.state.Query) {
+		t.Fatal("AutocompleteVisible() = false after typing post-recall, want true")
+	}
+}
+
+func TestAutocompleteMenuStaysClosedAfterSubmitAndRefocus(t *testing.T) {
+	adapter := openTestAdapter(t)
+	defer func() {
+		if err := adapter.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	}()
+
+	model := newModelWithDependencies(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter, modelDependencies{})
+	model.state.SetReady("")
+
+	// Simulate typing a query and submitting it.
+	next, _ := model.Update(tea.KeyPressMsg{Text: "select 1;"})
+	model = next.(Model)
+
+	if !model.command.AutocompleteVisible(model.state.Query) {
+		t.Fatal("AutocompleteVisible() = false after typing SQL, want true")
+	}
+
+	next, cmd := model.Update(submitIntentMsg{})
+	if cmd == nil {
+		t.Fatal("Update(submitIntentMsg{}) cmd = nil, want execution command")
+	}
+	model = next.(Model)
+
+	next, _ = model.Update(firstCommandMessageForTest[statementExecutedMsg](t, cmd))
+	model = next.(Model)
+
+	if got := model.command.editor.Value(); got != "" {
+		t.Fatalf("editor.Value() = %q, want empty after submit", got)
+	}
+	if model.command.AutocompleteVisible(model.state.Query) {
+		t.Fatal("AutocompleteVisible() = true immediately after submit, want false")
+	}
+
+	// Simulate the user refocusing the pane (e.g. Ctrl+W). The menu must
+	// not re-open on focus alone.
+	model.command.Blur()
+	model.command.Focus()
+	if model.command.AutocompleteVisible(model.state.Query) {
+		t.Fatal("AutocompleteVisible() = true after Blur/Focus post-submit, want false")
+	}
+}
+
 func TestModelUpdateCancelWhileRunningRequestsCancellation(t *testing.T) {
 	model := NewModel(Session{}, nil)
 	model.state.SetReady("")

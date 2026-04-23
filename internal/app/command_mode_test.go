@@ -211,6 +211,8 @@ func TestCommandModeAcceptSuggestionReplacesPrefix(t *testing.T) {
 	mode.SetSize(80, 20)
 	mode.editor.SetValue("SELECT * FROM us")
 	mode.editor.CursorEnd()
+	// Simulate the "user just typed" state that normally gates the menu.
+	mode.autocompleteOpenedByTyping = true
 	query := QueryContext{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}}},
 	}
@@ -227,6 +229,7 @@ func TestCommandModeSuggestionNavigationCyclesSelection(t *testing.T) {
 	mode.SetSize(80, 20)
 	mode.editor.SetValue("SELECT * FROM ")
 	mode.editor.CursorEnd()
+	mode.autocompleteOpenedByTyping = true
 	query := QueryContext{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}, {Name: "orders"}}},
 	}
@@ -247,6 +250,7 @@ func TestCommandModeViewRendersAutocompletePanel(t *testing.T) {
 	mode.SetSize(80, 20)
 	mode.editor.SetValue("SELECT * FROM us")
 	mode.editor.CursorEnd()
+	mode.autocompleteOpenedByTyping = true
 	query := QueryContext{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}}},
 	}

@@ -351,9 +351,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.SetSlashWizardContext(msg.Result.Wizard)
 
 		if msg.Result.ShouldReplace {
-			m.command.editor.SetValue(msg.Result.ReplaceEditor)
-			m.command.editor.CursorEnd()
-			m.command.selectedSuggestion = 0
+			m.command.SetEditorValue(msg.Result.ReplaceEditor)
 			m.syncCurrentSQL()
 			m.state.SetLatestResultContext(nil)
 		} else {
@@ -1007,9 +1005,7 @@ func (m *Model) composeRecordViewerInsert() bool {
 		return true
 	}
 
-	m.command.editor.SetValue(result.SQL)
-	m.command.editor.CursorEnd()
-	m.command.selectedSuggestion = 0
+	m.command.SetEditorValue(result.SQL)
 	m.syncCurrentSQL()
 	m.closeHistorySearch()
 	m.command.Focus()
@@ -1032,9 +1028,7 @@ func (m *Model) composeRecordViewerUpdate() bool {
 		return true
 	}
 
-	m.command.editor.SetValue(result.SQL)
-	m.command.editor.CursorEnd()
-	m.command.selectedSuggestion = 0
+	m.command.SetEditorValue(result.SQL)
 	m.syncCurrentSQL()
 	m.closeHistorySearch()
 	m.command.Focus()
@@ -1057,9 +1051,7 @@ func (m *Model) composeRecordViewerDelete() bool {
 		return true
 	}
 
-	m.command.editor.SetValue(result.SQL)
-	m.command.editor.CursorEnd()
-	m.command.selectedSuggestion = 0
+	m.command.SetEditorValue(result.SQL)
 	m.syncCurrentSQL()
 	m.closeHistorySearch()
 	m.command.Focus()
