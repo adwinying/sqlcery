@@ -88,7 +88,7 @@ func newCommandModeModel() commandModeModel {
 		innerHeight: defaultEditorHeight,
 		keys: commandModeKeyMap{
 			Submit:               key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit")),
-			Cancel:               key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear/cancel")),
+			Cancel:               key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
 			Help:                 key.NewBinding(key.WithKeys("alt+h"), key.WithHelp("alt+h", "help")),
 			History:              key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "history")),
 			RestoreHistory:       key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restore")),

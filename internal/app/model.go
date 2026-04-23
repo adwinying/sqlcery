@@ -787,15 +787,11 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 			return func() tea.Msg { return slashWizardCloseIntentMsg{} }
 		}
-		// If the autocomplete dropdown is visible, the first Esc press dismisses
-		// the menu and preserves the input. Subsequent Esc presses fall through
-		// to the clear-input behaviour because the suppression gates the menu
-		// until the user edits or moves the cursor.
+		// If the autocomplete dropdown is visible, dismiss it and preserve input.
 		if m.command.AutocompleteVisible(m.state.Query) {
 			m.command.DismissAutocomplete()
-			return nopCmd
 		}
-		return func() tea.Msg { return clearInputIntentMsg{} }
+		return nopCmd
 	case key.Matches(msg, keys.History):
 		return func() tea.Msg { return historyIntentMsg{} }
 	case key.Matches(msg, keys.Help):
