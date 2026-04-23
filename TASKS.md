@@ -13,7 +13,7 @@
 - [ ] (skip) revamp status bar
 - [ ] (skip) mouse support
 - [ ] (skip) multirow select in result pane support
-- [ ] (skip) history search does not scoll properly; when the query spans too many lines, the selection disappears when moving to the next suggestion
+- [x] history search does not scoll properly; when the query spans too many lines, the selection disappears when moving to the next suggestion
 - [x] column name in autocomplete menu should show the type of the column
 - [x] fix result pane horizontal scrolling not working
 - [x] command history selection does not scroll

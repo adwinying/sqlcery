@@ -181,11 +181,12 @@ func renderHistorySearch(query QueryContext) string {
 	scrollOffset := max(0, selected-historySearchPreviewRows+1)
 	viewEnd := min(len(matches), scrollOffset+historySearchPreviewRows)
 	for i := scrollOffset; i < viewEnd; i++ {
-		line := "  " + matches[i].SQL
+		display := historySearchDisplaySQL(matches[i].SQL)
+		var line string
 		if i == selected {
-			line = appTheme.panelSelected.Render("> " + matches[i].SQL)
+			line = appTheme.panelSelected.Render("> " + display)
 		} else {
-			line = appTheme.panelText.Render(line)
+			line = appTheme.panelText.Render("  " + display)
 		}
 		lines = append(lines, line)
 	}
@@ -209,7 +210,7 @@ func historySearchStatus(query QueryContext) string {
 	}
 
 	selected := matches[wrapHistorySearchIndex(search.SelectedIndex, len(matches))]
-	return fmt.Sprintf("History search matched %d entries; selected %q.", len(matches), selected.SQL)
+	return fmt.Sprintf("History search matched %d entries; selected %q.", len(matches), historySearchDisplaySQL(selected.SQL))
 }
 
 func filterHistorySearchEntries(entries []HistoryEntryContext, query string) []HistoryEntryContext {
@@ -317,4 +318,12 @@ func defaultHistorySearchQuery(value string) string {
 		return "(empty)"
 	}
 	return value
+}
+
+// historySearchDisplaySQL collapses runs of whitespace (including newlines) in
+// sql into single spaces so that every history entry renders as exactly one
+// visual row in the popup list. The original SQL is preserved separately and
+// restored into the editor unchanged when the entry is selected.
+func historySearchDisplaySQL(sql string) string {
+	return strings.Join(strings.Fields(sql), " ")
 }
