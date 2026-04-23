@@ -372,7 +372,7 @@ func handleSlashSelect(ctx context.Context, command slashCommandContext, parsed 
 
 	return slashCommandResult{
 		Status:        slashTemplateStatus(parsed.DisplayName, displaySlashTableRef(table)),
-		ReplaceEditor: fmt.Sprintf("SELECT\n%s\nFROM %s\nLIMIT 50;", selectList, quotedTable),
+		ReplaceEditor: fmt.Sprintf("SELECT\n%s\nFROM %s;", selectList, quotedTable),
 		ShouldReplace: true,
 	}, nil
 }

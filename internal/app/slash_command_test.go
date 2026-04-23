@@ -81,7 +81,7 @@ func TestDispatchSlashCommandSelectBuildsTemplate(t *testing.T) {
 	if !result.ShouldReplace {
 		t.Fatal("result.ShouldReplace = false, want true")
 	}
-	for _, want := range []string{"SELECT", `FROM "users"`, `"id"`, `"name"`, `"email"`, "LIMIT 50;"} {
+	for _, want := range []string{"SELECT", `FROM "users";`, `"id"`, `"name"`, `"email"`} {
 		if got := result.ReplaceEditor; !containsLine(got, want) {
 			t.Fatalf("ReplaceEditor = %q, want to contain %q", got, want)
 		}
@@ -150,17 +150,17 @@ func TestDispatchSlashCommandSelectBuildsDialectAwareTemplateWithoutMetadata(t *
 		{
 			name:    "sqlite",
 			dialect: db.SQLiteDialect(),
-			want:    []string{"SELECT", `FROM "users"`, "  *", "LIMIT 50;"},
+			want:    []string{"SELECT", `FROM "users";`, "  *"},
 		},
 		{
 			name:    "postgres",
 			dialect: db.PostgresDialect(),
-			want:    []string{"SELECT", `FROM "users"`, "  *", "LIMIT 50;"},
+			want:    []string{"SELECT", `FROM "users";`, "  *"},
 		},
 		{
 			name:    "mysql",
 			dialect: db.MySQLDialect(),
-			want:    []string{"SELECT", "FROM `users`", "  *", "LIMIT 50;"},
+			want:    []string{"SELECT", "FROM `users`;", "  *"},
 		},
 	}
 
@@ -458,7 +458,7 @@ func TestModelSubmitDispatchesSlashSelectIntoEditor(t *testing.T) {
 	if got, want := model.state.Status, "Expanded /select for widgets into command mode. Review it, then press enter to run."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
-	for _, want := range []string{"SELECT", `FROM "widgets"`, `"id"`, `"name"`, "LIMIT 50;"} {
+	for _, want := range []string{"SELECT", `FROM "widgets";`, `"id"`, `"name"`} {
 		if got := model.command.editor.Value(); !containsLine(got, want) {
 			t.Fatalf("editor.Value() = %q, want to contain %q", got, want)
 		}
@@ -589,7 +589,7 @@ func TestModelSubmitCommandsWizardLoadsTargetedTemplate(t *testing.T) {
 	if model.state.Query.Running != nil {
 		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Query.Running)
 	}
-	if got, want := model.command.editor.Value(), "SELECT\n  *\nFROM \"widgets\"\nLIMIT 50;"; got != want {
+	if got, want := model.command.editor.Value(), "SELECT\n  *\nFROM \"widgets\";"; got != want {
 		t.Fatalf("editor.Value() = %q, want %q", got, want)
 	}
 	if model.state.Query.SlashWizard != nil {
@@ -862,7 +862,7 @@ func TestModelSubmitNeedsTargetCommandWithoutArgConfirmDispatchesCommand(t *test
 	if model.state.Query.SlashWizard != nil {
 		t.Fatalf("wizard still open after dispatch; want nil")
 	}
-	for _, want := range []string{"SELECT", `FROM "main"."widgets"`, "LIMIT 50;"} {
+	for _, want := range []string{"SELECT", `FROM "main"."widgets";`} {
 		if got := model.command.editor.Value(); !containsLine(got, want) {
 			t.Fatalf("editor.Value() = %q, want to contain %q", got, want)
 		}
