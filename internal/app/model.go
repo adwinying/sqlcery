@@ -405,18 +405,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncCurrentSQL()
 		switchContext := buildModeSwitchContext(m.state.Query.Layout, nextLayoutForModeIntent(m.state.Query.Layout, m.state.Query.ActiveMode), m.state.Query.ActiveMode, nextModeForIntent(m.state.Query.ActiveMode), m.state.Query.LatestResult)
 		m.applyModeSwitch(switchContext)
+		m.syncPaneSizes()
 		return m, nil
 	case switchLayoutIntentMsg:
 		m.syncCurrentSQL()
 		m.applyLayoutSwitch(msg.Layout)
+		m.syncPaneSizes()
 		return m, nil
 	case focusPaneIntentMsg:
 		m.syncCurrentSQL()
 		m.handleFocusPane(msg.Pane)
+		m.syncPaneSizes()
 		return m, nil
 	case toggleZoomIntentMsg:
 		m.syncCurrentSQL()
 		m.handleToggleZoom()
+		m.syncPaneSizes()
 		return m, nil
 	case startupCompleteMsg:
 		m.state.SetReady("")
@@ -1009,6 +1013,7 @@ func (m *Model) composeRecordViewerInsert() bool {
 	m.state.SetActiveMode(ModeCommand)
 	m.state.SetPendingModeSwitch(nil)
 	m.state.SetPendingIntent(IntentNone, "viewer-compose", recordViewerComposeStatus(result))
+	m.syncPaneSizes()
 	return true
 }
 
@@ -1032,6 +1037,7 @@ func (m *Model) composeRecordViewerUpdate() bool {
 	m.state.SetActiveMode(ModeCommand)
 	m.state.SetPendingModeSwitch(nil)
 	m.state.SetPendingIntent(IntentNone, "viewer-compose", recordViewerComposeStatus(result))
+	m.syncPaneSizes()
 	return true
 }
 
@@ -1055,6 +1061,7 @@ func (m *Model) composeRecordViewerDelete() bool {
 	m.state.SetActiveMode(ModeCommand)
 	m.state.SetPendingModeSwitch(nil)
 	m.state.SetPendingIntent(IntentNone, "viewer-compose", recordViewerComposeStatus(result))
+	m.syncPaneSizes()
 	return true
 }
 
