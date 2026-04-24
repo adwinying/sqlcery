@@ -701,3 +701,150 @@ func TestCommandModeAutocompleteOverlaysLinesBelowCursor(t *testing.T) {
 		t.Fatalf("overlay failed: line after cursor is %q — expected autocomplete dropdown row, not editor line 2", lineAfterCursor)
 	}
 }
+
+func TestCommandModeBottomAnchorsShortContent(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 30)
+	mode.AppendReplEntry("> ", "SELECT 1;", "1 row.")
+
+	view := mode.View(QueryContext{})
+	lines := strings.Split(view, "\n")
+
+	if got := len(lines); got != 30 {
+		t.Fatalf("view has %d rows, want 30 (innerHeight)", got)
+	}
+
+	// The prompt line ("> ") should sit at pane_height - bottomPadding - 1,
+	// leaving 5 blank reserve rows below it.
+	promptRow := 30 - bottomPadding - 1
+	if strings.TrimSpace(lines[promptRow]) == "" {
+		t.Fatalf("expected prompt at row %d, but that row is blank; view:\n%s", promptRow, view)
+	}
+
+	// All rows below the prompt (the reserve) must be blank.
+	for i := promptRow + 1; i < len(lines); i++ {
+		if s := strings.TrimSpace(lines[i]); s != "" {
+			t.Fatalf("row %d below prompt is not blank: %q (should be part of 5-row reserve)", i, s)
+		}
+	}
+
+	// All rows above the transcript must be blank top-padding.
+	// Transcript has 1 SQL line ("> SELECT 1;") and 1 output line ("1 row."),
+	// so content occupies rows promptRow-2..promptRow (3 rows).
+	for i := 0; i < promptRow-2; i++ {
+		if s := strings.TrimSpace(lines[i]); s != "" {
+			t.Fatalf("row %d above transcript is not blank top-padding: %q", i, s)
+		}
+	}
+}
+
+func TestCommandModeReserveIsFiveRowsWhenContentOverflows(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 10)
+	// Enough transcript to force overflow so topPadding is 0.
+	for i := 0; i < 30; i++ {
+		mode.AppendReplEntry("> ", fmt.Sprintf("SELECT %d;", i), fmt.Sprintf("%d row.", i))
+	}
+
+	view := mode.View(QueryContext{})
+	lines := strings.Split(view, "\n")
+
+	if got := len(lines); got != 10 {
+		t.Fatalf("view has %d rows, want 10", got)
+	}
+
+	// The last bottomPadding rows must be blank reserve.
+	for i := len(lines) - bottomPadding; i < len(lines); i++ {
+		if s := strings.TrimSpace(lines[i]); s != "" {
+			t.Fatalf("reserve row %d is not blank: %q", i, s)
+		}
+	}
+}
+
+func TestCommandModeAutocompleteVisibleWhenCursorIsAtBufferEnd(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 10)
+	// Fill the pane with transcript so the prompt sits near the bottom with
+	// the reserve below it.
+	for i := 0; i < 30; i++ {
+		mode.AppendReplEntry("> ", fmt.Sprintf("SELECT %d;", i), fmt.Sprintf("%d row.", i))
+	}
+	mode.editor.SetValue("SELECT * FROM us")
+	mode.editor.CursorEnd()
+	mode.autocompleteOpenedByTyping = true
+
+	query := QueryContext{
+		AutocompleteSchema: &AutocompleteSchemaContext{
+			Tables: []AutocompleteTableContext{{Name: "users"}},
+		},
+	}
+
+	if items := mode.autocompleteItems(query); len(items) == 0 {
+		t.Fatal("autocomplete produced no items — test precondition failed")
+	}
+
+	view := mode.View(query)
+	lines := strings.Split(view, "\n")
+
+	// The last 5 rows are the reserve; when the dropdown opens with cursor at
+	// the end of the editor, the dropdown overlays the reserve and must be
+	// visible (not clipped off the bottom of the pane).
+	found := false
+	for i := len(lines) - bottomPadding; i < len(lines); i++ {
+		if strings.Contains(lines[i], "users") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected autocomplete dropdown in reserve rows; view:\n%s", view)
+	}
+}
+
+func TestCommandModeAutocompleteOverlaysMidBufferOfMultiLinePrompt(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 30)
+	// Four-line editor. Place the cursor at the end of line 0 so the dropdown
+	// must overlay rows inside the buffer, not after the last line.
+	mode.editor.SetValue("SELECT * FROM us\nWHERE id = 1\nORDER BY id\nLIMIT 10;")
+	mode.setCursorOffset(len([]rune("SELECT * FROM us")))
+	mode.autocompleteOpenedByTyping = true
+
+	if line := mode.editor.Line(); line != 0 {
+		t.Skipf("cursor ended on line %d instead of 0 — skipping", line)
+	}
+
+	query := QueryContext{
+		AutocompleteSchema: &AutocompleteSchemaContext{
+			Tables: []AutocompleteTableContext{{Name: "users"}},
+		},
+	}
+	if items := mode.autocompleteItems(query); len(items) == 0 {
+		t.Skip("autocomplete produced no items — skipping overlay mid-buffer test")
+	}
+
+	view := mode.View(query)
+	lines := strings.Split(view, "\n")
+
+	// Find the cursor line.
+	cursorIdx := -1
+	for i, l := range lines {
+		if strings.Contains(l, "SELECT") && strings.Contains(l, "FROM") {
+			cursorIdx = i
+			break
+		}
+	}
+	if cursorIdx < 0 {
+		t.Fatal("cursor line not found in view")
+	}
+
+	// The next row must contain a dropdown entry (kw/fn/table kind marker),
+	// not "WHERE id = 1".
+	next := lines[cursorIdx+1]
+	if strings.Contains(next, "WHERE") {
+		t.Fatalf("overlay failed: row after cursor is %q (expected dropdown row)", next)
+	}
+	if !strings.Contains(next, "[") { // dropdown rows are rendered as "[kind] label"
+		t.Fatalf("row after cursor does not look like a dropdown row: %q", next)
+	}
+}

@@ -364,9 +364,9 @@ func adjustedScrollTop(current, cursorRow, totalRows, height int) int {
 }
 
 // computeNaturalScrollTop returns the scroll-top value that keeps the last
-// editor row on screen with bottomPadding blank rows below it. This is the
-// upper bound for scrollOffset: scrolling further would show empty space above
-// the first transcript line.
+// editor row on screen with bottomPadding blank reserve rows below it. It is
+// also the upper bound for scrollOffset: scrolling further would show empty
+// space above the first transcript line.
 func (m commandModeModel) computeNaturalScrollTop(viewportH int) int {
 	transcriptLen := len(m.renderReplTranscriptLines())
 	var totalEditorRows int
@@ -375,7 +375,9 @@ func (m commandModeModel) computeNaturalScrollTop(viewportH int) int {
 	} else {
 		_, _, totalEditorRows = m.renderedLines()
 	}
-	lastEditorRow := transcriptLen + totalEditorRows - 1
+	contentRows := transcriptLen + totalEditorRows
+	topPadding := max(0, viewportH-bottomPadding-contentRows)
+	lastEditorRow := topPadding + transcriptLen + totalEditorRows - 1
 	return max(0, lastEditorRow+bottomPadding-viewportH+1)
 }
 
@@ -401,15 +403,31 @@ func (m commandModeModel) renderView(query QueryContext) string {
 		totalEditorRows = editorTotal
 	}
 
-	allLines := make([]string, 0, len(transcriptLines)+totalEditorRows)
+	// Assemble the full visual stream as: [top-pad] [transcript] [editor] [reserve].
+	// - top-pad: blank rows that push short content down so the prompt hugs
+	//   the bottom of the pane (minus the reserve). Zero when content is
+	//   tall enough to overflow naturally.
+	// - reserve: bottomPadding blank rows the autocomplete dropdown overlays
+	//   into. Kept as real entries in allLines so adjustedScrollTop's
+	//   internal maxTop clamp does not collapse them away.
+	contentRows := len(transcriptLines) + totalEditorRows
+	topPadding := max(0, viewportH-bottomPadding-contentRows)
+
+	allLines := make([]string, 0, topPadding+contentRows+bottomPadding)
+	for i := 0; i < topPadding; i++ {
+		allLines = append(allLines, "")
+	}
 	allLines = append(allLines, transcriptLines...)
 	allLines = append(allLines, editorStrings...)
+	for i := 0; i < bottomPadding; i++ {
+		allLines = append(allLines, "")
+	}
 
-	cursorRow := len(transcriptLines) + cursorRowInEditor
-	lastEditorRow := len(transcriptLines) + totalEditorRows - 1
+	cursorRow := topPadding + len(transcriptLines) + cursorRowInEditor
+	lastEditorRow := topPadding + len(transcriptLines) + totalEditorRows - 1
 
-	// naturalScrollTop: scroll position that leaves exactly bottomPadding blank
-	// rows below the last editor line (reserved for the autocomplete dropdown).
+	// naturalScrollTop: scroll position that keeps the last editor row on
+	// screen with the reserve visible below it.
 	naturalScrollTop := max(0, lastEditorRow+bottomPadding-viewportH+1)
 
 	// Apply manual scroll offset (lines scrolled up from the natural position).
@@ -427,8 +445,7 @@ func (m commandModeModel) renderView(query QueryContext) string {
 	}
 
 	// Build the visible grid: exactly viewportH rows, blank where allLines
-	// has no content. The autocomplete overlay and renderBorderedPane both
-	// rely on a fixed-size slice rather than variable-length content.
+	// has no content.
 	visible := make([]string, viewportH)
 	for i := range visible {
 		if idx := scrollTop + i; idx < len(allLines) {
