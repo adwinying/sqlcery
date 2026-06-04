@@ -225,8 +225,18 @@ func filterHistorySearchEntries(entries []HistoryEntryContext, query string) []H
 func rankHistorySearchEntries(entries []HistoryEntryContext, query string) []historySearchMatch {
 	trimmed := strings.TrimSpace(query)
 	matches := make([]historySearchMatch, 0, len(entries))
+	seen := make(map[string]struct{}, len(entries))
 	for i := len(entries) - 1; i >= 0; i-- {
 		entry := entries[i]
+		// Collapse whitespace so entries that render identically in the popup
+		// dedupe to a single row; the original SQL is preserved on the entry
+		// and restored verbatim when the user picks it.
+		key := historySearchDisplaySQL(entry.SQL)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+
 		if trimmed == "" {
 			matches = append(matches, historySearchMatch{Entry: entry})
 			continue
