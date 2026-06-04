@@ -298,12 +298,10 @@ The current startup and execution flow is:
 - `internal/db`: adapters, dialects, metadata introspection, lifecycle management, tunneling, and result normalization.
 - `internal/history`: persistent history and audit log writing and rotation.
 - `internal/export`: file export path validation and format-specific writers.
-- `internal/tui`: reserved for future presentation-only UI helpers; it stays as a placeholder until reusable widgets or styling helpers can be extracted cleanly from `internal/app`.
+- `internal/tui`: reserved for future presentation-only UI helpers, to be extracted from `internal/app` (see `docs/adr/0002-defer-internal-tui-extraction.md`).
 - `testdata`: shared test assets and fixtures.
 
 This keeps the terminal UI dependent on narrow package interfaces instead of letting configuration, storage, and SQL dialect details spread across the app model.
-
-For now, the project intentionally keeps the live Bubble Tea UI in `internal/app` instead of moving it into `internal/tui`. The current Command Pane editor, History Search modal, Results Pane, and query execution flow all share one stateful update loop, so splitting packages now would add churn without reducing coupling.
 
 ## Usage
 
