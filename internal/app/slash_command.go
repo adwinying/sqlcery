@@ -51,28 +51,9 @@ type slashCommandRegistry struct {
 	byName  map[string]slashCommandSpec
 }
 
-type slashCommandInfo struct {
-	Name    string
-	Summary string
-	Usage   string
-}
-
 type helpSection struct {
 	Title string
 	Lines []string
-}
-
-var slashCommandInfos = []slashCommandInfo{
-	{Name: "commands", Summary: "open the guided slash command wizard", Usage: "/commands"},
-	{Name: "tables", Summary: "list tables in the current database", Usage: "/tables"},
-	{Name: "columns", Summary: "list columns for a table", Usage: "/columns <table>"},
-	{Name: "indices", Summary: "list indices for a table", Usage: "/indices <table>"},
-	{Name: "select", Summary: "compose a SELECT statement", Usage: "/select <table>"},
-	{Name: "insert", Summary: "compose an INSERT statement", Usage: "/insert <table>"},
-	{Name: "update", Summary: "compose an UPDATE statement", Usage: "/update <table>"},
-	{Name: "delete", Summary: "compose a DELETE statement", Usage: "/delete <table>"},
-	{Name: "create", Summary: "compose a CREATE TABLE statement", Usage: "/create <table>"},
-	{Name: "drop", Summary: "compose a DROP TABLE statement", Usage: "/drop <table>"},
 }
 
 var defaultSlashCommandRegistry = newSlashCommandRegistry()
@@ -241,9 +222,9 @@ func dispatchSlashCommand(ctx context.Context, command slashCommandContext, pars
 }
 
 func slashCommandHelpLines() []string {
-	lines := make([]string, 0, len(slashCommandInfos))
-	for _, info := range slashCommandInfos {
-		lines = append(lines, fmt.Sprintf("%s - %s (%s)", "/"+info.Name, info.Summary, info.Usage))
+	lines := make([]string, 0, len(defaultSlashCommandRegistry.ordered))
+	for _, spec := range defaultSlashCommandRegistry.ordered {
+		lines = append(lines, fmt.Sprintf("%s - %s (%s)", "/"+spec.Name, spec.Summary, spec.Usage))
 	}
 	return lines
 }
@@ -516,14 +497,13 @@ func validateSlashCommandArgs(parsed slashCommand, want int) error {
 	return fmt.Errorf("%s expects %d argument(s); usage: %s", parsed.DisplayName, want, info.Usage)
 }
 
-func lookupSlashCommandInfo(name string) (slashCommandInfo, bool) {
-	for _, info := range slashCommandInfos {
-		if strings.EqualFold(info.Name, name) {
-			return info, true
+func lookupSlashCommandInfo(name string) (slashCommandSpec, bool) {
+	for _, spec := range slashCommandSpecs() {
+		if strings.EqualFold(spec.Name, name) {
+			return spec, true
 		}
 	}
-
-	return slashCommandInfo{}, false
+	return slashCommandSpec{}, false
 }
 
 func buildSlashWizardCommands() []SlashCommandWizardCommand {
