@@ -36,13 +36,6 @@ type recordViewerComposeResult struct {
 	Action          recordViewerComposeAction
 }
 
-type querySourceToken struct {
-	Text    string
-	Keyword bool
-	Ident   bool
-	Symbol  bool
-}
-
 func composeRecordViewerUpdateSQL(dialect db.Dialect, latest *LatestResultContext, rowIndex int) (recordViewerComposeResult, error) {
 	if latest == nil || latest.PreservedResult == nil {
 		return recordViewerComposeResult{}, fmt.Errorf("record viewer has no rows to compose")
@@ -442,7 +435,7 @@ func recordViewerBytesLiteral(dialect db.Dialect, value []byte) string {
 }
 
 func inferQuerySourceTable(query string) *db.TableRef {
-	tokens := currentQuerySourceTokens(tokenizeQuerySourceSQL(query))
+	tokens := currentQuerySourceTokens(sqlLex(query))
 	if len(tokens) == 0 {
 		return nil
 	}
@@ -480,63 +473,7 @@ func inferQuerySourceTable(query string) *db.TableRef {
 	return nil
 }
 
-func tokenizeQuerySourceSQL(value string) []querySourceToken {
-	runes := []rune(value)
-	tokens := make([]querySourceToken, 0, len(runes)/2)
-
-	for i := 0; i < len(runes); {
-		switch {
-		case isSQLSpaceRune(runes[i]):
-			i++
-		case hasSQLRunePrefix(runes, i, '-', '-'):
-			i += 2
-			for i < len(runes) && runes[i] != '\n' {
-				i++
-			}
-		case hasSQLRunePrefix(runes, i, '/', '*'):
-			next, closed := consumeSQLBlockComment(runes, i)
-			if !closed {
-				return tokens
-			}
-			i = next
-		case runes[i] == '\'':
-			next, closed := consumeSQLQuotedRunes(runes, i, runes[i])
-			if !closed {
-				return tokens
-			}
-			i = next
-		case runes[i] == '"' || runes[i] == '`':
-			next, closed := consumeSQLQuotedRunes(runes, i, runes[i])
-			if !closed {
-				return tokens
-			}
-			tokens = append(tokens, querySourceToken{Text: unquoteQuerySourceIdentifier(string(runes[i:next])), Ident: true})
-			i = next
-		case runes[i] == '[':
-			next, closed := consumeSQLBracketIdentifier(runes, i)
-			if !closed {
-				return tokens
-			}
-			tokens = append(tokens, querySourceToken{Text: unquoteQuerySourceIdentifier(string(runes[i:next])), Ident: true})
-			i = next
-		case isIdentifierStart(runes[i]):
-			end := consumeIdentifier(runes, i)
-			text := string(runes[i:end])
-			_, keyword := autocompleteSQLKeywords[strings.ToUpper(text)]
-			tokens = append(tokens, querySourceToken{Text: text, Keyword: keyword, Ident: true})
-			i = end
-		case strings.ContainsRune(".,();", runes[i]):
-			tokens = append(tokens, querySourceToken{Text: string(runes[i]), Symbol: true})
-			i++
-		default:
-			i++
-		}
-	}
-
-	return tokens
-}
-
-func currentQuerySourceTokens(tokens []querySourceToken) []querySourceToken {
+func currentQuerySourceTokens(tokens []sqlToken) []sqlToken {
 	end := len(tokens)
 	for end > 0 && tokens[end-1].Symbol && tokens[end-1].Text == ";" {
 		end--
@@ -552,7 +489,7 @@ func currentQuerySourceTokens(tokens []querySourceToken) []querySourceToken {
 	return tokens[start:end]
 }
 
-func parseQuerySourceTableReference(tokens []querySourceToken, start int) (db.TableRef, int, bool) {
+func parseQuerySourceTableReference(tokens []sqlToken, start int) (db.TableRef, int, bool) {
 	parts := make([]string, 0, 3)
 	i := start
 	for i < len(tokens) {
@@ -586,7 +523,7 @@ func parseQuerySourceTableReference(tokens []querySourceToken, start int) (db.Ta
 	return ref, i, true
 }
 
-func querySourceHasAdditionalTables(tokens []querySourceToken, start int) bool {
+func querySourceHasAdditionalTables(tokens []sqlToken, start int) bool {
 	depth := 0
 	for i := start; i < len(tokens); i++ {
 		token := tokens[i]
@@ -623,17 +560,4 @@ func querySourceHasAdditionalTables(tokens []querySourceToken, start int) bool {
 	return false
 }
 
-func unquoteQuerySourceIdentifier(value string) string {
-	trimmed := strings.TrimSpace(value)
-	if len(trimmed) >= 2 {
-		switch {
-		case trimmed[0] == '"' && trimmed[len(trimmed)-1] == '"':
-			return strings.ReplaceAll(trimmed[1:len(trimmed)-1], `""`, `"`)
-		case trimmed[0] == '`' && trimmed[len(trimmed)-1] == '`':
-			return strings.ReplaceAll(trimmed[1:len(trimmed)-1], "``", "`")
-		case trimmed[0] == '[' && trimmed[len(trimmed)-1] == ']':
-			return trimmed[1 : len(trimmed)-1]
-		}
-	}
-	return trimmed
-}
+

@@ -316,7 +316,7 @@ func analyzeAutocompleteContext(value string, cursor int) autocompleteContext {
 	// Autocomplete intentionally follows the lightweight SQL assistance decision
 	// in sql_assist_strategy.go: scan tokens from the current statement, infer the
 	// active clause, and avoid AST-level parsing until parser triggers apply.
-	tokens := tokenizeAutocompleteSQL(string(runes[:ctx.ReplaceStart]))
+	tokens := sqlLex(string(runes[:ctx.ReplaceStart]))
 	ctx.Scope = analyzeAutocompleteScope(tokens)
 	ctx.ActiveTables = referencedTables(tokens)
 
@@ -340,67 +340,9 @@ func isSlashCommandPart(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_'
 }
 
-type autocompleteToken struct {
-	Text    string
-	Keyword bool
-	Ident   bool
-	Symbol  bool
-}
 
-func tokenizeAutocompleteSQL(value string) []autocompleteToken {
-	runes := []rune(value)
-	tokens := make([]autocompleteToken, 0, len(runes)/2)
-	state := sqlLexerState{}
 
-	for i := 0; i < len(runes); {
-		if state.inBlockComment {
-			end := indexOfBlockCommentEnd(runes, i)
-			if end < 0 {
-				return tokens
-			}
-			state.inBlockComment = false
-			i = end
-			continue
-		}
-
-		switch {
-		case unicode.IsSpace(runes[i]):
-			i++
-		case startsWithRunes(runes, i, '-', '-'):
-			for i < len(runes) && runes[i] != '\n' {
-				i++
-			}
-		case startsWithRunes(runes, i, '/', '*'):
-			end := indexOfBlockCommentEnd(runes, i)
-			if end < 0 {
-				return tokens
-			}
-			i = end
-		case runes[i] == '\'' || runes[i] == '"' || runes[i] == '`':
-			i = consumeQuotedLiteral(runes, i, runes[i])
-		case runes[i] == '[':
-			i = consumeBracketIdentifier(runes, i)
-		case isIdentifierStart(runes[i]):
-			end := consumeIdentifier(runes, i)
-			text := string(runes[i:end])
-			_, keyword := autocompleteSQLKeywords[strings.ToUpper(text)]
-			tokens = append(tokens, autocompleteToken{Text: text, Keyword: keyword, Ident: true})
-			i = end
-		case strings.ContainsRune(".,()", runes[i]):
-			tokens = append(tokens, autocompleteToken{Text: string(runes[i]), Symbol: true})
-			i++
-		case runes[i] == ';':
-			tokens = append(tokens, autocompleteToken{Text: ";", Symbol: true})
-			i++
-		default:
-			i++
-		}
-	}
-
-	return tokens
-}
-
-func analyzeAutocompleteScope(tokens []autocompleteToken) autocompleteScope {
+func analyzeAutocompleteScope(tokens []sqlToken) autocompleteScope {
 	tokens = currentStatementTokens(tokens)
 	if len(tokens) == 0 {
 		return autocompleteScopeStatementStart
@@ -457,7 +399,7 @@ func analyzeAutocompleteScope(tokens []autocompleteToken) autocompleteScope {
 	}
 }
 
-func currentStatementTokens(tokens []autocompleteToken) []autocompleteToken {
+func currentStatementTokens(tokens []sqlToken) []sqlToken {
 	start := 0
 	for i, token := range tokens {
 		if token.Symbol && token.Text == ";" {
@@ -467,7 +409,7 @@ func currentStatementTokens(tokens []autocompleteToken) []autocompleteToken {
 	return tokens[start:]
 }
 
-func lastTokenKeyword(tokens []autocompleteToken, want string) bool {
+func lastTokenKeyword(tokens []sqlToken, want string) bool {
 	for i := len(tokens) - 1; i >= 0; i-- {
 		if tokens[i].Symbol && tokens[i].Text == ";" {
 			return false
@@ -480,7 +422,7 @@ func lastTokenKeyword(tokens []autocompleteToken, want string) bool {
 	return false
 }
 
-func lastClause(tokens []autocompleteToken) (string, int) {
+func lastClause(tokens []sqlToken) (string, int) {
 	for i := len(tokens) - 1; i >= 0; i-- {
 		if !tokens[i].Keyword {
 			continue
@@ -503,7 +445,7 @@ func lastClause(tokens []autocompleteToken) (string, int) {
 	return "", -1
 }
 
-func clauseHasContent(tokens []autocompleteToken) bool {
+func clauseHasContent(tokens []sqlToken) bool {
 	for _, token := range tokens {
 		if token.Ident || token.Keyword {
 			return true
@@ -668,7 +610,7 @@ func unqualifiedAutocompleteLabel(label string) string {
 	return label
 }
 
-func referencedTables(tokens []autocompleteToken) []string {
+func referencedTables(tokens []sqlToken) []string {
 	results := make([]string, 0, 4)
 	seen := map[string]struct{}{}
 
@@ -699,7 +641,7 @@ func referencedTables(tokens []autocompleteToken) []string {
 	return results
 }
 
-func parseTableReference(tokens []autocompleteToken, start int) (string, int) {
+func parseTableReference(tokens []sqlToken, start int) (string, int) {
 	if start >= len(tokens) || !tokens[start].Ident {
 		return "", start
 	}
