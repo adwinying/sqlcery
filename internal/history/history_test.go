@@ -87,8 +87,8 @@ func TestSessionAppendPersistsCommandsToFile(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
 		t.Fatalf("Unmarshal(first line) error = %v", err)
 	}
-	if got, want := first.Command, "select 1"; got != want {
-		t.Fatalf("first.Command = %q, want %q", got, want)
+	if got, want := first.Statement, "select 1"; got != want {
+		t.Fatalf("first.Statement = %q, want %q", got, want)
 	}
 	if got, want := first.Connection, "local"; got != want {
 		t.Fatalf("first.Connection = %q, want %q", got, want)
@@ -101,8 +101,8 @@ func TestSessionAppendPersistsCommandsToFile(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[1]), &second); err != nil {
 		t.Fatalf("Unmarshal(second line) error = %v", err)
 	}
-	if got, want := second.Command, "/tables"; got != want {
-		t.Fatalf("second.Command = %q, want %q", got, want)
+	if got, want := second.Statement, "/tables"; got != want {
+		t.Fatalf("second.Statement = %q, want %q", got, want)
 	}
 	if got, want := second.Connection, "local"; got != want {
 		t.Fatalf("second.Connection = %q, want %q", got, want)
@@ -152,8 +152,8 @@ func TestSessionAppendRotatesHistoryLogWhenItWouldGrowPastLimit(t *testing.T) {
 	if err := json.Unmarshal(currentData, &persisted); err != nil {
 		t.Fatalf("Unmarshal(current) error = %v", err)
 	}
-	if got, want := persisted.Command, "select 1"; got != want {
-		t.Fatalf("persisted.Command = %q, want %q", got, want)
+	if got, want := persisted.Statement, "select 1"; got != want {
+		t.Fatalf("persisted.Statement = %q, want %q", got, want)
 	}
 }
 

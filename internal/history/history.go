@@ -134,7 +134,7 @@ func readAuditLogFile(path string) ([]Entry, error) {
 			continue // skip malformed lines
 		}
 		entries = append(entries, Entry{
-			SQL:            pe.Command,
+			SQL:            pe.Statement,
 			ConnectionName: pe.Connection,
 			ExecutedAt:     pe.Time,
 			ResultSummary:  pe.Result,
@@ -208,7 +208,7 @@ type auditLogStore struct {
 }
 
 type persistedEntry struct {
-	Command    string    `json:"command"`
+	Statement  string    `json:"statement"`
 	Connection string    `json:"connection"`
 	Time       time.Time `json:"time"`
 	Result     string    `json:"result,omitempty"`
@@ -216,7 +216,7 @@ type persistedEntry struct {
 
 func newPersistedEntry(entry Entry) persistedEntry {
 	return persistedEntry{
-		Command:    strings.TrimRight(entry.SQL, "\n"),
+		Statement:  strings.TrimRight(entry.SQL, "\n"),
 		Connection: entry.ConnectionName,
 		Time:       entry.ExecutedAt,
 		Result:     boundResultSummary(entry.ResultSummary),
