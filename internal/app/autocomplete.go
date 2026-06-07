@@ -86,7 +86,7 @@ func keywordSet(keywords []string) map[string]struct{} {
 	return set
 }
 
-func buildAutocompleteItems(value string, cursor int, query QueryContext) []autocompleteItem {
+func buildAutocompleteItems(value string, cursor int, query InteractionState) []autocompleteItem {
 	ctx := analyzeAutocompleteContext(value, cursor)
 	catalog := buildAutocompleteCatalog(query)
 	if ctx.Prefix == "" && ctx.Qualifier == "" && !ctx.SlashMode && ctx.Scope == autocompleteScopeUnknown {
@@ -656,7 +656,7 @@ func parseTableReference(tokens []sqlToken, start int) (string, int) {
 	return name, next
 }
 
-func buildAutocompleteCatalog(query QueryContext) autocompleteCatalog {
+func buildAutocompleteCatalog(query InteractionState) autocompleteCatalog {
 	catalog := autocompleteCatalog{}
 
 	if query.AutocompleteSchema != nil {

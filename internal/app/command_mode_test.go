@@ -48,7 +48,7 @@ func TestCommandModeViewPreservesEditorLayout(t *testing.T) {
 	mode.SetSize(80, 20)
 	mode.editor.SetValue("SELECT \"users\".name, 42, 'Ada', @id -- comment")
 
-	view := mode.View(QueryContext{})
+	view := mode.View(InteractionState{})
 
 	for _, want := range []string{
 		">",
@@ -61,7 +61,7 @@ func TestCommandModeViewPreservesEditorLayout(t *testing.T) {
 }
 
 func TestBuildAutocompleteItemsSuggestsSlashCommands(t *testing.T) {
-	items := buildAutocompleteItems("/se", len([]rune("/se")), QueryContext{})
+	items := buildAutocompleteItems("/se", len([]rune("/se")), InteractionState{})
 
 	if len(items) == 0 {
 		t.Fatal("buildAutocompleteItems() = no items, want slash command suggestions")
@@ -73,7 +73,7 @@ func TestBuildAutocompleteItemsSuggestsSlashCommands(t *testing.T) {
 }
 
 func TestBuildAutocompleteItemsSuggestsTablesAfterFrom(t *testing.T) {
-	items := buildAutocompleteItems("SELECT * FROM us", len([]rune("SELECT * FROM us")), QueryContext{
+	items := buildAutocompleteItems("SELECT * FROM us", len([]rune("SELECT * FROM us")), InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}, {Name: "orders"}}},
 	})
 
@@ -87,7 +87,7 @@ func TestBuildAutocompleteItemsSuggestsTablesAfterFrom(t *testing.T) {
 }
 
 func TestBuildAutocompleteItemsSuggestsColumnsForQualifier(t *testing.T) {
-	items := buildAutocompleteItems("SELECT users.na", len([]rune("SELECT users.na")), QueryContext{
+	items := buildAutocompleteItems("SELECT users.na", len([]rune("SELECT users.na")), InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users", Columns: []string{"id", "name", "email"}}}},
 	})
 
@@ -101,7 +101,7 @@ func TestBuildAutocompleteItemsSuggestsColumnsForQualifier(t *testing.T) {
 }
 
 func TestBuildAutocompleteItemsSuggestsColumnsFromActiveTables(t *testing.T) {
-	items := buildAutocompleteItems("SELECT * FROM users WHERE na", len([]rune("SELECT * FROM users WHERE na")), QueryContext{
+	items := buildAutocompleteItems("SELECT * FROM users WHERE na", len([]rune("SELECT * FROM users WHERE na")), InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users", Columns: []string{"id", "name", "email"}}}},
 	})
 
@@ -115,7 +115,7 @@ func TestBuildAutocompleteItemsSuggestsColumnsFromActiveTables(t *testing.T) {
 }
 
 func TestBuildAutocompleteItemsRanksColumnsBeforeKeywordsInWhere(t *testing.T) {
-	items := buildAutocompleteItems("SELECT * FROM users WHERE ", len([]rune("SELECT * FROM users WHERE ")), QueryContext{
+	items := buildAutocompleteItems("SELECT * FROM users WHERE ", len([]rune("SELECT * FROM users WHERE ")), InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users", Columns: []string{"id", "name", "email"}}}},
 	})
 
@@ -124,7 +124,7 @@ func TestBuildAutocompleteItemsRanksColumnsBeforeKeywordsInWhere(t *testing.T) {
 }
 
 func TestBuildAutocompleteItemsRanksJoinAndWhereAfterTable(t *testing.T) {
-	items := buildAutocompleteItems("SELECT * FROM users ", len([]rune("SELECT * FROM users ")), QueryContext{
+	items := buildAutocompleteItems("SELECT * FROM users ", len([]rune("SELECT * FROM users ")), InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}, {Name: "user_sessions"}}},
 	})
 
@@ -132,7 +132,7 @@ func TestBuildAutocompleteItemsRanksJoinAndWhereAfterTable(t *testing.T) {
 }
 
 func TestBuildAutocompleteItemsRanksSetFirstAfterUpdateTarget(t *testing.T) {
-	items := buildAutocompleteItems("UPDATE users ", len([]rune("UPDATE users ")), QueryContext{
+	items := buildAutocompleteItems("UPDATE users ", len([]rune("UPDATE users ")), InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}}},
 	})
 
@@ -140,7 +140,7 @@ func TestBuildAutocompleteItemsRanksSetFirstAfterUpdateTarget(t *testing.T) {
 }
 
 func TestBuildAutocompleteItemsRanksIntoFirstAfterInsert(t *testing.T) {
-	items := buildAutocompleteItems("INS", len([]rune("INS")), QueryContext{})
+	items := buildAutocompleteItems("INS", len([]rune("INS")), InteractionState{})
 
 	if len(items) == 0 {
 		t.Fatal("buildAutocompleteItems() = no items, want keyword suggestions")
@@ -150,7 +150,7 @@ func TestBuildAutocompleteItemsRanksIntoFirstAfterInsert(t *testing.T) {
 		t.Fatalf("items[0].Label = %q, want %q", got, want)
 	}
 
-	items = buildAutocompleteItems("INSERT ", len([]rune("INSERT ")), QueryContext{})
+	items = buildAutocompleteItems("INSERT ", len([]rune("INSERT ")), InteractionState{})
 	if len(items) == 0 {
 		t.Fatal("buildAutocompleteItems() = no items, want post-insert suggestions")
 	}
@@ -161,7 +161,7 @@ func TestBuildAutocompleteItemsRanksIntoFirstAfterInsert(t *testing.T) {
 }
 
 func TestBuildAutocompleteItemsRanksActiveTableColumnsBeforeFallbackColumns(t *testing.T) {
-	items := buildAutocompleteItems("SELECT * FROM users WHERE ", len([]rune("SELECT * FROM users WHERE ")), QueryContext{
+	items := buildAutocompleteItems("SELECT * FROM users WHERE ", len([]rune("SELECT * FROM users WHERE ")), InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users", Columns: []string{"id", "name"}}}},
 		LatestResult:       &LatestResultContext{PreservedResult: &db.ResultSet{Columns: []db.ResultColumn{{Name: "archived_at"}, {Name: "id"}, {Name: "name"}}}},
 	})
@@ -171,7 +171,7 @@ func TestBuildAutocompleteItemsRanksActiveTableColumnsBeforeFallbackColumns(t *t
 }
 
 func TestBuildAutocompleteItemsRanksUnqualifiedTablesBeforeSchemaQualifiedMatches(t *testing.T) {
-	items := buildAutocompleteItems("SELECT * FROM us", len([]rune("SELECT * FROM us")), QueryContext{
+	items := buildAutocompleteItems("SELECT * FROM us", len([]rune("SELECT * FROM us")), InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}, {Schema: "public", Name: "users"}}},
 	})
 
@@ -179,7 +179,7 @@ func TestBuildAutocompleteItemsRanksUnqualifiedTablesBeforeSchemaQualifiedMatche
 }
 
 func TestBuildAutocompleteItemsUsesSchemaQualifiedActiveTableColumns(t *testing.T) {
-	items := buildAutocompleteItems("SELECT * FROM warehouse.users WHERE ", len([]rune("SELECT * FROM warehouse.users WHERE ")), QueryContext{
+	items := buildAutocompleteItems("SELECT * FROM warehouse.users WHERE ", len([]rune("SELECT * FROM warehouse.users WHERE ")), InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{
 			{Schema: "warehouse", Name: "users", Columns: []string{"id", "name"}},
 			{Schema: "public", Name: "users", Columns: []string{"id", "public_name"}},
@@ -195,7 +195,7 @@ func TestBuildAutocompleteItemsUsesSchemaQualifiedActiveTableColumns(t *testing.
 }
 
 func TestBuildAutocompleteItemsResetsContextAfterSemicolon(t *testing.T) {
-	items := buildAutocompleteItems("SELECT * FROM users; DE", len([]rune("SELECT * FROM users; DE")), QueryContext{})
+	items := buildAutocompleteItems("SELECT * FROM users; DE", len([]rune("SELECT * FROM users; DE")), InteractionState{})
 
 	if len(items) == 0 {
 		t.Fatal("buildAutocompleteItems() = no items, want new statement suggestions")
@@ -214,7 +214,7 @@ func TestCommandModeAcceptSuggestionReplacesPrefix(t *testing.T) {
 	mode.editor.CursorEnd()
 	// Simulate the "user just typed" state that normally gates the menu.
 	mode.autocompleteOpenedByTyping = true
-	query := QueryContext{
+	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}}},
 	}
 
@@ -231,7 +231,7 @@ func TestCommandModeSuggestionNavigationCyclesSelection(t *testing.T) {
 	mode.editor.SetValue("SELECT * FROM ")
 	mode.editor.CursorEnd()
 	mode.autocompleteOpenedByTyping = true
-	query := QueryContext{
+	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}, {Name: "orders"}}},
 	}
 
@@ -252,7 +252,7 @@ func TestCommandModeViewRendersAutocompletePanel(t *testing.T) {
 	mode.editor.SetValue("SELECT * FROM us")
 	mode.editor.CursorEnd()
 	mode.autocompleteOpenedByTyping = true
-	query := QueryContext{
+	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}}},
 	}
 
@@ -264,7 +264,7 @@ func TestCommandModeViewRendersAutocompletePanel(t *testing.T) {
 }
 
 func TestCommandModeViewRendersSlashWizard(t *testing.T) {
-	query := QueryContext{
+	query := InteractionState{
 		SlashWizard: &SlashCommandWizardContext{
 			Step: SlashCommandWizardStepCommand,
 			Commands: []SlashCommandWizardCommand{{
@@ -285,7 +285,7 @@ func TestCommandModeViewRendersSlashWizard(t *testing.T) {
 }
 
 func TestCommandModeViewRendersHistorySearch(t *testing.T) {
-	query := QueryContext{
+	query := InteractionState{
 		ActiveMode: ModeHistorySearch,
 		HistorySearch: &HistorySearchContext{
 			Query:         "su",
@@ -303,7 +303,7 @@ func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 }
 
 func TestCommandModeViewRendersInlineSelectResult(t *testing.T) {
-	query := QueryContext{
+	query := InteractionState{
 		LatestResult: &LatestResultContext{
 			OriginMode:    ModeCommand,
 			StatementKind: db.StatementResultKindQuery,
@@ -330,7 +330,7 @@ func TestCommandModeViewRendersInlineSelectResult(t *testing.T) {
 func TestCommandModeViewRendersInlineExecResult(t *testing.T) {
 	rowsAffected := int64(2)
 	lastInsertID := int64(9)
-	query := QueryContext{
+	query := InteractionState{
 		LatestResult: &LatestResultContext{
 			OriginMode:    ModeCommand,
 			StatementKind: db.StatementResultKindExec,
@@ -357,7 +357,7 @@ func TestCommandModeViewShowsWarningForDestructiveGeneratedCommands(t *testing.T
 func TestCommandModeFooterShowsRunningIndicator(t *testing.T) {
 	mode := newCommandModeModel()
 	mode.SetSize(80, 20)
-	footer := mode.Footer("local", "sqlite", QueryContext{
+	footer := mode.Footer("local", "sqlite", InteractionState{
 		Layout:  LayoutCommandOnly,
 		Running: &RunningQueryContext{Label: "SQL", Elapsed: 1500 * time.Millisecond},
 	})
@@ -372,7 +372,7 @@ func TestCommandModeFooterShowsRunningIndicator(t *testing.T) {
 func TestCommandModeFooterShowsViewerPagingWhenViewerFocusedInSplit(t *testing.T) {
 	mode := newCommandModeModel()
 	mode.SetSize(80, 20)
-	footer := mode.Footer("local", "sqlite", QueryContext{
+	footer := mode.Footer("local", "sqlite", InteractionState{
 		Layout:     LayoutSplit,
 		ActiveMode: ModeRecordViewer,
 	})
@@ -387,7 +387,7 @@ func TestCommandModeFooterShowsViewerPagingWhenViewerFocusedInSplit(t *testing.T
 func TestCommandModeFooterShowsSelectionCountFromViewerResult(t *testing.T) {
 	mode := newCommandModeModel()
 	mode.SetSize(80, 20)
-	footer := mode.Footer("local", "sqlite", QueryContext{
+	footer := mode.Footer("local", "sqlite", InteractionState{
 		Layout:       LayoutSplit,
 		ActiveMode:   ModeCommand,
 		LatestResult: &LatestResultContext{SelectedRows: []int{0, 2}},
@@ -576,7 +576,7 @@ func TestCommandModeScrollStepIsHalfPage(t *testing.T) {
 		mode.AppendReplEntry("> ", fmt.Sprintf("SELECT %d;", i), fmt.Sprintf("%d row.", i))
 	}
 
-	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}, QueryContext{})
+	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}, InteractionState{})
 	want := max(1, 20/2) // 10
 	if got := updated.scrollOffset; got != want {
 		t.Fatalf("scrollOffset = %d after ctrl+u with innerHeight=20, want %d (half-page)", got, want)
@@ -590,7 +590,7 @@ func TestCommandModeScrollOffsetBoundedByContent(t *testing.T) {
 
 	// Press ctrl+u many times — scrollOffset must never exceed naturalScrollTop.
 	for i := 0; i < 100; i++ {
-		mode, _ = mode.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}, QueryContext{})
+		mode, _ = mode.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}, InteractionState{})
 	}
 	natural := mode.computeNaturalScrollTop(max(1, mode.innerHeight))
 	if mode.scrollOffset > natural {
@@ -605,13 +605,13 @@ func TestCommandModeTypingSnapsScrollToZero(t *testing.T) {
 		mode.AppendReplEntry("> ", fmt.Sprintf("SELECT %d;", i), fmt.Sprintf("%d row.", i))
 	}
 
-	mode, _ = mode.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}, QueryContext{})
+	mode, _ = mode.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}, InteractionState{})
 	if mode.scrollOffset == 0 {
 		t.Fatal("expected scrollOffset > 0 after ctrl+u")
 	}
 
 	// Type a printable character — scrollOffset must snap back to 0.
-	mode, _ = mode.Update(tea.KeyPressMsg{Text: "S"}, QueryContext{})
+	mode, _ = mode.Update(tea.KeyPressMsg{Text: "S"}, InteractionState{})
 	if got := mode.scrollOffset; got != 0 {
 		t.Fatalf("scrollOffset = %d after typing, want 0", got)
 	}
@@ -621,7 +621,7 @@ func TestCommandModeScrollDownIsNoOpAtBottom(t *testing.T) {
 	mode := newCommandModeModel()
 	mode.SetSize(80, 10)
 	// scrollOffset starts at 0; ctrl+d should leave it at 0.
-	mode, _ = mode.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl}, QueryContext{})
+	mode, _ = mode.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl}, InteractionState{})
 	if got := mode.scrollOffset; got != 0 {
 		t.Fatalf("scrollOffset = %d after ctrl+d at bottom, want 0", got)
 	}
@@ -639,7 +639,7 @@ func TestCommandModeAutocompleteDropdownHeightCappedAtFive(t *testing.T) {
 	for i := range tables {
 		tables[i] = AutocompleteTableContext{Name: fmt.Sprintf("table_%02d", i)}
 	}
-	query := QueryContext{AutocompleteSchema: &AutocompleteSchemaContext{Tables: tables}}
+	query := InteractionState{AutocompleteSchema: &AutocompleteSchemaContext{Tables: tables}}
 
 	dropdown := mode.renderAutocompleteDropdown(query)
 	if dropdown == "" {
@@ -665,7 +665,7 @@ func TestCommandModeAutocompleteOverlaysLinesBelowCursor(t *testing.T) {
 		t.Skipf("cursor ended on line %d instead of 0 — skipping overlay geometry test", line)
 	}
 
-	query := QueryContext{
+	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{
 			Tables: []AutocompleteTableContext{{Name: "users"}, {Name: "user_sessions"}},
 		},
@@ -707,7 +707,7 @@ func TestCommandModeBottomAnchorsShortContent(t *testing.T) {
 	mode.SetSize(80, 30)
 	mode.AppendReplEntry("> ", "SELECT 1;", "1 row.")
 
-	view := mode.View(QueryContext{})
+	view := mode.View(InteractionState{})
 	lines := strings.Split(view, "\n")
 
 	if got := len(lines); got != 30 {
@@ -746,7 +746,7 @@ func TestCommandModeReserveIsFiveRowsWhenContentOverflows(t *testing.T) {
 		mode.AppendReplEntry("> ", fmt.Sprintf("SELECT %d;", i), fmt.Sprintf("%d row.", i))
 	}
 
-	view := mode.View(QueryContext{})
+	view := mode.View(InteractionState{})
 	lines := strings.Split(view, "\n")
 
 	if got := len(lines); got != 10 {
@@ -773,7 +773,7 @@ func TestCommandModeAutocompleteVisibleWhenCursorIsAtBufferEnd(t *testing.T) {
 	mode.editor.CursorEnd()
 	mode.autocompleteOpenedByTyping = true
 
-	query := QueryContext{
+	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{
 			Tables: []AutocompleteTableContext{{Name: "users"}},
 		},
@@ -814,7 +814,7 @@ func TestCommandModeAutocompleteOverlaysMidBufferOfMultiLinePrompt(t *testing.T)
 		t.Skipf("cursor ended on line %d instead of 0 — skipping", line)
 	}
 
-	query := QueryContext{
+	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{
 			Tables: []AutocompleteTableContext{{Name: "users"}},
 		},

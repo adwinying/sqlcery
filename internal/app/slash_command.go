@@ -23,7 +23,7 @@ type slashCommandContext struct {
 	Session Session
 	Adapter *db.SQLAdapter
 	Dialect db.Dialect
-	Query   QueryContext
+	Query   InteractionState
 }
 
 type slashCommandResult struct {

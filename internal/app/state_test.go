@@ -27,7 +27,7 @@ func TestNewSharedAppStateDefaultsToCommandMode(t *testing.T) {
 	}
 }
 
-func TestSharedAppStateSnapshotClonesQueryContext(t *testing.T) {
+func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 	stamp := time.Date(2026, time.April, 7, 11, 30, 0, 0, time.UTC)
 	state := NewSharedAppState()
 	state.SetReconnect("Reconnecting to database.", &ReconnectContext{

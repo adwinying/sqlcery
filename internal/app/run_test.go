@@ -279,7 +279,7 @@ func TestModelAutocompleteUsesCachedSchemaWhileTyping(t *testing.T) {
 	}
 }
 
-func TestModelViewIncludesSharedQueryContextPlaceholders(t *testing.T) {
+func TestModelViewIncludesSharedInteractionStatePlaceholders(t *testing.T) {
 	model := NewModel(Session{}, nil)
 	model.state.SetReady("")
 	model.state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1", ConnectionName: "local"}})

@@ -1773,7 +1773,7 @@ func (m *Model) handleToggleZoom() {
 	}
 }
 
-func renderHelpSurface(query QueryContext) string {
+func renderHelpSurface(query InteractionState) string {
 	if !query.HelpVisible {
 		return ""
 	}

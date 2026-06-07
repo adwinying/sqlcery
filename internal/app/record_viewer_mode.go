@@ -135,7 +135,7 @@ func (m *recordViewerModeModel) renderEmptyState(subtitle string) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m *recordViewerModeModel) View(query QueryContext) string {
+func (m *recordViewerModeModel) View(query InteractionState) string {
 	latest := query.LatestResult
 	if latest == nil || latest.PreservedResult == nil {
 		if query.Layout == LayoutSplit {
@@ -189,7 +189,7 @@ func (m *recordViewerModeModel) View(query QueryContext) string {
 	return strings.Join(append(header, "", body), "\n")
 }
 
-func (m recordViewerModeModel) FooterHints(query QueryContext) string {
+func (m recordViewerModeModel) FooterHints(query InteractionState) string {
 	parts := []string{"Record viewer"}
 	if latest := query.LatestResult; latest != nil && latest.PreservedResult != nil {
 		page := recordViewerPageContextFor(query.ViewerPage, len(latest.PreservedResult.Rows))
@@ -208,7 +208,7 @@ func (m recordViewerModeModel) FooterHints(query QueryContext) string {
 	return strings.Join(parts, " | ")
 }
 
-func (m recordViewerModeModel) Footer(connectionName, dialect string, query QueryContext) string {
+func (m recordViewerModeModel) Footer(connectionName, dialect string, query InteractionState) string {
 	parts := []string{"Record viewer", fmt.Sprintf("layout %s", layoutLabel(query.Layout))}
 	if label := strings.TrimSpace(connectionName); label != "" {
 		parts = append(parts, fmt.Sprintf("connection %s", label))
@@ -233,7 +233,7 @@ func (m recordViewerModeModel) Footer(connectionName, dialect string, query Quer
 	return appTheme.footer.Render(strings.Join(parts, " | "))
 }
 
-func (m *recordViewerModeModel) syncSelection(query QueryContext) {
+func (m *recordViewerModeModel) syncSelection(query InteractionState) {
 	latest := query.LatestResult
 	if latest == nil || latest.PreservedResult == nil {
 		m.selectedRow = 0
@@ -277,7 +277,7 @@ func (m *recordViewerModeModel) preparePage(result *db.ResultSet, page int, show
 	return prepared
 }
 
-func (m *recordViewerModeModel) Navigate(msg tea.KeyPressMsg, query QueryContext) (int, bool) {
+func (m *recordViewerModeModel) Navigate(msg tea.KeyPressMsg, query InteractionState) (int, bool) {
 	deltaRow, deltaColumn, ok := recordViewerNavigationDelta(msg)
 	if !ok {
 		return query.ViewerPage, false
@@ -306,7 +306,7 @@ func (m *recordViewerModeModel) Navigate(msg tea.KeyPressMsg, query QueryContext
 	return clampRecordViewerPage(m.selectedRow/recordViewerPageSize, len(result.Rows)), true
 }
 
-func (m *recordViewerModeModel) ToggleSelectedRow(query *QueryContext) (int, bool, bool) {
+func (m *recordViewerModeModel) ToggleSelectedRow(query *InteractionState) (int, bool, bool) {
 	if query == nil || query.LatestResult == nil || query.LatestResult.PreservedResult == nil {
 		m.selectedRow = 0
 		m.selectedColumn = 0

@@ -108,7 +108,7 @@ func (m commandModeModel) Init() tea.Cmd {
 	return textarea.Blink
 }
 
-func (m commandModeModel) Update(msg tea.Msg, query QueryContext) (commandModeModel, tea.Cmd) {
+func (m commandModeModel) Update(msg tea.Msg, query InteractionState) (commandModeModel, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		suggestions := m.autocompleteItems(query)
 		switch {
@@ -189,7 +189,7 @@ func (m *commandModeModel) Clear() {
 
 // AutocompleteVisible reports whether the autocomplete dropdown is currently
 // showing suggestions to the user for the given query context.
-func (m commandModeModel) AutocompleteVisible(query QueryContext) bool {
+func (m commandModeModel) AutocompleteVisible(query InteractionState) bool {
 	return len(m.autocompleteItems(query)) > 0
 }
 
@@ -253,11 +253,11 @@ func (m commandModeModel) Focused() bool {
 	return m.editor.Focused()
 }
 
-func (m commandModeModel) View(query QueryContext) string {
+func (m commandModeModel) View(query InteractionState) string {
 	return m.renderView(query)
 }
 
-func (m commandModeModel) FooterHints(query QueryContext) string {
+func (m commandModeModel) FooterHints(query InteractionState) string {
 	var parts []string
 	if len(m.autocompleteItems(query)) > 0 {
 		parts = append(parts, bindingSummary(m.keys.AcceptSuggestion), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
@@ -270,7 +270,7 @@ func (m commandModeModel) FooterHints(query QueryContext) string {
 	return strings.Join(parts, " | ")
 }
 
-func (m commandModeModel) Footer(connectionName, dialect string, query QueryContext) string {
+func (m commandModeModel) Footer(connectionName, dialect string, query InteractionState) string {
 	modeLabel := "Command mode"
 	if query.ActiveMode == ModeHistorySearch {
 		modeLabel = "History search"
@@ -381,7 +381,7 @@ func (m commandModeModel) computeNaturalScrollTop(viewportH int) int {
 	return max(0, lastEditorRow+bottomPadding-viewportH+1)
 }
 
-func (m commandModeModel) renderView(query QueryContext) string {
+func (m commandModeModel) renderView(query InteractionState) string {
 	viewportH := max(1, m.innerHeight)
 
 	// Build the unified line list: transcript + editor.
@@ -500,7 +500,7 @@ func (m commandModeModel) renderReplTranscriptLines() []string {
 	return lines
 }
 
-func (m commandModeModel) ghostText(query QueryContext) string {
+func (m commandModeModel) ghostText(query InteractionState) string {
 	suggestions := m.autocompleteItems(query)
 	if len(suggestions) == 0 {
 		return ""
@@ -657,7 +657,7 @@ func (m commandModeModel) formatLineNumber(value any) string {
 	return fmt.Sprintf(" %*v ", digits, value)
 }
 
-func (m commandModeModel) autocompleteItems(query QueryContext) []autocompleteItem {
+func (m commandModeModel) autocompleteItems(query InteractionState) []autocompleteItem {
 	// Primary gate: the menu is only allowed to appear as a direct result of
 	// a typing key event. Cursor movement, focus changes, pane switches,
 	// history recall, slash-command expansion, compose flows and submits all
@@ -673,7 +673,7 @@ func (m commandModeModel) autocompleteItems(query QueryContext) []autocompleteIt
 	return buildAutocompleteItems(m.editor.Value(), m.cursorOffset(), query)
 }
 
-func (m *commandModeModel) clampSuggestionSelection(query QueryContext) {
+func (m *commandModeModel) clampSuggestionSelection(query InteractionState) {
 	count := len(m.autocompleteItems(query))
 	if count == 0 {
 		m.selectedSuggestion = 0
@@ -761,7 +761,7 @@ func (m commandModeModel) cursorOffset() int {
 	return offset + m.editor.LineInfo().CharOffset
 }
 
-func (m commandModeModel) renderAutocompletePanel(query QueryContext) string {
+func (m commandModeModel) renderAutocompletePanel(query InteractionState) string {
 	suggestions := m.autocompleteItems(query)
 	selected := m.selectedSuggestionIndex(len(suggestions))
 	visible := min(len(suggestions), autocompletePanelRows)
@@ -798,7 +798,7 @@ func (m commandModeModel) renderAutocompletePanel(query QueryContext) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m commandModeModel) renderAutocompleteDropdown(query QueryContext) string {
+func (m commandModeModel) renderAutocompleteDropdown(query InteractionState) string {
 	suggestions := m.autocompleteItems(query)
 	if len(suggestions) == 0 {
 		return ""
@@ -869,7 +869,7 @@ func (m commandModeModel) renderAutocompleteDropdown(query QueryContext) string 
 	return builder.String()
 }
 
-func renderInlineResult(query QueryContext) string {
+func renderInlineResult(query InteractionState) string {
 	latest := query.LatestResult
 	if latest == nil || latest.OriginMode != ModeCommand {
 		return ""
@@ -886,7 +886,7 @@ func renderInlineResult(query QueryContext) string {
 	return renderInlineQueryResult(latest)
 }
 
-func renderSlashWizard(query QueryContext) string {
+func renderSlashWizard(query InteractionState) string {
 	wizard := query.SlashWizard
 	if wizard == nil {
 		return ""

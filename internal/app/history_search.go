@@ -152,7 +152,7 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 }
 
-func renderHistorySearch(query QueryContext) string {
+func renderHistorySearch(query InteractionState) string {
 	if query.ActiveMode != ModeHistorySearch || query.HistorySearch == nil {
 		return ""
 	}
@@ -195,7 +195,7 @@ func renderHistorySearch(query QueryContext) string {
 	return strings.Join(lines, "\n")
 }
 
-func historySearchStatus(query QueryContext) string {
+func historySearchStatus(query InteractionState) string {
 	search := query.HistorySearch
 	if search == nil {
 		return "History search is unavailable."

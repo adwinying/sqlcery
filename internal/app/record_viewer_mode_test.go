@@ -15,7 +15,7 @@ func TestRecordViewerModeViewRendersFullResultSet(t *testing.T) {
 	mode := newRecordViewerModeModel()
 	mode.SetSize(80, 8)
 
-	view := mode.View(QueryContext{
+	view := mode.View(InteractionState{
 		LatestResult: &LatestResultContext{
 			Query: "select id, name, created_at from widgets order by id",
 			PreservedResult: &db.ResultSet{
@@ -56,7 +56,7 @@ func TestRecordViewerModeViewRendersSelectedPage(t *testing.T) {
 		rows = append(rows, db.ResultRow{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(i)}}})
 	}
 
-	view := mode.View(QueryContext{
+	view := mode.View(InteractionState{
 		ViewerPage: 1,
 		LatestResult: &LatestResultContext{
 			Query: "select id from widgets order by id",
@@ -96,7 +96,7 @@ func TestRecordViewerModeViewClipsRowsToVisibleViewport(t *testing.T) {
 		rows = append(rows, db.ResultRow{Values: []db.ResultValue{{Kind: db.ValueKindString, Value: fmt.Sprintf("row-%03d", i)}}})
 	}
 
-	view := ansi.Strip(mode.View(QueryContext{
+	view := ansi.Strip(mode.View(InteractionState{
 		LatestResult: &LatestResultContext{
 			Query: "select label from widgets order by id",
 			PreservedResult: &db.ResultSet{
@@ -121,7 +121,7 @@ func TestRecordViewerModeViewClipsRowsToVisibleViewport(t *testing.T) {
 
 func TestRecordViewerModeFooterIncludesModeDetails(t *testing.T) {
 	mode := newRecordViewerModeModel()
-	footer := mode.Footer("local", "sqlite", QueryContext{
+	footer := mode.Footer("local", "sqlite", InteractionState{
 		Layout:       LayoutViewerOnly,
 		LatestResult: &LatestResultContext{PreservedResult: &db.ResultSet{Rows: []db.ResultRow{{}, {}}}, SelectedRows: []int{0}},
 		Running:      &RunningQueryContext{Label: "/tables", Elapsed: 2*time.Second + 300*time.Millisecond},
@@ -346,7 +346,7 @@ func TestClampRecordViewerPage(t *testing.T) {
 
 func TestRecordViewerModeNavigateSupportsArrowsAndHJKL(t *testing.T) {
 	mode := newRecordViewerModeModel()
-	query := QueryContext{
+	query := InteractionState{
 		LatestResult: &LatestResultContext{
 			PreservedResult: &db.ResultSet{
 				Columns: []db.ResultColumn{{Name: "id"}, {Name: "name"}},
@@ -406,7 +406,7 @@ func TestRecordViewerModeViewShowsSelectedRowCount(t *testing.T) {
 	mode := newRecordViewerModeModel()
 	mode.SetSize(80, 8)
 
-	view := ansi.Strip(mode.View(QueryContext{
+	view := ansi.Strip(mode.View(InteractionState{
 		LatestResult: &LatestResultContext{
 			Query:        "select id from widgets order by id",
 			SelectedRows: []int{0, 2},
@@ -430,7 +430,7 @@ func TestRecordViewerModeViewShowsSelectedRowCount(t *testing.T) {
 
 func TestRecordViewerModeToggleSelectedRowTracksMultipleRows(t *testing.T) {
 	mode := newRecordViewerModeModel()
-	query := QueryContext{
+	query := InteractionState{
 		LatestResult: &LatestResultContext{
 			PreservedResult: &db.ResultSet{
 				Columns: []db.ResultColumn{{Name: "id"}},
@@ -533,7 +533,7 @@ func TestRecordViewerModeViewCJKCharacters(t *testing.T) {
 	mode := newRecordViewerModeModel()
 	mode.SetSize(80, 12)
 
-	view := ansi.Strip(mode.View(QueryContext{
+	view := ansi.Strip(mode.View(InteractionState{
 		LatestResult: &LatestResultContext{
 			Query: "select 名前, score from users",
 			PreservedResult: &db.ResultSet{
@@ -617,7 +617,7 @@ func TestRecordViewerTableTruncatesMultilineValues(t *testing.T) {
 	mode := newRecordViewerModeModel()
 	mode.SetSize(80, 8)
 
-	view := ansi.Strip(mode.View(QueryContext{
+	view := ansi.Strip(mode.View(InteractionState{
 		LatestResult: &LatestResultContext{
 			Query: "select id, note from widgets",
 			PreservedResult: &db.ResultSet{
@@ -668,7 +668,7 @@ func BenchmarkRecordViewerModeViewLargePage(b *testing.B) {
 		rows = append(rows, db.ResultRow{Values: values})
 	}
 
-	query := QueryContext{
+	query := InteractionState{
 		ViewerPage: 0,
 		LatestResult: &LatestResultContext{
 			Query: "select * from widgets order by id",

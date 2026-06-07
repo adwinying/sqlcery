@@ -44,7 +44,7 @@ const (
 
 type SharedAppState struct {
 	App    AppStateContext
-	Query  QueryContext
+	Query  InteractionState
 	Status string
 }
 
@@ -60,7 +60,7 @@ type ReconnectContext struct {
 	LastError string
 }
 
-type QueryContext struct {
+type InteractionState struct {
 	CurrentSQL           string
 	LastSubmittedSQL     string
 	PendingIntent        PendingIntent
@@ -163,7 +163,7 @@ func NewSharedAppState() SharedAppState {
 		App: AppStateContext{
 			Current: StateStartup,
 		},
-		Query: QueryContext{
+		Query: InteractionState{
 			Layout:     LayoutSplit,
 			ActiveMode: ModeCommand,
 			ViewerPage: 0,
@@ -285,7 +285,7 @@ func (s *SharedAppState) SetSelectedHistoryEntry(entry *HistoryEntryContext) {
 	s.Query.SelectedHistoryEntry = cloneHistoryEntryContext(entry)
 }
 
-func (q QueryContext) snapshot() QueryContext {
+func (q InteractionState) snapshot() InteractionState {
 	clone := q
 	clone.Running = cloneRunningQueryContext(q.Running)
 	clone.SessionHistory = cloneHistoryEntries(q.SessionHistory)
