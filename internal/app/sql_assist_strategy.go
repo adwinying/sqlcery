@@ -5,7 +5,7 @@ type sqlAssistSurface string
 
 const (
 	sqlAssistSurfaceAutocomplete    sqlAssistSurface = "autocomplete"
-	sqlAssistSurfaceCommandComposer sqlAssistSurface = "command-composition"
+	sqlAssistSurfaceStatementExpansion sqlAssistSurface = "statement-expansion"
 )
 
 // sqlAssistAnalysisStrategy captures whether SQL-aware helpers rely on a full
@@ -44,7 +44,7 @@ func sqlAssistDecisionFor(surface sqlAssistSurface) sqlAssistDecision {
 			"Avoid parser dependencies until a feature needs AST-level understanding.",
 		SupportedScopes: []string{
 			"Cursor-local completion for keywords, tables, columns, qualifiers, and slash commands.",
-			"Command composition driven from schema metadata and explicit user choices instead of rewriting arbitrary SQL text.",
+			"Statement Expansion driven from schema metadata and explicit user choices instead of rewriting arbitrary SQL text.",
 			"Fast statement-boundary detection that ignores literals and comments.",
 		},
 		ParserTriggers: []string{

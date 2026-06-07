@@ -3,7 +3,7 @@ package app
 import "testing"
 
 func TestSQLAssistDecisionUsesLightweightTokenization(t *testing.T) {
-	for _, surface := range []sqlAssistSurface{sqlAssistSurfaceAutocomplete, sqlAssistSurfaceCommandComposer} {
+	for _, surface := range []sqlAssistSurface{sqlAssistSurfaceAutocomplete, sqlAssistSurfaceStatementExpansion} {
 		decision := sqlAssistDecisionFor(surface)
 		if decision.Strategy != sqlAssistStrategyLightweightTokenization {
 			t.Fatalf("sqlAssistDecisionFor(%q).Strategy = %q, want %q", surface, decision.Strategy, sqlAssistStrategyLightweightTokenization)
