@@ -214,7 +214,7 @@ func (m recordViewerModeModel) Footer(connectionName, dialect string, query Quer
 		parts = append(parts, fmt.Sprintf("connection %s", label))
 	}
 	if label := strings.TrimSpace(dialect); label != "" {
-		parts = append(parts, fmt.Sprintf("dialect %s", label))
+		parts = append(parts, label)
 	}
 	if latest := query.LatestResult; latest != nil && latest.PreservedResult != nil {
 		page := recordViewerPageContextFor(query.ViewerPage, len(latest.PreservedResult.Rows))

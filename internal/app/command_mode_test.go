@@ -362,7 +362,7 @@ func TestCommandModeFooterShowsRunningIndicator(t *testing.T) {
 		Running: &RunningQueryContext{Label: "SQL", Elapsed: 1500 * time.Millisecond},
 	})
 
-	for _, want := range []string{"Command mode", "layout command only", "connection local", "dialect sqlite", "alt+h help", "ctrl+3 command", "- SQL 1.5s", "esc cancel query"} {
+	for _, want := range []string{"Command mode", "layout command only", "connection local", "sqlite", "alt+h help", "ctrl+3 command", "- SQL 1.5s", "esc cancel query"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
 		}
@@ -393,7 +393,7 @@ func TestCommandModeFooterShowsSelectionCountFromViewerResult(t *testing.T) {
 		LatestResult: &LatestResultContext{SelectedRows: []int{0, 2}},
 	})
 
-	for _, want := range []string{"Command mode", "connection local", "dialect sqlite", "2 selected"} {
+	for _, want := range []string{"Command mode", "connection local", "sqlite", "2 selected"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
 		}

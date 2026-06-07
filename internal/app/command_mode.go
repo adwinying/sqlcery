@@ -284,7 +284,7 @@ func (m commandModeModel) Footer(connectionName, dialect string, query QueryCont
 	}
 
 	if label := strings.TrimSpace(dialect); label != "" {
-		parts = append(parts, fmt.Sprintf("dialect %s", label))
+		parts = append(parts, label)
 	}
 
 	if latest := query.LatestResult; latest != nil {
