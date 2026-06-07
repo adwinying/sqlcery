@@ -17,17 +17,17 @@ type historySearchMatch struct {
 }
 
 func (m *Model) openHistorySearch() {
-	if !layoutShowsCommand(m.state.Query.Layout) {
+	if !layoutShowsCommand(m.state.Interaction.Layout) {
 		m.state.SetLayout(LayoutSplit)
 	}
 	m.state.SetActiveMode(ModeHistorySearch)
 	m.state.SetHistorySearchContext(&HistorySearchContext{})
 	m.syncHistorySearchSelection()
-	m.state.SetPendingIntent(IntentHistory, "history", historySearchStatus(m.state.Query))
+	m.state.SetPendingIntent(IntentHistory, "history", historySearchStatus(m.state.Interaction))
 }
 
 func (m *Model) closeHistorySearch() {
-	if m.state.Query.ActiveMode != ModeHistorySearch && m.state.Query.HistorySearch == nil && m.state.Query.SelectedHistoryEntry == nil {
+	if m.state.Interaction.ActiveMode != ModeHistorySearch && m.state.Interaction.HistorySearch == nil && m.state.Interaction.SelectedHistoryEntry == nil {
 		return
 	}
 	m.state.SetActiveMode(ModeCommand)
@@ -37,9 +37,9 @@ func (m *Model) closeHistorySearch() {
 }
 
 func (m *Model) restoreSelectedHistoryEntry() {
-	selected := m.state.Query.SelectedHistoryEntry
+	selected := m.state.Interaction.SelectedHistoryEntry
 	if selected == nil {
-		m.state.SetPendingIntent(IntentHistory, "history", historySearchStatus(m.state.Query))
+		m.state.SetPendingIntent(IntentHistory, "history", historySearchStatus(m.state.Interaction))
 		return
 	}
 
@@ -50,27 +50,27 @@ func (m *Model) restoreSelectedHistoryEntry() {
 }
 
 func (m *Model) cycleHistorySearch(delta int) {
-	search := m.state.Query.HistorySearch
+	search := m.state.Interaction.HistorySearch
 	if search == nil {
 		m.openHistorySearch()
 		return
 	}
 
-	matches := filterHistorySearchEntries(m.state.Query.SessionHistory, search.Query)
+	matches := filterHistorySearchEntries(m.state.Interaction.SessionHistory, search.Query)
 	if len(matches) == 0 {
 		m.syncHistorySearchSelection()
-		m.state.SetPendingIntent(IntentHistory, "history", historySearchStatus(m.state.Query))
+		m.state.SetPendingIntent(IntentHistory, "history", historySearchStatus(m.state.Interaction))
 		return
 	}
 
 	search.SelectedIndex = wrapHistorySearchIndex(search.SelectedIndex+delta, len(matches))
 	m.state.SetHistorySearchContext(search)
 	m.syncHistorySearchSelection()
-	m.state.SetPendingIntent(IntentHistory, "history", historySearchStatus(m.state.Query))
+	m.state.SetPendingIntent(IntentHistory, "history", historySearchStatus(m.state.Interaction))
 }
 
 func (m *Model) updateHistorySearchQuery(query string) {
-	search := m.state.Query.HistorySearch
+	search := m.state.Interaction.HistorySearch
 	if search == nil {
 		search = &HistorySearchContext{}
 	}
@@ -79,17 +79,17 @@ func (m *Model) updateHistorySearchQuery(query string) {
 	search.SelectedIndex = 0
 	m.state.SetHistorySearchContext(search)
 	m.syncHistorySearchSelection()
-	m.state.SetPendingIntent(IntentHistory, "history", historySearchStatus(m.state.Query))
+	m.state.SetPendingIntent(IntentHistory, "history", historySearchStatus(m.state.Interaction))
 }
 
 func (m *Model) syncHistorySearchSelection() {
-	search := m.state.Query.HistorySearch
+	search := m.state.Interaction.HistorySearch
 	if search == nil {
 		m.state.SetSelectedHistoryEntry(nil)
 		return
 	}
 
-	matches := filterHistorySearchEntries(m.state.Query.SessionHistory, search.Query)
+	matches := filterHistorySearchEntries(m.state.Interaction.SessionHistory, search.Query)
 	if len(matches) == 0 {
 		search.SelectedIndex = 0
 		m.state.SetHistorySearchContext(search)
@@ -124,7 +124,7 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.cycleHistorySearch(-1)
 		return nil
 	case msg.String() == "backspace" || msg.String() == "ctrl+h" || msg.String() == "delete":
-		search := m.state.Query.HistorySearch
+		search := m.state.Interaction.HistorySearch
 		if search == nil {
 			m.openHistorySearch()
 			return nil
@@ -132,18 +132,18 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.updateHistorySearchQuery(trimLastRune(search.Query))
 		return nil
 	case msg.String() == "space":
-		search := m.state.Query.HistorySearch
+		search := m.state.Interaction.HistorySearch
 		if search == nil {
 			m.openHistorySearch()
-			search = m.state.Query.HistorySearch
+			search = m.state.Interaction.HistorySearch
 		}
 		m.updateHistorySearchQuery(search.Query + " ")
 		return nil
 	case len(msg.Text) > 0 && !msg.Mod.Contains(tea.ModAlt):
-		search := m.state.Query.HistorySearch
+		search := m.state.Interaction.HistorySearch
 		if search == nil {
 			m.openHistorySearch()
-			search = m.state.Query.HistorySearch
+			search = m.state.Interaction.HistorySearch
 		}
 		m.updateHistorySearchQuery(search.Query + msg.Text)
 		return nil
@@ -152,19 +152,19 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 }
 
-func renderHistorySearch(query InteractionState) string {
-	if query.ActiveMode != ModeHistorySearch || query.HistorySearch == nil {
+func renderHistorySearch(interaction InteractionState) string {
+	if interaction.ActiveMode != ModeHistorySearch || interaction.HistorySearch == nil {
 		return ""
 	}
 
-	search := query.HistorySearch
-	matches := filterHistorySearchEntries(query.SessionHistory, search.Query)
+	search := interaction.HistorySearch
+	matches := filterHistorySearchEntries(interaction.SessionHistory, search.Query)
 	lines := []string{
 		appTheme.panelTitle.Render("Reverse search:"),
 		appTheme.panelText.Render(fmt.Sprintf("query> %s", defaultHistorySearchQuery(search.Query))),
 	}
 
-	if len(query.SessionHistory) == 0 {
+	if len(interaction.SessionHistory) == 0 {
 		lines = append(lines, appTheme.panelMuted.Render("No session history yet."), appTheme.panelHint.Render("esc close"))
 		return strings.Join(lines, "\n")
 	}
@@ -195,14 +195,14 @@ func renderHistorySearch(query InteractionState) string {
 	return strings.Join(lines, "\n")
 }
 
-func historySearchStatus(query InteractionState) string {
-	search := query.HistorySearch
+func historySearchStatus(interaction InteractionState) string {
+	search := interaction.HistorySearch
 	if search == nil {
 		return "History search is unavailable."
 	}
 
-	matches := filterHistorySearchEntries(query.SessionHistory, search.Query)
-	if len(query.SessionHistory) == 0 {
+	matches := filterHistorySearchEntries(interaction.SessionHistory, search.Query)
+	if len(interaction.SessionHistory) == 0 {
 		return "History search opened; session history is empty."
 	}
 	if len(matches) == 0 {

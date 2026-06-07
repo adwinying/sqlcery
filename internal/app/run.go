@@ -10,7 +10,7 @@ import (
 	apphistory "github.com/adwinying/sqlcery/internal/history"
 )
 
-type Session struct {
+type ConnectionInfo struct {
 	ConnectionName  string
 	ConnectionType  string
 	ConnectionColor string
@@ -26,10 +26,10 @@ type ProgramFactory func(model tea.Model, opts ...tea.ProgramOption) Program
 type RunOptions struct {
 	NewProgram     ProgramFactory
 	ProgramOptions []tea.ProgramOption
-	History        *apphistory.Session
+	History        *apphistory.History
 }
 
-func Run(ctx context.Context, session Session, adapter *db.SQLAdapter, options RunOptions) error {
+func Run(ctx context.Context, session ConnectionInfo, adapter *db.SQLAdapter, options RunOptions) error {
 	if adapter == nil {
 		return fmt.Errorf("adapter is required")
 	}

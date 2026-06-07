@@ -108,9 +108,9 @@ func (m commandModeModel) Init() tea.Cmd {
 	return textarea.Blink
 }
 
-func (m commandModeModel) Update(msg tea.Msg, query InteractionState) (commandModeModel, tea.Cmd) {
+func (m commandModeModel) Update(msg tea.Msg, interaction InteractionState) (commandModeModel, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
-		suggestions := m.autocompleteItems(query)
+		suggestions := m.autocompleteItems(interaction)
 		switch {
 		case key.Matches(keyMsg, m.keys.AcceptSuggestion):
 			if len(suggestions) > 0 {
@@ -175,7 +175,7 @@ func (m commandModeModel) Update(msg tea.Msg, query InteractionState) (commandMo
 		}
 	}
 
-	m.clampSuggestionSelection(query)
+	m.clampSuggestionSelection(interaction)
 	return m, cmd
 }
 
@@ -189,8 +189,8 @@ func (m *commandModeModel) Clear() {
 
 // AutocompleteVisible reports whether the autocomplete dropdown is currently
 // showing suggestions to the user for the given query context.
-func (m commandModeModel) AutocompleteVisible(query InteractionState) bool {
-	return len(m.autocompleteItems(query)) > 0
+func (m commandModeModel) AutocompleteVisible(interaction InteractionState) bool {
+	return len(m.autocompleteItems(interaction)) > 0
 }
 
 // DismissAutocomplete suppresses the autocomplete dropdown while the editor
@@ -253,31 +253,31 @@ func (m commandModeModel) Focused() bool {
 	return m.editor.Focused()
 }
 
-func (m commandModeModel) View(query InteractionState) string {
-	return m.renderView(query)
+func (m commandModeModel) View(interaction InteractionState) string {
+	return m.renderView(interaction)
 }
 
-func (m commandModeModel) FooterHints(query InteractionState) string {
+func (m commandModeModel) FooterHints(interaction InteractionState) string {
 	var parts []string
-	if len(m.autocompleteItems(query)) > 0 {
+	if len(m.autocompleteItems(interaction)) > 0 {
 		parts = append(parts, bindingSummary(m.keys.AcceptSuggestion), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
 	}
 	parts = append(parts, "enter submit", bindingSummary(m.keys.Cancel), bindingSummary(m.keys.History))
-	if running := formatRunningIndicator(query.Running); running != "" {
+	if running := formatRunningIndicator(interaction.Running); running != "" {
 		parts = append(parts, "esc cancel query")
 	}
 	parts = append(parts, "ctrl+c quit")
 	return strings.Join(parts, " | ")
 }
 
-func (m commandModeModel) Footer(connectionName, dialect string, query InteractionState) string {
+func (m commandModeModel) Footer(connectionName, dialect string, interaction InteractionState) string {
 	modeLabel := "Command mode"
-	if query.ActiveMode == ModeHistorySearch {
+	if interaction.ActiveMode == ModeHistorySearch {
 		modeLabel = "History search"
-	} else if query.ActiveMode == ModeRecordViewer && query.Layout == LayoutSplit {
+	} else if interaction.ActiveMode == ModeRecordViewer && interaction.Layout == LayoutSplit {
 		modeLabel = "Command line hidden focus"
 	}
-	parts := []string{modeLabel, fmt.Sprintf("layout %s", layoutLabel(query.Layout))}
+	parts := []string{modeLabel, fmt.Sprintf("layout %s", layoutLabel(interaction.Layout))}
 
 	if label := strings.TrimSpace(connectionName); label != "" {
 		parts = append(parts, fmt.Sprintf("connection %s", label))
@@ -287,7 +287,7 @@ func (m commandModeModel) Footer(connectionName, dialect string, query Interacti
 		parts = append(parts, label)
 	}
 
-	if latest := query.LatestResult; latest != nil {
+	if latest := interaction.LatestResult; latest != nil {
 		if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
 			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
 		}
@@ -295,20 +295,20 @@ func (m commandModeModel) Footer(connectionName, dialect string, query Interacti
 
 	parts = append(parts, fmt.Sprintf("line %d col %d", m.editor.Line()+1, m.editor.LineInfo().ColumnOffset+1))
 	parts = append(parts, bindingSummary(m.keys.Submit), bindingSummary(m.keys.Cancel), bindingSummary(m.keys.Help), bindingSummary(m.keys.History), bindingSummary(m.keys.SwitchMode), bindingSummary(m.keys.LayoutCommandOnly))
-	if query.ActiveMode == ModeRecordViewer {
+	if interaction.ActiveMode == ModeRecordViewer {
 		parts = append(parts, "ctrl+u scroll up", "ctrl+d scroll down")
 	}
-	if query.ActiveMode == ModeHistorySearch {
+	if interaction.ActiveMode == ModeHistorySearch {
 		parts = append(parts, bindingSummary(m.keys.RestoreHistory), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
 	}
-	if query.SlashWizard != nil {
+	if interaction.SlashWizard != nil {
 		parts = append(parts, "wizard /commands")
 	}
-	if running := formatRunningIndicator(query.Running); running != "" {
+	if running := formatRunningIndicator(interaction.Running); running != "" {
 		parts = append(parts, running)
 		parts = append(parts, "esc cancel query")
 	}
-	if len(m.autocompleteItems(query)) > 0 {
+	if len(m.autocompleteItems(interaction)) > 0 {
 		parts = append(parts, bindingSummary(m.keys.AcceptSuggestion), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
 	}
 	parts = append(parts, "ctrl+c quit")
@@ -381,13 +381,13 @@ func (m commandModeModel) computeNaturalScrollTop(viewportH int) int {
 	return max(0, lastEditorRow+bottomPadding-viewportH+1)
 }
 
-func (m commandModeModel) renderView(query InteractionState) string {
+func (m commandModeModel) renderView(interaction InteractionState) string {
 	viewportH := max(1, m.innerHeight)
 
 	// Build the unified line list: transcript + editor.
 	transcriptLines := m.renderReplTranscriptLines()
 
-	ghost := m.ghostText(query)
+	ghost := m.ghostText(interaction)
 
 	var editorStrings []string
 	var cursorRowInEditor int
@@ -456,7 +456,7 @@ func (m commandModeModel) renderView(query InteractionState) string {
 	// Overlay the autocomplete dropdown directly below the cursor line.
 	// It replaces whatever rows are there (editor rows or reserve blanks),
 	// so the prompt never shifts vertically when the menu opens or closes.
-	dropdown := m.renderAutocompleteDropdown(query)
+	dropdown := m.renderAutocompleteDropdown(interaction)
 	if dropdown == "" {
 		return strings.Join(visible, "\n")
 	}
@@ -500,8 +500,8 @@ func (m commandModeModel) renderReplTranscriptLines() []string {
 	return lines
 }
 
-func (m commandModeModel) ghostText(query InteractionState) string {
-	suggestions := m.autocompleteItems(query)
+func (m commandModeModel) ghostText(interaction InteractionState) string {
+	suggestions := m.autocompleteItems(interaction)
 	if len(suggestions) == 0 {
 		return ""
 	}
@@ -657,7 +657,7 @@ func (m commandModeModel) formatLineNumber(value any) string {
 	return fmt.Sprintf(" %*v ", digits, value)
 }
 
-func (m commandModeModel) autocompleteItems(query InteractionState) []autocompleteItem {
+func (m commandModeModel) autocompleteItems(interaction InteractionState) []autocompleteItem {
 	// Primary gate: the menu is only allowed to appear as a direct result of
 	// a typing key event. Cursor movement, focus changes, pane switches,
 	// history recall, slash-command expansion, compose flows and submits all
@@ -670,11 +670,11 @@ func (m commandModeModel) autocompleteItems(query InteractionState) []autocomple
 		m.cursorOffset() == m.autocompleteSuppressedCursor {
 		return nil
 	}
-	return buildAutocompleteItems(m.editor.Value(), m.cursorOffset(), query)
+	return buildAutocompleteItems(m.editor.Value(), m.cursorOffset(), interaction)
 }
 
-func (m *commandModeModel) clampSuggestionSelection(query InteractionState) {
-	count := len(m.autocompleteItems(query))
+func (m *commandModeModel) clampSuggestionSelection(interaction InteractionState) {
+	count := len(m.autocompleteItems(interaction))
 	if count == 0 {
 		m.selectedSuggestion = 0
 		return
@@ -761,8 +761,8 @@ func (m commandModeModel) cursorOffset() int {
 	return offset + m.editor.LineInfo().CharOffset
 }
 
-func (m commandModeModel) renderAutocompletePanel(query InteractionState) string {
-	suggestions := m.autocompleteItems(query)
+func (m commandModeModel) renderAutocompletePanel(interaction InteractionState) string {
+	suggestions := m.autocompleteItems(interaction)
 	selected := m.selectedSuggestionIndex(len(suggestions))
 	visible := min(len(suggestions), autocompletePanelRows)
 	start := 0
@@ -798,8 +798,8 @@ func (m commandModeModel) renderAutocompletePanel(query InteractionState) string
 	return strings.Join(lines, "\n")
 }
 
-func (m commandModeModel) renderAutocompleteDropdown(query InteractionState) string {
-	suggestions := m.autocompleteItems(query)
+func (m commandModeModel) renderAutocompleteDropdown(interaction InteractionState) string {
+	suggestions := m.autocompleteItems(interaction)
 	if len(suggestions) == 0 {
 		return ""
 	}
@@ -869,8 +869,8 @@ func (m commandModeModel) renderAutocompleteDropdown(query InteractionState) str
 	return builder.String()
 }
 
-func renderInlineResult(query InteractionState) string {
-	latest := query.LatestResult
+func renderInlineResult(interaction InteractionState) string {
+	latest := interaction.LatestResult
 	if latest == nil || latest.OriginMode != ModeCommand {
 		return ""
 	}
@@ -886,8 +886,8 @@ func renderInlineResult(query InteractionState) string {
 	return renderInlineQueryResult(latest)
 }
 
-func renderSlashWizard(query InteractionState) string {
-	wizard := query.SlashWizard
+func renderSlashWizard(interaction InteractionState) string {
+	wizard := interaction.SlashWizard
 	if wizard == nil {
 		return ""
 	}

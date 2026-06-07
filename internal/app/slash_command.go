@@ -20,7 +20,7 @@ type slashCommand struct {
 }
 
 type slashCommandContext struct {
-	Session Session
+	Session ConnectionInfo
 	Adapter *db.SQLAdapter
 	Dialect db.Dialect
 	Query   InteractionState

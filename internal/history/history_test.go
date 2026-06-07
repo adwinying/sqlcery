@@ -11,7 +11,7 @@ import (
 )
 
 func TestSessionAppendAndLatest(t *testing.T) {
-	session := NewSession()
+	session := NewHistory()
 	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
 	if err := session.Append(Entry{Command: "select 1", ConnectionName: "local", ExecutedAt: stamp}); err != nil {
 		t.Fatalf("Append() error = %v", err)
@@ -38,7 +38,7 @@ func TestSessionAppendAndLatest(t *testing.T) {
 }
 
 func TestSessionAppendSkipsBlankCommandsAndClonesEntries(t *testing.T) {
-	session := NewSession()
+	session := NewHistory()
 	if err := session.Append(Entry{Command: "   "}); err != nil {
 		t.Fatalf("Append(blank) error = %v", err)
 	}
@@ -63,7 +63,7 @@ func TestSessionAppendSkipsBlankCommandsAndClonesEntries(t *testing.T) {
 
 func TestSessionAppendPersistsCommandsToFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), DirName, FileName)
-	session := NewFileBackedSession(path)
+	session := NewFileBackedHistory(path)
 	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
 
 	if err := session.Append(Entry{Command: "select 1\n", ConnectionName: "local", ExecutedAt: stamp}); err != nil {
@@ -129,7 +129,7 @@ func TestSessionAppendRotatesHistoryLogWhenItWouldGrowPastLimit(t *testing.T) {
 		t.Fatalf("WriteFile(rotated) error = %v", err)
 	}
 
-	session := NewFileBackedSession(path)
+	session := NewFileBackedHistory(path)
 	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
 	if err := session.Append(Entry{Command: "select 1", ConnectionName: "local", ExecutedAt: stamp}); err != nil {
 		t.Fatalf("Append() error = %v", err)
@@ -348,7 +348,7 @@ func TestNewPersistentSessionSeedsEntriesFromDisk(t *testing.T) {
 		{Command: "select 3", ConnectionName: "local", ExecutedAt: stamp.Add(2 * time.Minute)},
 	})
 
-	session, err := NewPersistentSession("local")
+	session, err := NewPersistentHistory("local")
 	if err != nil {
 		t.Fatalf("NewPersistentSession() error = %v", err)
 	}
@@ -379,7 +379,7 @@ func TestNewPersistentSessionAppendsToExistingFile(t *testing.T) {
 		{Command: "select 1", ConnectionName: "local", ExecutedAt: stamp},
 	})
 
-	session, err := NewPersistentSession("local")
+	session, err := NewPersistentHistory("local")
 	if err != nil {
 		t.Fatalf("NewPersistentSession() error = %v", err)
 	}

@@ -30,24 +30,24 @@ type store interface {
 	Append(Entry) error
 }
 
-type Session struct {
+type History struct {
 	entries []Entry
 	store   store
 }
 
-func NewSession() *Session {
-	return &Session{}
+func NewHistory() *History {
+	return &History{}
 }
 
-func NewFileBackedSession(path string) *Session {
+func NewFileBackedHistory(path string) *History {
 	if strings.TrimSpace(path) == "" {
-		return NewSession()
+		return NewHistory()
 	}
 
-	return &Session{store: fileStore{path: path}}
+	return &History{store: fileStore{path: path}}
 }
 
-func NewPersistentSession(connectionName string) (*Session, error) {
+func NewPersistentHistory(connectionName string) (*History, error) {
 	path, err := DefaultPath()
 	if err != nil {
 		return nil, err
@@ -58,9 +58,9 @@ func NewPersistentSession(connectionName string) (*Session, error) {
 		return nil, err
 	}
 
-	session := NewFileBackedSession(path)
-	session.entries = entries
-	return session, nil
+	h := NewFileBackedHistory(path)
+	h.entries = entries
+	return h, nil
 }
 
 // LoadFromFile reads persisted history entries from path and path+".1" (if it
@@ -152,7 +152,7 @@ func DefaultPath() (string, error) {
 	return filepath.Join(dataHome, DirName, FileName), nil
 }
 
-func (s *Session) Append(entry Entry) error {
+func (s *History) Append(entry Entry) error {
 	if s == nil || strings.TrimSpace(entry.Command) == "" {
 		return nil
 	}
@@ -165,7 +165,7 @@ func (s *Session) Append(entry Entry) error {
 	return s.store.Append(entry)
 }
 
-func (s *Session) Entries() []Entry {
+func (s *History) Entries() []Entry {
 	if s == nil || len(s.entries) == 0 {
 		return nil
 	}
@@ -175,7 +175,7 @@ func (s *Session) Entries() []Entry {
 	return entries
 }
 
-func (s *Session) Latest() (Entry, bool) {
+func (s *History) Latest() (Entry, bool) {
 	if s == nil || len(s.entries) == 0 {
 		return Entry{}, false
 	}

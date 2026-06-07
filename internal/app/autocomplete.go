@@ -86,9 +86,9 @@ func keywordSet(keywords []string) map[string]struct{} {
 	return set
 }
 
-func buildAutocompleteItems(value string, cursor int, query InteractionState) []autocompleteItem {
+func buildAutocompleteItems(value string, cursor int, interaction InteractionState) []autocompleteItem {
 	ctx := analyzeAutocompleteContext(value, cursor)
-	catalog := buildAutocompleteCatalog(query)
+	catalog := buildAutocompleteCatalog(interaction)
 	if ctx.Prefix == "" && ctx.Qualifier == "" && !ctx.SlashMode && ctx.Scope == autocompleteScopeUnknown {
 		return nil
 	}
@@ -656,11 +656,11 @@ func parseTableReference(tokens []sqlToken, start int) (string, int) {
 	return name, next
 }
 
-func buildAutocompleteCatalog(query InteractionState) autocompleteCatalog {
+func buildAutocompleteCatalog(interaction InteractionState) autocompleteCatalog {
 	catalog := autocompleteCatalog{}
 
-	if query.AutocompleteSchema != nil {
-		for _, table := range query.AutocompleteSchema.Tables {
+	if interaction.AutocompleteSchema != nil {
+		for _, table := range interaction.AutocompleteSchema.Tables {
 			entry := autocompleteTable{
 				Schema:      table.Schema,
 				Name:        table.Name,
@@ -671,7 +671,7 @@ func buildAutocompleteCatalog(query InteractionState) autocompleteCatalog {
 		}
 	}
 
-	if latest := query.LatestResult; latest != nil && latest.PreservedResult != nil {
+	if latest := interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
 		for _, column := range latest.PreservedResult.Columns {
 			if strings.TrimSpace(column.Name) != "" {
 				catalog.FallbackColumns = appendUniqueFold(catalog.FallbackColumns, column.Name)

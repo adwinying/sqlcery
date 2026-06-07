@@ -35,7 +35,7 @@ func TestRunFormatsOpenErrorsForTerminalUsers(t *testing.T) {
 		open: func(context.Context, config.Connection) (*db.SQLAdapter, error) {
 			return nil, &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}
 		},
-		start: func(context.Context, app.Session, *db.SQLAdapter) error {
+		start: func(context.Context, app.ConnectionInfo, *db.SQLAdapter) error {
 			t.Fatal("run() started app, want open error")
 			return nil
 		},
@@ -71,11 +71,11 @@ func TestRunOpensSQLiteConnectionAndStartsApp(t *testing.T) {
 	}
 
 	started := false
-	var session app.Session
+	var session app.ConnectionInfo
 
 	err := runWithDependencies(nil, func() (string, error) { return workingDir, nil }, runDependencies{
 		open: db.Open,
-		start: func(ctx context.Context, gotSession app.Session, adapter *db.SQLAdapter) error {
+		start: func(ctx context.Context, gotSession app.ConnectionInfo, adapter *db.SQLAdapter) error {
 			started = true
 			session = gotSession
 
@@ -115,7 +115,7 @@ func TestRunWithoutConfiguredConnectionDoesNotStartApp(t *testing.T) {
 	started := false
 	err := runWithDependencies(nil, func() (string, error) { return workingDir, nil }, runDependencies{
 		open: db.Open,
-		start: func(context.Context, app.Session, *db.SQLAdapter) error {
+		start: func(context.Context, app.ConnectionInfo, *db.SQLAdapter) error {
 			started = true
 			return nil
 		},

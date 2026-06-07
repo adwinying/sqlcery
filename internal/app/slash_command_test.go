@@ -325,7 +325,7 @@ func TestModelSubmitDispatchesSlashTablesExpandsToSQL(t *testing.T) {
 		t.Fatalf("ExecContext(create table) error = %v", err)
 	}
 
-	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
 	model.state.SetReady("")
 	{
 		m, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -343,10 +343,10 @@ func TestModelSubmitDispatchesSlashTablesExpandsToSQL(t *testing.T) {
 	if got, want := model.state.Status, "Dispatching /tables. Press esc to cancel; timeout after 30s."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
-	if model.state.Query.Running == nil {
+	if model.state.Interaction.Running == nil {
 		t.Fatal("state.Query.Running = nil, want running context")
 	}
-	if got, want := model.state.Query.Running.Label, "/tables"; got != want {
+	if got, want := model.state.Interaction.Running.Label, "/tables"; got != want {
 		t.Fatalf("state.Query.Running.Label = %q, want %q", got, want)
 	}
 
@@ -356,19 +356,19 @@ func TestModelSubmitDispatchesSlashTablesExpandsToSQL(t *testing.T) {
 	model = next.(Model)
 
 	// /tables now expands to SQL in the editor instead of executing immediately
-	if got, want := model.state.Query.LastSubmittedSQL, ""; got != want {
+	if got, want := model.state.Interaction.LastSubmittedSQL, ""; got != want {
 		t.Fatalf("state.Query.LastSubmittedSQL = %q, want %q", got, want)
 	}
-	if model.state.Query.Running != nil {
-		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Query.Running)
+	if model.state.Interaction.Running != nil {
+		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Interaction.Running)
 	}
-	if got, want := len(model.state.Query.SessionHistory), 0; got != want {
+	if got, want := len(model.state.Interaction.SessionHistory), 0; got != want {
 		t.Fatalf("len(state.Query.SessionHistory) = %d, want %d", got, want)
 	}
-	if model.state.Query.LatestResult != nil {
-		t.Fatalf("state.Query.LatestResult = %#v, want nil", model.state.Query.LatestResult)
+	if model.state.Interaction.LatestResult != nil {
+		t.Fatalf("state.Query.LatestResult = %#v, want nil", model.state.Interaction.LatestResult)
 	}
-	if got, want := model.state.Query.LastAction, "slash:/tables"; got != want {
+	if got, want := model.state.Interaction.LastAction, "slash:/tables"; got != want {
 		t.Fatalf("state.Query.LastAction = %q, want %q", got, want)
 	}
 	wantStatus := "Expanded /tables for current database into command mode. Review it, then press enter to run."
@@ -396,8 +396,8 @@ func TestModelSubmitSlashCommandExpandToEditorDoesNotPersistHistory(t *testing.T
 	}
 
 	historyPath := filepath.Join(t.TempDir(), apphistory.DirName, apphistory.FileName)
-	history := apphistory.NewFileBackedSession(historyPath)
-	model := newModelWithDependencies(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter, modelDependencies{history: history})
+	history := apphistory.NewFileBackedHistory(historyPath)
+	model := newModelWithDependencies(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter, modelDependencies{history: history})
 	model.state.SetReady("")
 	model.command.editor.SetValue("/tables")
 	model.syncCurrentSQL()
@@ -415,7 +415,7 @@ func TestModelSubmitSlashCommandExpandToEditorDoesNotPersistHistory(t *testing.T
 	if _, err := os.ReadFile(historyPath); err == nil {
 		t.Fatal("ReadFile() succeeded, want history file to not exist for expand-to-editor commands")
 	}
-	if got, want := len(model.state.Query.SessionHistory), 0; got != want {
+	if got, want := len(model.state.Interaction.SessionHistory), 0; got != want {
 		t.Fatalf("len(state.Query.SessionHistory) = %d, want %d", got, want)
 	}
 }
@@ -432,7 +432,7 @@ func TestModelSubmitDispatchesSlashSelectIntoEditor(t *testing.T) {
 		t.Fatalf("ExecContext(create table) error = %v", err)
 	}
 
-	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
 	model.state.SetReady("")
 	model.command.editor.SetValue("/select widgets")
 	model.syncCurrentSQL()
@@ -446,14 +446,14 @@ func TestModelSubmitDispatchesSlashSelectIntoEditor(t *testing.T) {
 	next, _ = model.Update(firstCommandMessageForTest[slashCommandExecutedMsg](t, cmd))
 	model = next.(Model)
 
-	if got, want := model.state.Query.LastSubmittedSQL, ""; got != want {
+	if got, want := model.state.Interaction.LastSubmittedSQL, ""; got != want {
 		t.Fatalf("state.Query.LastSubmittedSQL = %q, want %q", got, want)
 	}
-	if got, want := len(model.state.Query.SessionHistory), 0; got != want {
+	if got, want := len(model.state.Interaction.SessionHistory), 0; got != want {
 		t.Fatalf("len(state.Query.SessionHistory) = %d, want %d", got, want)
 	}
-	if model.state.Query.LatestResult != nil {
-		t.Fatalf("state.Query.LatestResult = %#v, want nil", model.state.Query.LatestResult)
+	if model.state.Interaction.LatestResult != nil {
+		t.Fatalf("state.Query.LatestResult = %#v, want nil", model.state.Interaction.LatestResult)
 	}
 	if got, want := model.state.Status, "Expanded /select for widgets into command mode. Review it, then press enter to run."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -463,16 +463,16 @@ func TestModelSubmitDispatchesSlashSelectIntoEditor(t *testing.T) {
 			t.Fatalf("editor.Value() = %q, want to contain %q", got, want)
 		}
 	}
-	if got, want := model.state.Query.CurrentSQL, model.command.editor.Value(); got != want {
+	if got, want := model.state.Interaction.CurrentSQL, model.command.editor.Value(); got != want {
 		t.Fatalf("state.Query.CurrentSQL = %q, want %q", got, want)
 	}
-	if got, want := model.state.Query.LastAction, "slash:/select"; got != want {
+	if got, want := model.state.Interaction.LastAction, "slash:/select"; got != want {
 		t.Fatalf("state.Query.LastAction = %q, want %q", got, want)
 	}
 }
 
 func TestModelSubmitCommandsOpensWizard(t *testing.T) {
-	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
 	model.state.SetReady("")
 	{
 		m, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -488,7 +488,7 @@ func TestModelSubmitCommandsOpensWizard(t *testing.T) {
 	}
 	model = next.(Model)
 
-	if model.state.Query.SlashWizard == nil {
+	if model.state.Interaction.SlashWizard == nil {
 		t.Fatal("state.Query.SlashWizard = nil, want wizard context")
 	}
 	if got, want := model.state.Status, "Choose a slash command and press enter."; got != want {
@@ -514,7 +514,7 @@ func TestModelSubmitCommandsWizardDispatchesResultCommand(t *testing.T) {
 		t.Fatalf("ExecContext(create table) error = %v", err)
 	}
 
-	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
 	model.state.SetReady("")
 	model.state.SetSlashWizardContext(&SlashCommandWizardContext{
 		Step: SlashCommandWizardStepCommand,
@@ -534,20 +534,20 @@ func TestModelSubmitCommandsWizardDispatchesResultCommand(t *testing.T) {
 	if got, want := model.state.Status, "Dispatching /tables from wizard. Press esc to cancel; timeout after 30s."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
-	if model.state.Query.Running == nil {
+	if model.state.Interaction.Running == nil {
 		t.Fatal("state.Query.Running = nil, want running context")
 	}
-	if got, want := model.state.Query.Running.Label, "/tables"; got != want {
+	if got, want := model.state.Interaction.Running.Label, "/tables"; got != want {
 		t.Fatalf("state.Query.Running.Label = %q, want %q", got, want)
 	}
 
 	next, _ = model.Update(firstCommandMessageForTest[slashCommandExecutedMsg](t, cmd))
 	model = next.(Model)
-	if model.state.Query.Running != nil {
-		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Query.Running)
+	if model.state.Interaction.Running != nil {
+		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Interaction.Running)
 	}
-	if model.state.Query.SlashWizard != nil {
-		t.Fatalf("state.Query.SlashWizard = %#v, want nil", model.state.Query.SlashWizard)
+	if model.state.Interaction.SlashWizard != nil {
+		t.Fatalf("state.Query.SlashWizard = %#v, want nil", model.state.Interaction.SlashWizard)
 	}
 	if got, want := model.state.Status, "Expanded /tables for current database into command mode. Review it, then press enter to run."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -555,7 +555,7 @@ func TestModelSubmitCommandsWizardDispatchesResultCommand(t *testing.T) {
 }
 
 func TestModelSubmitCommandsWizardLoadsTargetedTemplate(t *testing.T) {
-	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
 	model.state.SetReady("")
 	model.state.SetSlashWizardContext(&SlashCommandWizardContext{
 		Step: SlashCommandWizardStepTarget,
@@ -577,23 +577,23 @@ func TestModelSubmitCommandsWizardLoadsTargetedTemplate(t *testing.T) {
 	if got, want := model.state.Status, "Dispatching /select from wizard. Press esc to cancel; timeout after 30s."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
-	if model.state.Query.Running == nil {
+	if model.state.Interaction.Running == nil {
 		t.Fatal("state.Query.Running = nil, want running context")
 	}
-	if got, want := model.state.Query.Running.Label, "/select"; got != want {
+	if got, want := model.state.Interaction.Running.Label, "/select"; got != want {
 		t.Fatalf("state.Query.Running.Label = %q, want %q", got, want)
 	}
 
 	next, _ = model.Update(firstCommandMessageForTest[slashCommandExecutedMsg](t, cmd))
 	model = next.(Model)
-	if model.state.Query.Running != nil {
-		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Query.Running)
+	if model.state.Interaction.Running != nil {
+		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Interaction.Running)
 	}
 	if got, want := model.command.editor.Value(), "SELECT\n  *\nFROM \"widgets\";"; got != want {
 		t.Fatalf("editor.Value() = %q, want %q", got, want)
 	}
-	if model.state.Query.SlashWizard != nil {
-		t.Fatalf("state.Query.SlashWizard = %#v, want nil", model.state.Query.SlashWizard)
+	if model.state.Interaction.SlashWizard != nil {
+		t.Fatalf("state.Query.SlashWizard = %#v, want nil", model.state.Interaction.SlashWizard)
 	}
 }
 
@@ -609,7 +609,7 @@ func TestModelSubmitCommandsWizardAdvancesToTargetSelection(t *testing.T) {
 		t.Fatalf("ExecContext(create table) error = %v", err)
 	}
 
-	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
 	model.state.SetReady("")
 	{
 		m, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -631,8 +631,8 @@ func TestModelSubmitCommandsWizardAdvancesToTargetSelection(t *testing.T) {
 		t.Fatalf("Update(submitIntentMsg{}) cmd = %v, want nil while advancing wizard", cmd)
 	}
 	model = next.(Model)
-	if model.state.Query.SlashWizard == nil || model.state.Query.SlashWizard.Step != SlashCommandWizardStepTarget {
-		t.Fatalf("state.Query.SlashWizard = %#v, want target step", model.state.Query.SlashWizard)
+	if model.state.Interaction.SlashWizard == nil || model.state.Interaction.SlashWizard.Step != SlashCommandWizardStepTarget {
+		t.Fatalf("state.Query.SlashWizard = %#v, want target step", model.state.Interaction.SlashWizard)
 	}
 	if got, want := model.state.Status, "Choose a table for /select and press enter."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -646,7 +646,7 @@ func TestModelSubmitCommandsWizardAdvancesToTargetSelection(t *testing.T) {
 }
 
 func TestModelSlashWizardNavigationKeysMoveBackAndClose(t *testing.T) {
-	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
 	model.state.SetReady("")
 	model.state.SetSlashWizardContext(&SlashCommandWizardContext{
 		Step: SlashCommandWizardStepTarget,
@@ -667,7 +667,7 @@ func TestModelSlashWizardNavigationKeysMoveBackAndClose(t *testing.T) {
 	model = next.(Model)
 	next, _ = model.Update(cmd())
 	model = next.(Model)
-	if got, want := model.state.Query.SlashWizard.SelectedTarget, 1; got != want {
+	if got, want := model.state.Interaction.SlashWizard.SelectedTarget, 1; got != want {
 		t.Fatalf("SelectedTarget = %d, want %d", got, want)
 	}
 
@@ -678,8 +678,8 @@ func TestModelSlashWizardNavigationKeysMoveBackAndClose(t *testing.T) {
 	model = next.(Model)
 	next, _ = model.Update(cmd())
 	model = next.(Model)
-	if model.state.Query.SlashWizard == nil || model.state.Query.SlashWizard.Step != SlashCommandWizardStepCommand {
-		t.Fatalf("state.Query.SlashWizard = %#v, want command step", model.state.Query.SlashWizard)
+	if model.state.Interaction.SlashWizard == nil || model.state.Interaction.SlashWizard.Step != SlashCommandWizardStepCommand {
+		t.Fatalf("state.Query.SlashWizard = %#v, want command step", model.state.Interaction.SlashWizard)
 	}
 
 	next, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -689,8 +689,8 @@ func TestModelSlashWizardNavigationKeysMoveBackAndClose(t *testing.T) {
 	model = next.(Model)
 	next, _ = model.Update(cmd())
 	model = next.(Model)
-	if model.state.Query.SlashWizard != nil {
-		t.Fatalf("state.Query.SlashWizard = %#v, want nil", model.state.Query.SlashWizard)
+	if model.state.Interaction.SlashWizard != nil {
+		t.Fatalf("state.Query.SlashWizard = %#v, want nil", model.state.Interaction.SlashWizard)
 	}
 	if got, want := model.state.Status, "Closed the slash command wizard."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -705,7 +705,7 @@ func TestModelSubmitUnknownSlashCommandShowsErrorAndSkipsSQLExecution(t *testing
 		}
 	}()
 
-	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
 	model.state.SetReady("")
 	model.command.editor.SetValue("/wat")
 	model.syncCurrentSQL()
@@ -722,8 +722,8 @@ func TestModelSubmitUnknownSlashCommandShowsErrorAndSkipsSQLExecution(t *testing
 	if got, want := model.state.Status, "/wat failed: unknown slash command /wat"; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
-	if model.state.Query.LatestResult != nil {
-		t.Fatalf("state.Query.LatestResult = %#v, want nil", model.state.Query.LatestResult)
+	if model.state.Interaction.LatestResult != nil {
+		t.Fatalf("state.Query.LatestResult = %#v, want nil", model.state.Interaction.LatestResult)
 	}
 
 	var count int
@@ -736,7 +736,7 @@ func TestModelSubmitUnknownSlashCommandShowsErrorAndSkipsSQLExecution(t *testing
 }
 
 func TestSlashCommandCancellationUsesFriendlyStatus(t *testing.T) {
-	model := NewModel(Session{}, nil)
+	model := NewModel(ConnectionInfo{}, nil)
 	model.state.SetReady("")
 	model.state.SetRunningQueryContext(&RunningQueryContext{Label: "/tables", Elapsed: 1200 * time.Millisecond})
 
@@ -768,7 +768,7 @@ func TestModelSubmitNeedsTargetCommandWithoutArgOpensTableSelection(t *testing.T
 		t.Fatalf("ExecContext(create table) error = %v", err)
 	}
 
-	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
 	model.state.SetReady("")
 	{
 		m, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -783,7 +783,7 @@ func TestModelSubmitNeedsTargetCommandWithoutArgOpensTableSelection(t *testing.T
 	}
 	model = next.(Model)
 
-	wizard := model.state.Query.SlashWizard
+	wizard := model.state.Interaction.SlashWizard
 	if wizard == nil {
 		t.Fatal("state.Query.SlashWizard = nil, want table selection wizard")
 	}
@@ -833,7 +833,7 @@ func TestModelSubmitNeedsTargetCommandWithoutArgConfirmDispatchesCommand(t *test
 		t.Fatalf("ExecContext(create table) error = %v", err)
 	}
 
-	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
 	model.state.SetReady("")
 	model.command.editor.SetValue("/select")
 	model.syncCurrentSQL()
@@ -842,7 +842,7 @@ func TestModelSubmitNeedsTargetCommandWithoutArgConfirmDispatchesCommand(t *test
 	next, _ := model.Update(submitIntentMsg{})
 	model = next.(Model)
 
-	if model.state.Query.SlashWizard == nil {
+	if model.state.Interaction.SlashWizard == nil {
 		t.Fatal("wizard not opened after /select without args")
 	}
 
@@ -852,14 +852,14 @@ func TestModelSubmitNeedsTargetCommandWithoutArgConfirmDispatchesCommand(t *test
 		t.Fatal("Update(submitIntentMsg{}) cmd = nil after confirming table, want dispatch command")
 	}
 	model = next.(Model)
-	if got, want := model.state.Query.Running.Label, "/select"; got != want {
+	if got, want := model.state.Interaction.Running.Label, "/select"; got != want {
 		t.Fatalf("Running.Label = %q, want %q", got, want)
 	}
 
 	next, _ = model.Update(firstCommandMessageForTest[slashCommandExecutedMsg](t, cmd))
 	model = next.(Model)
 
-	if model.state.Query.SlashWizard != nil {
+	if model.state.Interaction.SlashWizard != nil {
 		t.Fatalf("wizard still open after dispatch; want nil")
 	}
 	for _, want := range []string{"SELECT", `FROM "main"."widgets";`} {
@@ -870,7 +870,7 @@ func TestModelSubmitNeedsTargetCommandWithoutArgConfirmDispatchesCommand(t *test
 }
 
 func TestModelSubmitNeedsTargetCommandWithoutArgEscClosesWizard(t *testing.T) {
-	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
 	model.state.SetReady("")
 	model.state.SetSlashWizardContext(&SlashCommandWizardContext{
 		Step: SlashCommandWizardStepTarget,
@@ -894,8 +894,8 @@ func TestModelSubmitNeedsTargetCommandWithoutArgEscClosesWizard(t *testing.T) {
 	next, _ = model.Update(cmd())
 	model = next.(Model)
 
-	if model.state.Query.SlashWizard != nil {
-		t.Fatalf("state.Query.SlashWizard = %#v, want nil (closed)", model.state.Query.SlashWizard)
+	if model.state.Interaction.SlashWizard != nil {
+		t.Fatalf("state.Query.SlashWizard = %#v, want nil (closed)", model.state.Interaction.SlashWizard)
 	}
 	if got, want := model.state.Status, "Closed the slash command wizard."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)

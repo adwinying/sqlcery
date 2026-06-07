@@ -17,9 +17,9 @@ import (
 )
 
 type Model struct {
-	session         Session
+	session         ConnectionInfo
 	adapter         *db.SQLAdapter
-	history         *apphistory.Session
+	history         *apphistory.History
 	executionCancel context.CancelFunc
 	command         commandModeModel
 	viewer          recordViewerModeModel
@@ -37,7 +37,7 @@ type autocompleteSchemaLoader func(context.Context, *db.SQLAdapter) (*Autocomple
 type modelDependencies struct {
 	cache   *autocompleteSchemaCache
 	loader  autocompleteSchemaLoader
-	history *apphistory.Session
+	history *apphistory.History
 }
 
 // nopCmd is a non-nil tea.Cmd that produces no message. Use it when a key
@@ -120,11 +120,11 @@ type runningTickMsg struct {
 
 const defaultInteractiveExecutionTimeout = 30 * time.Second
 
-func NewModel(session Session, adapter *db.SQLAdapter) Model {
+func NewModel(session ConnectionInfo, adapter *db.SQLAdapter) Model {
 	return newModelWithDependencies(session, adapter, modelDependencies{})
 }
 
-func newModelWithDependencies(session Session, adapter *db.SQLAdapter, deps modelDependencies) Model {
+func newModelWithDependencies(session ConnectionInfo, adapter *db.SQLAdapter, deps modelDependencies) Model {
 	cache := deps.cache
 	if cache == nil {
 		cache = newAutocompleteSchemaCache()
@@ -137,7 +137,7 @@ func newModelWithDependencies(session Session, adapter *db.SQLAdapter, deps mode
 
 	sessionHistory := deps.history
 	if sessionHistory == nil {
-		sessionHistory = apphistory.NewSession()
+		sessionHistory = apphistory.NewHistory()
 	}
 
 	model := Model{
@@ -172,7 +172,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.state.Query.ActiveMode == ModeHistorySearch {
+		if m.state.Interaction.ActiveMode == ModeHistorySearch {
 			if msg.String() != "ctrl+c" {
 				m.pendingQuit = false
 			}
@@ -213,7 +213,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			// If a popup/overlay is open, close it instead of quitting
-			if m.state.Query.SlashWizard != nil {
+			if m.state.Interaction.SlashWizard != nil {
 				m.pendingQuit = false
 				return m, func() tea.Msg { return slashWizardCloseIntentMsg{} }
 			}
@@ -235,17 +235,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case submitIntentMsg:
-		if running := m.state.Query.Running; running != nil {
+		if running := m.state.Interaction.Running; running != nil {
 			m.state.SetPendingIntent(IntentSubmit, "submit", fmt.Sprintf("%s is still running. Press esc to cancel; timeout after %s.", runningLabel(running), formatExecutionTimeout(defaultInteractiveExecutionTimeout)))
 			return m, nil
 		}
 
-		if wizard := m.state.Query.SlashWizard; wizard != nil {
+		if wizard := m.state.Interaction.SlashWizard; wizard != nil {
 			return m.submitSlashWizard(wizard)
 		}
 
 		m.syncCurrentSQL()
-		submittedSQL := m.state.Query.CurrentSQL
+		submittedSQL := m.state.Interaction.CurrentSQL
 		if strings.TrimSpace(submittedSQL) == "" {
 			m.state.SetRunningQueryContext(nil)
 			m.state.SetReady("")
@@ -273,7 +273,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Session: m.session,
 				Adapter: m.adapter,
 				Dialect: m.adapterDialect(),
-				Query:   m.state.Query.snapshot(),
+				Query:   m.state.Interaction.snapshot(),
 			}, *parsedSlash))
 		}
 
@@ -286,7 +286,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.SetLastSubmittedSQL(submittedSQL)
 		return m, m.startExecution("SQL", fmt.Sprintf("Executing %d characters of SQL.", len(submittedSQL)), executeStatementCmd(m.adapter, submittedSQL))
 	case cancelRunningIntentMsg:
-		if running := m.state.Query.Running; running != nil {
+		if running := m.state.Interaction.Running; running != nil {
 			if m.executionCancel != nil {
 				m.executionCancel()
 			}
@@ -294,12 +294,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case statementExecutedMsg:
-		running := m.state.Query.Running
+		running := m.state.Interaction.Running
 		m.clearExecution()
 		historyErr := m.appendSessionHistory(msg.Query, msg.ResultSummary)
 		m.state.SetRunningQueryContext(nil)
-		m.state.Query.PendingIntent = IntentNone
-		m.state.Query.LastAction = "submit"
+		m.state.Interaction.PendingIntent = IntentNone
+		m.state.Interaction.LastAction = "submit"
 		m.state.SetPendingModeSwitch(nil)
 		if msg.Err != nil {
 			if status, ok := executionInterruptedStatus(running, msg.Err); ok {
@@ -322,7 +322,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.SetLatestResultContext(buildLatestResultContext(msg.Query, m.resultOriginMode(), msg.Result))
 		return m, nil
 	case slashCommandExecutedMsg:
-		running := m.state.Query.Running
+		running := m.state.Interaction.Running
 		m.clearExecution()
 		shouldRecordSlashCommand := msg.Err != nil || !msg.Result.ShouldReplace
 		var historyErr error
@@ -331,8 +331,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state.SetLastSubmittedSQL(msg.Command.RawInput)
 		}
 		m.state.SetRunningQueryContext(nil)
-		m.state.Query.PendingIntent = IntentNone
-		m.state.Query.LastAction = "slash:" + msg.Command.DisplayName
+		m.state.Interaction.PendingIntent = IntentNone
+		m.state.Interaction.LastAction = "slash:" + msg.Command.DisplayName
 		m.state.SetPendingModeSwitch(nil)
 		if msg.Err != nil {
 			m.state.SetSlashWizardContext(nil)
@@ -379,7 +379,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.SetReady("Closed the slash command wizard.")
 		return m, nil
 	case toggleHelpIntentMsg:
-		visible := !m.state.Query.HelpVisible
+		visible := !m.state.Interaction.HelpVisible
 		m.state.SetHelpVisible(visible)
 		if visible {
 			m.state.SetPendingIntent(IntentNone, "help", "Opened help for keybindings and slash commands.")
@@ -388,7 +388,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case clearInputIntentMsg:
-		if m.state.Query.SlashWizard != nil {
+		if m.state.Interaction.SlashWizard != nil {
 			m.state.SetSlashWizardContext(nil)
 		}
 		m.command.Clear()
@@ -403,7 +403,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case switchModeIntentMsg:
 		m.syncCurrentSQL()
-		switchContext := buildModeSwitchContext(m.state.Query.Layout, nextLayoutForModeIntent(m.state.Query.Layout, m.state.Query.ActiveMode), m.state.Query.ActiveMode, nextModeForIntent(m.state.Query.ActiveMode), m.state.Query.LatestResult)
+		switchContext := buildModeSwitchContext(m.state.Interaction.Layout, nextLayoutForModeIntent(m.state.Interaction.Layout, m.state.Interaction.ActiveMode), m.state.Interaction.ActiveMode, nextModeForIntent(m.state.Interaction.ActiveMode), m.state.Interaction.LatestResult)
 		m.applyModeSwitch(switchContext)
 		m.syncPaneSizes()
 		return m, nil
@@ -444,7 +444,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.SetError(message, msg.Status)
 		return m, nil
 	case runningTickMsg:
-		running := m.state.Query.Running
+		running := m.state.Interaction.Running
 		if running == nil || !running.StartedAt.Equal(msg.StartedAt) {
 			return m, nil
 		}
@@ -462,12 +462,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncPaneSizes()
 	}
 
-	if m.state.Query.ActiveMode == ModeRecordViewer && !layoutShowsCommand(m.state.Query.Layout) {
+	if m.state.Interaction.ActiveMode == ModeRecordViewer && !layoutShowsCommand(m.state.Interaction.Layout) {
 		return m, nil
 	}
 
 	var cmd tea.Cmd
-	m.command, cmd = m.command.Update(msg, m.state.Query)
+	m.command, cmd = m.command.Update(msg, m.state.Interaction)
 	m.syncCurrentSQL()
 	return m, cmd
 }
@@ -545,7 +545,7 @@ func (m *Model) syncPaneSizes() {
 		innerWidth = minimumEditorWidth
 	}
 
-	switch m.state.Query.Layout {
+	switch m.state.Interaction.Layout {
 	case LayoutSplit:
 		viewerOuterH := int(float64(contentHeight) * m.splitRatio)
 		if viewerOuterH < 3 {
@@ -631,16 +631,16 @@ func (m Model) renderBorderedPane(content string, title string, active bool, out
 }
 
 func (m Model) readyStateView(totalHeight int) string {
-	query := m.state.Query
+	interaction := m.state.Interaction
 	w := m.width
 	if w < 4 {
 		w = 4
 	}
 
-	helpOverlay := renderHelpSurface(query)
+	helpOverlay := renderHelpSurface(interaction)
 
 	var base string
-	switch query.Layout {
+	switch interaction.Layout {
 	case LayoutSplit:
 		viewerOuterH := int(float64(totalHeight) * m.splitRatio)
 		if viewerOuterH < 3 {
@@ -650,17 +650,17 @@ func (m Model) readyStateView(totalHeight int) string {
 		if commandOuterH < 3 {
 			commandOuterH = 3
 		}
-		viewerContent := m.viewer.View(query)
-		commandContent := m.command.View(query)
-		viewerActive := query.ActiveMode == ModeRecordViewer
+		viewerContent := m.viewer.View(interaction)
+		commandContent := m.command.View(interaction)
+		viewerActive := interaction.ActiveMode == ModeRecordViewer
 		viewerPane := m.renderBorderedPane(viewerContent, "[1] Results", viewerActive, w, viewerOuterH-2)
 		commandPane := m.renderBorderedPane(commandContent, "[2] Commands", !viewerActive, w, commandOuterH-2)
 		base = viewerPane + "\n" + commandPane
 	case LayoutViewerOnly:
-		viewerContent := m.viewer.View(query)
+		viewerContent := m.viewer.View(interaction)
 		base = m.renderBorderedPane(viewerContent, "[1] Results", true, w, totalHeight-2)
 	default: // LayoutCommandOnly
-		commandContent := m.command.View(query)
+		commandContent := m.command.View(interaction)
 		base = m.renderBorderedPane(commandContent, "[2] Commands", true, w, totalHeight-2)
 	}
 
@@ -671,9 +671,9 @@ func (m Model) readyStateView(totalHeight int) string {
 	}
 
 	// Overlay popup window for history search and slash wizard.
-	popupContent := renderHistorySearch(query)
+	popupContent := renderHistorySearch(interaction)
 	if popupContent == "" {
-		popupContent = renderSlashWizard(query)
+		popupContent = renderSlashWizard(interaction)
 	}
 	if popupContent != "" {
 		maxW := min(popupBoxMaxWidth, w-4)
@@ -687,11 +687,11 @@ func (m Model) readyStateView(totalHeight int) string {
 }
 
 func (m Model) statusBarView() string {
-	query := m.state.Query
+	interaction := m.state.Interaction
 	var parts []string
 
 	// Running indicator
-	if running := query.Running; running != nil {
+	if running := interaction.Running; running != nil {
 		parts = append(parts, formatRunningIndicator(running))
 	}
 
@@ -705,7 +705,7 @@ func (m Model) statusBarView() string {
 
 	// Keybind hints
 	if m.state.App.Current == StateReady {
-		parts = append(parts, m.command.FooterHints(query))
+		parts = append(parts, m.command.FooterHints(interaction))
 	} else {
 		parts = append(parts, "ctrl+c quit")
 	}
@@ -748,7 +748,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case msg.String() == "enter":
 		// Enter always submits when a slash wizard popup is open.
-		if m.state.Query.SlashWizard != nil {
+		if m.state.Interaction.SlashWizard != nil {
 			return func() tea.Msg { return submitIntentMsg{} }
 		}
 		// Enter submits when statement is complete (ends with ;), otherwise
@@ -764,20 +764,20 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, keys.Submit):
 		return func() tea.Msg { return submitIntentMsg{} }
 	case key.Matches(msg, keys.NextSuggestion):
-		if m.state.Query.SlashWizard != nil {
+		if m.state.Interaction.SlashWizard != nil {
 			return func() tea.Msg { return slashWizardMoveIntentMsg{Delta: 1} }
 		}
 		return nil
 	case key.Matches(msg, keys.PrevSuggestion):
-		if m.state.Query.SlashWizard != nil {
+		if m.state.Interaction.SlashWizard != nil {
 			return func() tea.Msg { return slashWizardMoveIntentMsg{Delta: -1} }
 		}
 		return nil
 	case key.Matches(msg, keys.Cancel):
-		if m.state.Query.Running != nil {
+		if m.state.Interaction.Running != nil {
 			return func() tea.Msg { return cancelRunningIntentMsg{} }
 		}
-		if wizard := m.state.Query.SlashWizard; wizard != nil {
+		if wizard := m.state.Interaction.SlashWizard; wizard != nil {
 			if wizard.Step == SlashCommandWizardStepTarget {
 				// If a filter is active, clear it first
 			if strings.TrimSpace(wizard.TargetFilter) != "" {
@@ -792,7 +792,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return func() tea.Msg { return slashWizardCloseIntentMsg{} }
 		}
 		// If the autocomplete dropdown is visible, dismiss it and preserve input.
-		if m.command.AutocompleteVisible(m.state.Query) {
+		if m.command.AutocompleteVisible(m.state.Interaction) {
 			m.command.DismissAutocomplete()
 		}
 		return nopCmd
@@ -810,19 +810,19 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
 	case msg.String() == "ctrl+z":
 		return func() tea.Msg { return toggleZoomIntentMsg{} }
-	case m.state.Query.SlashWizard != nil && m.state.Query.SlashWizard.Step == SlashCommandWizardStepTarget &&
+	case m.state.Interaction.SlashWizard != nil && m.state.Interaction.SlashWizard.Step == SlashCommandWizardStepTarget &&
 		(msg.String() == "backspace" || msg.String() == "ctrl+h" || msg.String() == "delete"):
-		wizard := m.state.Query.SlashWizard
+		wizard := m.state.Interaction.SlashWizard
 		m.updateWizardTargetFilter(trimLastRune(wizard.TargetFilter))
 		return nopCmd
-	case m.state.Query.SlashWizard != nil && m.state.Query.SlashWizard.Step == SlashCommandWizardStepTarget &&
+	case m.state.Interaction.SlashWizard != nil && m.state.Interaction.SlashWizard.Step == SlashCommandWizardStepTarget &&
 		msg.String() == "space":
-		wizard := m.state.Query.SlashWizard
+		wizard := m.state.Interaction.SlashWizard
 		m.updateWizardTargetFilter(wizard.TargetFilter + " ")
 		return nopCmd
-	case m.state.Query.SlashWizard != nil && m.state.Query.SlashWizard.Step == SlashCommandWizardStepTarget &&
+	case m.state.Interaction.SlashWizard != nil && m.state.Interaction.SlashWizard.Step == SlashCommandWizardStepTarget &&
 		len(msg.Text) > 0 && !msg.Mod.Contains(tea.ModAlt):
-		wizard := m.state.Query.SlashWizard
+		wizard := m.state.Interaction.SlashWizard
 		m.updateWizardTargetFilter(wizard.TargetFilter + msg.Text)
 		return nopCmd
 	default:
@@ -854,13 +854,13 @@ func (m *Model) handleRecordViewerPagingKey(msg tea.KeyPressMsg) bool {
 	if !isScroll && !isPaging {
 		return false
 	}
-	if m.state.Query.ActiveMode != ModeRecordViewer {
+	if m.state.Interaction.ActiveMode != ModeRecordViewer {
 		m.viewer.pendingAction = recordViewerPendingActionNone
 		return false
 	}
 	m.viewer.pendingAction = recordViewerPendingActionNone
 
-	latest := m.state.Query.LatestResult
+	latest := m.state.Interaction.LatestResult
 	if latest == nil || latest.PreservedResult == nil {
 		m.state.SetPendingIntent(IntentNone, "viewer-page", "Record viewer has no rows to page.")
 		return true
@@ -874,8 +874,8 @@ func (m *Model) handleRecordViewerPagingKey(msg tea.KeyPressMsg) bool {
 		if len(result.Rows) == 0 {
 			return true
 		}
-		m.viewer.syncSelection(m.state.Query)
-		page := recordViewerPageContextFor(m.state.Query.ViewerPage, len(result.Rows))
+		m.viewer.syncSelection(m.state.Interaction)
+		page := recordViewerPageContextFor(m.state.Interaction.ViewerPage, len(result.Rows))
 		pageMinRow := page.StartRow - 1 // inclusive lower bound (0-indexed)
 		pageMaxRow := page.EndRow - 1   // inclusive upper bound (0-indexed)
 		scrollAmount := max(1, m.viewer.height/2)
@@ -890,15 +890,15 @@ func (m *Model) handleRecordViewerPagingKey(msg tea.KeyPressMsg) bool {
 	}
 
 	// ctrl+p = prev page, ctrl+n = next page
-	previous := m.state.Query.ViewerPage
+	previous := m.state.Interaction.ViewerPage
 	if key == "ctrl+p" {
 		m.state.ChangeViewerPage(-1)
 	} else {
 		m.state.ChangeViewerPage(1)
 	}
 
-	page := recordViewerPageContextFor(m.state.Query.ViewerPage, len(latest.PreservedResult.Rows))
-	if m.state.Query.ViewerPage == previous {
+	page := recordViewerPageContextFor(m.state.Interaction.ViewerPage, len(latest.PreservedResult.Rows))
+	if m.state.Interaction.ViewerPage == previous {
 		if previous == 0 {
 			m.state.SetPendingIntent(IntentNone, "viewer-page", fmt.Sprintf("Already at the first record viewer page (%s).", formatRecordViewerRowRange(page)))
 			return true
@@ -912,12 +912,12 @@ func (m *Model) handleRecordViewerPagingKey(msg tea.KeyPressMsg) bool {
 }
 
 func (m *Model) handleRecordViewerNavigationKey(msg tea.KeyPressMsg) bool {
-	if m.state.Query.ActiveMode != ModeRecordViewer {
+	if m.state.Interaction.ActiveMode != ModeRecordViewer {
 		m.viewer.pendingAction = recordViewerPendingActionNone
 		return false
 	}
 
-	page, handled := m.viewer.Navigate(msg, m.state.Query)
+	page, handled := m.viewer.Navigate(msg, m.state.Interaction)
 	if !handled {
 		return false
 	}
@@ -931,29 +931,29 @@ func (m *Model) handleRecordViewerSelectionKey(msg tea.KeyPressMsg) bool {
 	if msg.String() != "space" && msg.String() != " " {
 		return false
 	}
-	if m.state.Query.ActiveMode != ModeRecordViewer {
+	if m.state.Interaction.ActiveMode != ModeRecordViewer {
 		m.viewer.pendingAction = recordViewerPendingActionNone
 		return false
 	}
 	m.viewer.pendingAction = recordViewerPendingActionNone
 
-	row, selected, handled := m.viewer.ToggleSelectedRow(&m.state.Query)
+	row, selected, handled := m.viewer.ToggleSelectedRow(&m.state.Interaction)
 	if !handled {
 		m.state.SetPendingIntent(IntentNone, "viewer-select", "Record viewer has no rows to select.")
 		return true
 	}
 
 	if selected {
-		m.state.SetPendingIntent(IntentNone, "viewer-select", fmt.Sprintf("Selected row %d (%d total).", row+1, len(m.state.Query.LatestResult.SelectedRows)))
+		m.state.SetPendingIntent(IntentNone, "viewer-select", fmt.Sprintf("Selected row %d (%d total).", row+1, len(m.state.Interaction.LatestResult.SelectedRows)))
 		return true
 	}
 
-	m.state.SetPendingIntent(IntentNone, "viewer-select", fmt.Sprintf("Unselected row %d (%d total).", row+1, len(m.state.Query.LatestResult.SelectedRows)))
+	m.state.SetPendingIntent(IntentNone, "viewer-select", fmt.Sprintf("Unselected row %d (%d total).", row+1, len(m.state.Interaction.LatestResult.SelectedRows)))
 	return true
 }
 
 func (m *Model) handleRecordViewerComposeKey(msg tea.KeyPressMsg) bool {
-	if m.state.Query.ActiveMode != ModeRecordViewer {
+	if m.state.Interaction.ActiveMode != ModeRecordViewer {
 		m.viewer.pendingAction = recordViewerPendingActionNone
 		return false
 	}
@@ -994,12 +994,12 @@ func (m *Model) handleRecordViewerComposeKey(msg tea.KeyPressMsg) bool {
 }
 
 func (m *Model) composeRecordViewerInsert() bool {
-	if m.state.Query.LatestResult == nil || m.state.Query.LatestResult.PreservedResult == nil {
+	if m.state.Interaction.LatestResult == nil || m.state.Interaction.LatestResult.PreservedResult == nil {
 		m.state.SetPendingIntent(IntentNone, "viewer-compose", "Record viewer has no rows to compose.")
 		return true
 	}
 
-	result, err := composeRecordViewerInsertSQL(m.adapterDialect(), m.state.Query.LatestResult, m.viewer.selectedRow)
+	result, err := composeRecordViewerInsertSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.viewer.selectedRow)
 	if err != nil {
 		m.state.SetPendingIntent(IntentNone, "viewer-compose", fmt.Sprintf("Could not compose INSERT: %v", err))
 		return true
@@ -1009,7 +1009,7 @@ func (m *Model) composeRecordViewerInsert() bool {
 	m.syncCurrentSQL()
 	m.closeHistorySearch()
 	m.command.Focus()
-	m.state.SetLayout(nextLayoutForModeIntent(m.state.Query.Layout, ModeRecordViewer))
+	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, ModeRecordViewer))
 	m.state.SetActiveMode(ModeCommand)
 	m.state.SetPendingModeSwitch(nil)
 	m.state.SetPendingIntent(IntentNone, "viewer-compose", recordViewerComposeStatus(result))
@@ -1018,12 +1018,12 @@ func (m *Model) composeRecordViewerInsert() bool {
 }
 
 func (m *Model) composeRecordViewerUpdate() bool {
-	if m.state.Query.LatestResult == nil || m.state.Query.LatestResult.PreservedResult == nil {
+	if m.state.Interaction.LatestResult == nil || m.state.Interaction.LatestResult.PreservedResult == nil {
 		m.state.SetPendingIntent(IntentNone, "viewer-compose", "Record viewer has no rows to compose.")
 		return true
 	}
 
-	result, err := composeRecordViewerUpdateSQL(m.adapterDialect(), m.state.Query.LatestResult, m.viewer.selectedRow)
+	result, err := composeRecordViewerUpdateSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.viewer.selectedRow)
 	if err != nil {
 		m.state.SetPendingIntent(IntentNone, "viewer-compose", fmt.Sprintf("Could not compose UPDATE: %v", err))
 		return true
@@ -1033,7 +1033,7 @@ func (m *Model) composeRecordViewerUpdate() bool {
 	m.syncCurrentSQL()
 	m.closeHistorySearch()
 	m.command.Focus()
-	m.state.SetLayout(nextLayoutForModeIntent(m.state.Query.Layout, ModeRecordViewer))
+	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, ModeRecordViewer))
 	m.state.SetActiveMode(ModeCommand)
 	m.state.SetPendingModeSwitch(nil)
 	m.state.SetPendingIntent(IntentNone, "viewer-compose", recordViewerComposeStatus(result))
@@ -1042,12 +1042,12 @@ func (m *Model) composeRecordViewerUpdate() bool {
 }
 
 func (m *Model) composeRecordViewerDelete() bool {
-	if m.state.Query.LatestResult == nil || m.state.Query.LatestResult.PreservedResult == nil {
+	if m.state.Interaction.LatestResult == nil || m.state.Interaction.LatestResult.PreservedResult == nil {
 		m.state.SetPendingIntent(IntentNone, "viewer-compose", "Record viewer has no rows to compose.")
 		return true
 	}
 
-	result, err := composeRecordViewerDeleteSQL(m.adapterDialect(), m.state.Query.LatestResult, m.viewer.selectedRow)
+	result, err := composeRecordViewerDeleteSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.viewer.selectedRow)
 	if err != nil {
 		m.state.SetPendingIntent(IntentNone, "viewer-compose", fmt.Sprintf("Could not compose DELETE: %v", err))
 		return true
@@ -1057,7 +1057,7 @@ func (m *Model) composeRecordViewerDelete() bool {
 	m.syncCurrentSQL()
 	m.closeHistorySearch()
 	m.command.Focus()
-	m.state.SetLayout(nextLayoutForModeIntent(m.state.Query.Layout, ModeRecordViewer))
+	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, ModeRecordViewer))
 	m.state.SetActiveMode(ModeCommand)
 	m.state.SetPendingModeSwitch(nil)
 	m.state.SetPendingIntent(IntentNone, "viewer-compose", recordViewerComposeStatus(result))
@@ -1244,7 +1244,7 @@ func (m *Model) openTableSelectionForCommand(parsed *slashCommand) (Model, tea.C
 		Session: m.session,
 		Adapter: m.adapter,
 		Dialect: m.adapterDialect(),
-		Query:   m.state.Query.snapshot(),
+		Query:   m.state.Interaction.snapshot(),
 	}
 
 	commands := buildSlashWizardCommands()
@@ -1308,7 +1308,7 @@ func (m *Model) submitSlashWizard(wizard *SlashCommandWizardContext) (Model, tea
 				Session: m.session,
 				Adapter: m.adapter,
 				Dialect: m.adapterDialect(),
-				Query:   m.state.Query.snapshot(),
+				Query:   m.state.Interaction.snapshot(),
 			}, wizard.Commands, selectedCommand, wizard.SelectedCommand)
 			if err != nil {
 				m.state.SetReady(fmt.Sprintf("/commands failed: %v", err))
@@ -1337,7 +1337,7 @@ func (m *Model) submitSlashWizard(wizard *SlashCommandWizardContext) (Model, tea
 			Session: m.session,
 			Adapter: m.adapter,
 			Dialect: m.adapterDialect(),
-			Query:   m.state.Query.snapshot(),
+			Query:   m.state.Interaction.snapshot(),
 		}, parsed))
 	}
 
@@ -1346,12 +1346,12 @@ func (m *Model) submitSlashWizard(wizard *SlashCommandWizardContext) (Model, tea
 		Session: m.session,
 		Adapter: m.adapter,
 		Dialect: m.adapterDialect(),
-		Query:   m.state.Query.snapshot(),
+		Query:   m.state.Interaction.snapshot(),
 	}, parsed))
 }
 
 func (m *Model) moveSlashWizardSelection(delta int) {
-	wizard := cloneSlashCommandWizardContext(m.state.Query.SlashWizard)
+	wizard := cloneSlashCommandWizardContext(m.state.Interaction.SlashWizard)
 	if wizard == nil || delta == 0 {
 		return
 	}
@@ -1377,7 +1377,7 @@ func (m *Model) moveSlashWizardSelection(delta int) {
 }
 
 func (m *Model) updateWizardTargetFilter(query string) {
-	wizard := cloneSlashCommandWizardContext(m.state.Query.SlashWizard)
+	wizard := cloneSlashCommandWizardContext(m.state.Interaction.SlashWizard)
 	if wizard == nil || wizard.Step != SlashCommandWizardStepTarget {
 		return
 	}
@@ -1393,7 +1393,7 @@ func (m *Model) updateWizardTargetFilter(query string) {
 }
 
 func (m *Model) stepBackSlashWizard() {
-	wizard := cloneSlashCommandWizardContext(m.state.Query.SlashWizard)
+	wizard := cloneSlashCommandWizardContext(m.state.Interaction.SlashWizard)
 	if wizard == nil || wizard.Step != SlashCommandWizardStepTarget {
 		return
 	}
@@ -1515,13 +1515,13 @@ func (m Model) adapterDialect() db.Dialect {
 }
 
 func (m Model) resultOriginMode() AppMode {
-	if m.state.Query.ActiveMode == ModeHistorySearch {
+	if m.state.Interaction.ActiveMode == ModeHistorySearch {
 		return ModeCommand
 	}
-	if layoutShowsCommand(m.state.Query.Layout) {
+	if layoutShowsCommand(m.state.Interaction.Layout) {
 		return ModeCommand
 	}
-	return m.state.Query.ActiveMode
+	return m.state.Interaction.ActiveMode
 }
 
 func buildLatestResultContext(query string, originMode AppMode, result *db.StatementResult) *LatestResultContext {
@@ -1656,7 +1656,7 @@ func (m *Model) applyModeSwitch(context *ModeSwitchContext) {
 }
 
 func (m *Model) applyLayoutSwitch(layout AppLayout) {
-	current := m.state.Query.Layout
+	current := m.state.Interaction.Layout
 	if layout == "" {
 		layout = LayoutCommandOnly
 	}
@@ -1672,36 +1672,36 @@ func (m *Model) applyLayoutSwitch(layout AppLayout) {
 
 	switch layout {
 	case LayoutViewerOnly:
-		if m.state.Query.ActiveMode == ModeHistorySearch {
+		if m.state.Interaction.ActiveMode == ModeHistorySearch {
 			m.closeHistorySearch()
 		}
 		m.command.Blur()
 		m.state.SetActiveMode(ModeRecordViewer)
-		if latest := m.state.Query.LatestResult; latest != nil && latest.PreservedResult != nil {
+		if latest := m.state.Interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
 			m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s with %d row(s) visible.", layoutLabel(layout), len(latest.PreservedResult.Rows)))
 			return
 		}
 		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s. Run a query that returns rows to populate the viewer.", layoutLabel(layout)))
 	case LayoutSplit:
-		if m.state.Query.ActiveMode == ModeRecordViewer {
+		if m.state.Interaction.ActiveMode == ModeRecordViewer {
 			m.command.Blur()
 		} else {
 			m.command.Focus()
 		}
-		if m.state.Query.ActiveMode == ModeHistorySearch {
+		if m.state.Interaction.ActiveMode == ModeHistorySearch {
 			m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s. History search stays open in the command line.", layoutLabel(layout)))
 			return
 		}
 		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s.", layoutLabel(layout)))
 	case LayoutCommandOnly:
-		if m.state.Query.ActiveMode == ModeRecordViewer {
+		if m.state.Interaction.ActiveMode == ModeRecordViewer {
 			m.state.SetActiveMode(ModeCommand)
 		}
 		m.command.Focus()
 		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s.", layoutLabel(layout)))
 	default:
 		m.command.Focus()
-		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s.", layoutLabel(m.state.Query.Layout)))
+		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s.", layoutLabel(m.state.Interaction.Layout)))
 	}
 }
 
@@ -1711,7 +1711,7 @@ func (m *Model) handleFocusPane(pane PaneTarget) {
 	switch pane {
 	case PaneResults:
 		m.closeHistorySearch()
-		switch m.state.Query.Layout {
+		switch m.state.Interaction.Layout {
 		case LayoutCommandOnly:
 			m.command.Blur()
 			m.state.SetLayout(LayoutSplit)
@@ -1727,7 +1727,7 @@ func (m *Model) handleFocusPane(pane PaneTarget) {
 		}
 	case PaneCommand:
 		m.closeHistorySearch()
-		switch m.state.Query.Layout {
+		switch m.state.Interaction.Layout {
 		case LayoutViewerOnly:
 			m.command.Focus()
 			m.state.SetLayout(LayoutSplit)
@@ -1746,9 +1746,9 @@ func (m *Model) handleFocusPane(pane PaneTarget) {
 }
 
 func (m *Model) handleToggleZoom() {
-	switch m.state.Query.Layout {
+	switch m.state.Interaction.Layout {
 	case LayoutSplit:
-		if m.state.Query.ActiveMode == ModeRecordViewer {
+		if m.state.Interaction.ActiveMode == ModeRecordViewer {
 			m.command.Blur()
 			m.state.SetLayout(LayoutViewerOnly)
 			m.state.SetActiveMode(ModeRecordViewer)
@@ -1773,8 +1773,8 @@ func (m *Model) handleToggleZoom() {
 	}
 }
 
-func renderHelpSurface(query InteractionState) string {
-	if !query.HelpVisible {
+func renderHelpSurface(st InteractionState) string {
+	if !st.HelpVisible {
 		return ""
 	}
 
@@ -1792,7 +1792,7 @@ func renderHelpSurface(query InteractionState) string {
 		"ctrl+y accept suggestion; ctrl+n/ctrl+p move suggestion",
 		"ctrl+x switch focus; ctrl+z zoom; ctrl+1 focus results; ctrl+2 focus command; ctrl+3 command layout",
 	}
-	if query.ActiveMode == ModeHistorySearch {
+	if st.ActiveMode == ModeHistorySearch {
 		commandLines = append(commandLines, "history search: enter restore; ctrl+r older; ctrl+n newer; esc close")
 	}
 	sections = append(sections, helpSection{Title: "Command mode", Lines: commandLines})
@@ -1803,14 +1803,14 @@ func renderHelpSurface(query InteractionState) string {
 		":w [file] export selected rows or current result rows",
 		"ctrl+u/ctrl+d scroll; ctrl+p/ctrl+n page; ctrl+x focus command",
 	}
-	if query.SlashWizard != nil {
+	if st.SlashWizard != nil {
 		viewerLines = append(viewerLines, "slash wizard: enter confirm; ctrl+n/ctrl+p move; esc back or close")
 	}
 	sections = append(sections, helpSection{Title: "Record viewer", Lines: viewerLines})
 
-	if query.Layout == LayoutSplit {
+	if st.Layout == LayoutSplit {
 		var layoutLines []string
-		if query.ActiveMode == ModeRecordViewer {
+		if st.ActiveMode == ModeRecordViewer {
 			layoutLines = []string{"Record viewer [active]", "Command line"}
 		} else {
 			layoutLines = []string{"Record viewer", "Command line [active]"}
@@ -1818,7 +1818,7 @@ func renderHelpSurface(query InteractionState) string {
 		sections = append(sections, helpSection{Title: "Layout", Lines: layoutLines})
 	}
 
-	if query.ActiveMode == ModeHistorySearch {
+	if st.ActiveMode == ModeHistorySearch {
 		sections = append(sections, helpSection{Title: "History search", Lines: []string{
 			"type to filter recent commands; enter restore selected entry",
 			"ctrl+r or up select older match; ctrl+n or down select newer match",
@@ -1826,7 +1826,7 @@ func renderHelpSurface(query InteractionState) string {
 		}})
 	}
 
-	if query.SlashWizard != nil {
+	if st.SlashWizard != nil {
 		sections = append(sections, helpSection{Title: "Command wizard", Lines: []string{
 			"/commands opens the guided slash command wizard",
 			"enter confirm selection; ctrl+n/ctrl+p move selection",

@@ -14,12 +14,12 @@ func TestNewSharedAppStateDefaultsToCommandMode(t *testing.T) {
 		t.Fatalf("state.App.Current = %q, want %q", got, want)
 	}
 
-	if got, want := state.Query.Layout, LayoutSplit; got != want {
-		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+	if got, want := state.Interaction.Layout, LayoutSplit; got != want {
+		t.Fatalf("state.Interaction.Layout = %q, want %q", got, want)
 	}
 
-	if got, want := state.Query.ActiveMode, ModeCommand; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+	if got, want := state.Interaction.ActiveMode, ModeCommand; got != want {
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 
 	if got, want := state.Status, "Starting SQLcery."; got != want {
@@ -86,7 +86,7 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 		ToLayout:      LayoutViewerOnly,
 		FromMode:      ModeCommand,
 		ToMode:        ModeRecordViewer,
-		ResultContext: state.Query.LatestResult,
+		ResultContext: state.Interaction.LatestResult,
 	})
 	state.SetSelectedHistoryEntry(&HistoryEntryContext{
 		SQL:            "select * from widgets",
@@ -96,33 +96,33 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 
 	snapshot := state.Snapshot()
 
-	state.Query.CurrentSQL = "mutated"
-	state.Query.LastSubmittedSQL = "mutated"
-	state.Query.LastAction = "mutated"
-	state.Query.Running.Label = "mutated"
-	state.Query.Layout = LayoutViewerOnly
-	state.Query.Running.Elapsed = 9 * time.Second
-	state.Query.Running.SpinnerFrame = 1
-	state.Query.SessionHistory[0].SQL = "mutated history"
-	state.Query.HistorySearch.Query = "mutated search"
+	state.Interaction.CurrentSQL = "mutated"
+	state.Interaction.LastSubmittedSQL = "mutated"
+	state.Interaction.LastAction = "mutated"
+	state.Interaction.Running.Label = "mutated"
+	state.Interaction.Layout = LayoutViewerOnly
+	state.Interaction.Running.Elapsed = 9 * time.Second
+	state.Interaction.Running.SpinnerFrame = 1
+	state.Interaction.SessionHistory[0].SQL = "mutated history"
+	state.Interaction.HistorySearch.Query = "mutated search"
 	state.App.Current = StateError
 	state.App.Reconnect.Attempt = 99
 	state.App.Reconnect.Reason = "changed"
-	state.Query.AutocompleteSchema.Tables[0].Name = "changed"
-	state.Query.AutocompleteSchema.Tables[0].Columns[0] = "changed"
-	state.Query.LatestResult.Query = "mutated"
-	state.Query.LatestResult.SelectedRows[0] = 999
-	state.Query.SlashWizard.Commands[0].DisplayName = "/mutated"
-	state.Query.SlashWizard.Targets[0].Display = "changed"
-	state.Query.PendingModeSwitch.ToMode = ModeCommand
-	state.Query.PendingModeSwitch.ResultContext.Query = "mutated switch"
-	*state.Query.LatestResult.RowsAffected = 99
-	*state.Query.LatestResult.LastInsertID = 42
-	state.Query.LatestResult.InlineRowsTruncated = false
-	state.Query.LatestResult.PreservedResult.Columns[0].Name = "changed"
-	state.Query.LatestResult.PreservedResult.Rows[0].Values[0].Value.([]byte)[0] = 'z'
-	state.Query.LatestResult.InlineResult.Rows[0].Values[0].Value.([]byte)[0] = 'q'
-	state.Query.SelectedHistoryEntry.SQL = "changed"
+	state.Interaction.AutocompleteSchema.Tables[0].Name = "changed"
+	state.Interaction.AutocompleteSchema.Tables[0].Columns[0] = "changed"
+	state.Interaction.LatestResult.Query = "mutated"
+	state.Interaction.LatestResult.SelectedRows[0] = 999
+	state.Interaction.SlashWizard.Commands[0].DisplayName = "/mutated"
+	state.Interaction.SlashWizard.Targets[0].Display = "changed"
+	state.Interaction.PendingModeSwitch.ToMode = ModeCommand
+	state.Interaction.PendingModeSwitch.ResultContext.Query = "mutated switch"
+	*state.Interaction.LatestResult.RowsAffected = 99
+	*state.Interaction.LatestResult.LastInsertID = 42
+	state.Interaction.LatestResult.InlineRowsTruncated = false
+	state.Interaction.LatestResult.PreservedResult.Columns[0].Name = "changed"
+	state.Interaction.LatestResult.PreservedResult.Rows[0].Values[0].Value.([]byte)[0] = 'z'
+	state.Interaction.LatestResult.InlineResult.Rows[0].Values[0].Value.([]byte)[0] = 'q'
+	state.Interaction.SelectedHistoryEntry.SQL = "changed"
 
 	if got, want := snapshot.App.Current, StateReconnect; got != want {
 		t.Fatalf("snapshot.App.Current = %q, want %q", got, want)
@@ -136,112 +136,112 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 		t.Fatalf("snapshot.App.Reconnect.Reason = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Query.CurrentSQL, "select * from widgets"; got != want {
-		t.Fatalf("snapshot.Query.CurrentSQL = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.CurrentSQL, "select * from widgets"; got != want {
+		t.Fatalf("snapshot.Interaction.CurrentSQL = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Query.LastSubmittedSQL, "select * from widgets"; got != want {
-		t.Fatalf("snapshot.Query.LastSubmittedSQL = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.LastSubmittedSQL, "select * from widgets"; got != want {
+		t.Fatalf("snapshot.Interaction.LastSubmittedSQL = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Query.LastAction, "submit"; got != want {
-		t.Fatalf("snapshot.Query.LastAction = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.LastAction, "submit"; got != want {
+		t.Fatalf("snapshot.Interaction.LastAction = %q, want %q", got, want)
 	}
 
-	if snapshot.Query.Running == nil {
-		t.Fatal("snapshot.Query.Running = nil, want running context")
+	if snapshot.Interaction.Running == nil {
+		t.Fatal("snapshot.Interaction.Running = nil, want running context")
 	}
 
-	if got, want := snapshot.Query.Layout, LayoutSplit; got != want {
-		t.Fatalf("snapshot.Query.Layout = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.Layout, LayoutSplit; got != want {
+		t.Fatalf("snapshot.Interaction.Layout = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Query.ViewerPage, 1; got != want {
-		t.Fatalf("snapshot.Query.ViewerPage = %d, want %d", got, want)
+	if got, want := snapshot.Interaction.ViewerPage, 1; got != want {
+		t.Fatalf("snapshot.Interaction.ViewerPage = %d, want %d", got, want)
 	}
 
-	if got, want := snapshot.Query.Running.Label, "SQL"; got != want {
-		t.Fatalf("snapshot.Query.Running.Label = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.Running.Label, "SQL"; got != want {
+		t.Fatalf("snapshot.Interaction.Running.Label = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Query.Running.Elapsed, 1500*time.Millisecond; got != want {
-		t.Fatalf("snapshot.Query.Running.Elapsed = %v, want %v", got, want)
+	if got, want := snapshot.Interaction.Running.Elapsed, 1500*time.Millisecond; got != want {
+		t.Fatalf("snapshot.Interaction.Running.Elapsed = %v, want %v", got, want)
 	}
 
-	if got, want := snapshot.Query.Running.SpinnerFrame, 2; got != want {
-		t.Fatalf("snapshot.Query.Running.SpinnerFrame = %d, want %d", got, want)
+	if got, want := snapshot.Interaction.Running.SpinnerFrame, 2; got != want {
+		t.Fatalf("snapshot.Interaction.Running.SpinnerFrame = %d, want %d", got, want)
 	}
 
-	if got, want := snapshot.Query.SessionHistory[0].SQL, "select 1"; got != want {
-		t.Fatalf("snapshot.Query.SessionHistory[0].SQL = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.SessionHistory[0].SQL, "select 1"; got != want {
+		t.Fatalf("snapshot.Interaction.SessionHistory[0].SQL = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Query.HistorySearch.Query, "sel"; got != want {
-		t.Fatalf("snapshot.Query.HistorySearch.Query = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.HistorySearch.Query, "sel"; got != want {
+		t.Fatalf("snapshot.Interaction.HistorySearch.Query = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Query.AutocompleteSchema.Tables[0].Name, "widgets"; got != want {
-		t.Fatalf("snapshot.Query.AutocompleteSchema.Tables[0].Name = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.AutocompleteSchema.Tables[0].Name, "widgets"; got != want {
+		t.Fatalf("snapshot.Interaction.AutocompleteSchema.Tables[0].Name = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Query.AutocompleteSchema.Tables[0].Columns[0], "id"; got != want {
-		t.Fatalf("snapshot.Query.AutocompleteSchema.Tables[0].Columns[0] = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.AutocompleteSchema.Tables[0].Columns[0], "id"; got != want {
+		t.Fatalf("snapshot.Interaction.AutocompleteSchema.Tables[0].Columns[0] = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Query.LatestResult.Query, "select * from widgets"; got != want {
-		t.Fatalf("snapshot.Query.LatestResult.Query = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.LatestResult.Query, "select * from widgets"; got != want {
+		t.Fatalf("snapshot.Interaction.LatestResult.Query = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Query.LatestResult.SelectedRows, []int{1, 301}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
-		t.Fatalf("snapshot.Query.LatestResult.SelectedRows = %#v, want %#v", got, want)
+	if got, want := snapshot.Interaction.LatestResult.SelectedRows, []int{1, 301}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("snapshot.Interaction.LatestResult.SelectedRows = %#v, want %#v", got, want)
 	}
 
-	if got, want := snapshot.Query.SlashWizard.Commands[0].DisplayName, "/select"; got != want {
-		t.Fatalf("snapshot.Query.SlashWizard.Commands[0].DisplayName = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.SlashWizard.Commands[0].DisplayName, "/select"; got != want {
+		t.Fatalf("snapshot.Interaction.SlashWizard.Commands[0].DisplayName = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Query.SlashWizard.Targets[0].Display, "widgets"; got != want {
-		t.Fatalf("snapshot.Query.SlashWizard.Targets[0].Display = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.SlashWizard.Targets[0].Display, "widgets"; got != want {
+		t.Fatalf("snapshot.Interaction.SlashWizard.Targets[0].Display = %q, want %q", got, want)
 	}
 
-	if snapshot.Query.LatestResult.RowsAffected == nil || *snapshot.Query.LatestResult.RowsAffected != 3 {
-		t.Fatalf("snapshot.Query.LatestResult.RowsAffected = %#v, want 3", snapshot.Query.LatestResult.RowsAffected)
+	if snapshot.Interaction.LatestResult.RowsAffected == nil || *snapshot.Interaction.LatestResult.RowsAffected != 3 {
+		t.Fatalf("snapshot.Interaction.LatestResult.RowsAffected = %#v, want 3", snapshot.Interaction.LatestResult.RowsAffected)
 	}
 
-	if snapshot.Query.LatestResult.LastInsertID == nil || *snapshot.Query.LatestResult.LastInsertID != 9 {
-		t.Fatalf("snapshot.Query.LatestResult.LastInsertID = %#v, want 9", snapshot.Query.LatestResult.LastInsertID)
+	if snapshot.Interaction.LatestResult.LastInsertID == nil || *snapshot.Interaction.LatestResult.LastInsertID != 9 {
+		t.Fatalf("snapshot.Interaction.LatestResult.LastInsertID = %#v, want 9", snapshot.Interaction.LatestResult.LastInsertID)
 	}
 
-	if !snapshot.Query.LatestResult.InlineRowsTruncated {
-		t.Fatal("snapshot.Query.LatestResult.InlineRowsTruncated = false, want true")
+	if !snapshot.Interaction.LatestResult.InlineRowsTruncated {
+		t.Fatal("snapshot.Interaction.LatestResult.InlineRowsTruncated = false, want true")
 	}
 
-	if got, want := snapshot.Query.LatestResult.PreservedResult.Columns[0].Name, "payload"; got != want {
-		t.Fatalf("snapshot.Query.LatestResult.PreservedResult.Columns[0].Name = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.LatestResult.PreservedResult.Columns[0].Name, "payload"; got != want {
+		t.Fatalf("snapshot.Interaction.LatestResult.PreservedResult.Columns[0].Name = %q, want %q", got, want)
 	}
 
-	if got, want := string(snapshot.Query.LatestResult.PreservedResult.Rows[0].Values[0].Value.([]byte)), "abc"; got != want {
-		t.Fatalf("snapshot.Query.LatestResult.PreservedResult.Rows[0].Values[0] = %q, want %q", got, want)
+	if got, want := string(snapshot.Interaction.LatestResult.PreservedResult.Rows[0].Values[0].Value.([]byte)), "abc"; got != want {
+		t.Fatalf("snapshot.Interaction.LatestResult.PreservedResult.Rows[0].Values[0] = %q, want %q", got, want)
 	}
 
-	if got, want := string(snapshot.Query.LatestResult.InlineResult.Rows[0].Values[0].Value.([]byte)), "xyz"; got != want {
-		t.Fatalf("snapshot.Query.LatestResult.InlineResult.Rows[0].Values[0] = %q, want %q", got, want)
+	if got, want := string(snapshot.Interaction.LatestResult.InlineResult.Rows[0].Values[0].Value.([]byte)), "xyz"; got != want {
+		t.Fatalf("snapshot.Interaction.LatestResult.InlineResult.Rows[0].Values[0] = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Query.PendingModeSwitch.ToMode, ModeRecordViewer; got != want {
-		t.Fatalf("snapshot.Query.PendingModeSwitch.ToMode = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.PendingModeSwitch.ToMode, ModeRecordViewer; got != want {
+		t.Fatalf("snapshot.Interaction.PendingModeSwitch.ToMode = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Query.PendingModeSwitch.ResultContext.Query, "select * from widgets"; got != want {
-		t.Fatalf("snapshot.Query.PendingModeSwitch.ResultContext.Query = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.PendingModeSwitch.ResultContext.Query, "select * from widgets"; got != want {
+		t.Fatalf("snapshot.Interaction.PendingModeSwitch.ResultContext.Query = %q, want %q", got, want)
 	}
 
-	if got, want := string(snapshot.Query.PendingModeSwitch.ResultContext.PreservedResult.Rows[0].Values[0].Value.([]byte)), "abc"; got != want {
-		t.Fatalf("snapshot.Query.PendingModeSwitch.ResultContext.PreservedResult.Rows[0].Values[0] = %q, want %q", got, want)
+	if got, want := string(snapshot.Interaction.PendingModeSwitch.ResultContext.PreservedResult.Rows[0].Values[0].Value.([]byte)), "abc"; got != want {
+		t.Fatalf("snapshot.Interaction.PendingModeSwitch.ResultContext.PreservedResult.Rows[0].Values[0] = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Query.SelectedHistoryEntry.SQL, "select * from widgets"; got != want {
-		t.Fatalf("snapshot.Query.SelectedHistoryEntry.SQL = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.SelectedHistoryEntry.SQL, "select * from widgets"; got != want {
+		t.Fatalf("snapshot.Interaction.SelectedHistoryEntry.SQL = %q, want %q", got, want)
 	}
 }
 
@@ -303,8 +303,8 @@ func TestSharedAppStateSetLatestResultContextResetsViewerPage(t *testing.T) {
 	state.SetViewerPage(3)
 	state.SetLatestResultContext(&LatestResultContext{PreservedResult: &db.ResultSet{Rows: []db.ResultRow{{}}}})
 
-	if got, want := state.Query.ViewerPage, 0; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	if got, want := state.Interaction.ViewerPage, 0; got != want {
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
 }
 
@@ -313,13 +313,13 @@ func TestSharedAppStateSetViewerPageClampsToAvailableRows(t *testing.T) {
 	state.SetLatestResultContext(&LatestResultContext{PreservedResult: &db.ResultSet{Rows: make([]db.ResultRow, 305)}})
 	state.SetViewerPage(9)
 
-	if got, want := state.Query.ViewerPage, 1; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	if got, want := state.Interaction.ViewerPage, 1; got != want {
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
 
 	state.SetViewerPage(-2)
-	if got, want := state.Query.ViewerPage, 0; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	if got, want := state.Interaction.ViewerPage, 0; got != want {
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
 }
 
@@ -328,17 +328,17 @@ func TestSharedAppStateChangeViewerPageClampsToAvailableRows(t *testing.T) {
 	state.SetLatestResultContext(&LatestResultContext{PreservedResult: &db.ResultSet{Rows: make([]db.ResultRow, 605)}})
 
 	state.ChangeViewerPage(1)
-	if got, want := state.Query.ViewerPage, 1; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	if got, want := state.Interaction.ViewerPage, 1; got != want {
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
 
 	state.ChangeViewerPage(10)
-	if got, want := state.Query.ViewerPage, 2; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	if got, want := state.Interaction.ViewerPage, 2; got != want {
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
 
 	state.ChangeViewerPage(-10)
-	if got, want := state.Query.ViewerPage, 0; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+	if got, want := state.Interaction.ViewerPage, 0; got != want {
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
 }

@@ -135,22 +135,22 @@ func (m *recordViewerModeModel) renderEmptyState(subtitle string) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m *recordViewerModeModel) View(query InteractionState) string {
-	latest := query.LatestResult
+func (m *recordViewerModeModel) View(interaction InteractionState) string {
+	latest := interaction.LatestResult
 	if latest == nil || latest.PreservedResult == nil {
-		if query.Layout == LayoutSplit {
+		if interaction.Layout == LayoutSplit {
 			return m.renderEmptyState("Run a query that returns rows to populate this pane")
 		}
 		return m.renderEmptyState("Run a query that returns rows, then press ctrl+x or ctrl+3.")
 	}
 
-	m.syncSelection(query)
+	m.syncSelection(interaction)
 
 	result := latest.PreservedResult
 
 	// In split layout, show just the table with no metadata header
-	if query.Layout == LayoutSplit {
-		preparedPage := m.preparePage(result, query.ViewerPage, len(latest.SelectedRows) > 0)
+	if interaction.Layout == LayoutSplit {
+		preparedPage := m.preparePage(result, interaction.ViewerPage, len(latest.SelectedRows) > 0)
 		body := renderPreparedRecordViewerPage(preparedPage, m.width, m.height, recordViewerRenderState{
 			Active:          recordViewerSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
 			SelectedRows:    selectedRowSet(latest.SelectedRows),
@@ -162,7 +162,7 @@ func (m *recordViewerModeModel) View(query InteractionState) string {
 		return body
 	}
 
-	page := recordViewerPageContextFor(query.ViewerPage, len(result.Rows))
+	page := recordViewerPageContextFor(interaction.ViewerPage, len(result.Rows))
 	header := []string{
 		appTheme.viewerTitle.Render("Record viewer"),
 		appTheme.viewerMeta.Render(fmt.Sprintf("Query: %s", summarizeViewerQuery(latest.Query, m.width))),
@@ -176,7 +176,7 @@ func (m *recordViewerModeModel) View(query InteractionState) string {
 		header = append(header, appTheme.viewerSelection.Render(fmt.Sprintf("Selected: %d", selectedCount)))
 	}
 
-	preparedPage := m.preparePage(result, query.ViewerPage, len(latest.SelectedRows) > 0)
+	preparedPage := m.preparePage(result, interaction.ViewerPage, len(latest.SelectedRows) > 0)
 	body := renderPreparedRecordViewerPage(preparedPage, m.width, m.height-len(header)-2, recordViewerRenderState{
 		Active:          recordViewerSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
 		SelectedRows:    selectedRowSet(latest.SelectedRows),
@@ -189,16 +189,16 @@ func (m *recordViewerModeModel) View(query InteractionState) string {
 	return strings.Join(append(header, "", body), "\n")
 }
 
-func (m recordViewerModeModel) FooterHints(query InteractionState) string {
+func (m recordViewerModeModel) FooterHints(interaction InteractionState) string {
 	parts := []string{"Record viewer"}
-	if latest := query.LatestResult; latest != nil && latest.PreservedResult != nil {
-		page := recordViewerPageContextFor(query.ViewerPage, len(latest.PreservedResult.Rows))
+	if latest := interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
+		page := recordViewerPageContextFor(interaction.ViewerPage, len(latest.PreservedResult.Rows))
 		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
 		if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
 			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
 		}
 	}
-	if running := formatRunningIndicator(query.Running); running != "" {
+	if running := formatRunningIndicator(interaction.Running); running != "" {
 		parts = append(parts, running)
 	}
 	if m.pendingAction == recordViewerPendingActionWrite {
@@ -208,22 +208,22 @@ func (m recordViewerModeModel) FooterHints(query InteractionState) string {
 	return strings.Join(parts, " | ")
 }
 
-func (m recordViewerModeModel) Footer(connectionName, dialect string, query InteractionState) string {
-	parts := []string{"Record viewer", fmt.Sprintf("layout %s", layoutLabel(query.Layout))}
+func (m recordViewerModeModel) Footer(connectionName, dialect string, interaction InteractionState) string {
+	parts := []string{"Record viewer", fmt.Sprintf("layout %s", layoutLabel(interaction.Layout))}
 	if label := strings.TrimSpace(connectionName); label != "" {
 		parts = append(parts, fmt.Sprintf("connection %s", label))
 	}
 	if label := strings.TrimSpace(dialect); label != "" {
 		parts = append(parts, label)
 	}
-	if latest := query.LatestResult; latest != nil && latest.PreservedResult != nil {
-		page := recordViewerPageContextFor(query.ViewerPage, len(latest.PreservedResult.Rows))
+	if latest := interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
+		page := recordViewerPageContextFor(interaction.ViewerPage, len(latest.PreservedResult.Rows))
 		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
 		if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
 			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
 		}
 	}
-	if running := formatRunningIndicator(query.Running); running != "" {
+	if running := formatRunningIndicator(interaction.Running); running != "" {
 		parts = append(parts, running)
 	}
 	if m.pendingAction == recordViewerPendingActionWrite {
@@ -233,8 +233,8 @@ func (m recordViewerModeModel) Footer(connectionName, dialect string, query Inte
 	return appTheme.footer.Render(strings.Join(parts, " | "))
 }
 
-func (m *recordViewerModeModel) syncSelection(query InteractionState) {
-	latest := query.LatestResult
+func (m *recordViewerModeModel) syncSelection(interaction InteractionState) {
+	latest := interaction.LatestResult
 	if latest == nil || latest.PreservedResult == nil {
 		m.selectedRow = 0
 		m.selectedColumn = 0
@@ -251,7 +251,7 @@ func (m *recordViewerModeModel) syncSelection(query InteractionState) {
 		return
 	}
 
-	page := recordViewerPageContextFor(query.ViewerPage, len(result.Rows))
+	page := recordViewerPageContextFor(interaction.ViewerPage, len(result.Rows))
 	if m.selectedRow < page.StartRow-1 || m.selectedRow >= page.EndRow {
 		m.selectedRow = max(0, page.StartRow-1)
 	}
@@ -277,21 +277,21 @@ func (m *recordViewerModeModel) preparePage(result *db.ResultSet, page int, show
 	return prepared
 }
 
-func (m *recordViewerModeModel) Navigate(msg tea.KeyPressMsg, query InteractionState) (int, bool) {
+func (m *recordViewerModeModel) Navigate(msg tea.KeyPressMsg, interaction InteractionState) (int, bool) {
 	deltaRow, deltaColumn, ok := recordViewerNavigationDelta(msg)
 	if !ok {
-		return query.ViewerPage, false
+		return interaction.ViewerPage, false
 	}
 
-	latest := query.LatestResult
+	latest := interaction.LatestResult
 	if latest == nil || latest.PreservedResult == nil || len(latest.PreservedResult.Rows) == 0 || len(latest.PreservedResult.Columns) == 0 {
 		m.selectedRow = 0
 		m.selectedColumn = 0
 		m.selectionActive = false
-		return query.ViewerPage, true
+		return interaction.ViewerPage, true
 	}
 
-	m.syncSelection(query)
+	m.syncSelection(interaction)
 	result := latest.PreservedResult
 	m.selectedRow = min(max(m.selectedRow+deltaRow, 0), len(result.Rows)-1)
 	m.selectedColumn = min(max(m.selectedColumn+deltaColumn, 0), len(result.Columns)-1)
@@ -299,22 +299,22 @@ func (m *recordViewerModeModel) Navigate(msg tea.KeyPressMsg, query InteractionS
 
 	// Update horizontal scroll offset to keep the selected column visible.
 	if deltaColumn != 0 {
-		preparedPage := m.preparePage(result, query.ViewerPage, false)
+		preparedPage := m.preparePage(result, interaction.ViewerPage, false)
 		m.colScrollOffset = recordViewerColumnScrollOffset(m.colScrollOffset, m.selectedColumn, preparedPage.Widths, m.width)
 	}
 
 	return clampRecordViewerPage(m.selectedRow/recordViewerPageSize, len(result.Rows)), true
 }
 
-func (m *recordViewerModeModel) ToggleSelectedRow(query *InteractionState) (int, bool, bool) {
-	if query == nil || query.LatestResult == nil || query.LatestResult.PreservedResult == nil {
+func (m *recordViewerModeModel) ToggleSelectedRow(interaction *InteractionState) (int, bool, bool) {
+	if interaction == nil || interaction.LatestResult == nil || interaction.LatestResult.PreservedResult == nil {
 		m.selectedRow = 0
 		m.selectedColumn = 0
 		m.selectionActive = false
 		return 0, false, false
 	}
 
-	result := query.LatestResult.PreservedResult
+	result := interaction.LatestResult.PreservedResult
 	if len(result.Rows) == 0 || len(result.Columns) == 0 {
 		m.selectedRow = 0
 		m.selectedColumn = 0
@@ -322,10 +322,10 @@ func (m *recordViewerModeModel) ToggleSelectedRow(query *InteractionState) (int,
 		return 0, false, false
 	}
 
-	m.syncSelection(*query)
-	query.LatestResult.SelectedRows = toggleSelectedRowIndices(query.LatestResult.SelectedRows, m.selectedRow)
+	m.syncSelection(*interaction)
+	interaction.LatestResult.SelectedRows = toggleSelectedRowIndices(interaction.LatestResult.SelectedRows, m.selectedRow)
 	m.selectionActive = true
-	return m.selectedRow, rowIndexSelected(query.LatestResult.SelectedRows, m.selectedRow), true
+	return m.selectedRow, rowIndexSelected(interaction.LatestResult.SelectedRows, m.selectedRow), true
 }
 
 func renderRecordViewerTable(result *db.ResultSet, page, width, height int, state recordViewerRenderState) string {

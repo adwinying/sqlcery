@@ -44,7 +44,7 @@ const (
 
 type SharedAppState struct {
 	App    AppStateContext
-	Query  InteractionState
+	Interaction  InteractionState
 	Status string
 }
 
@@ -163,7 +163,7 @@ func NewSharedAppState() SharedAppState {
 		App: AppStateContext{
 			Current: StateStartup,
 		},
-		Query: InteractionState{
+		Interaction: InteractionState{
 			Layout:     LayoutSplit,
 			ActiveMode: ModeCommand,
 			ViewerPage: 0,
@@ -175,7 +175,7 @@ func NewSharedAppState() SharedAppState {
 func (s SharedAppState) Snapshot() SharedAppState {
 	clone := s
 	clone.App = s.App.snapshot()
-	clone.Query = s.Query.snapshot()
+	clone.Interaction = s.Interaction.snapshot()
 	return clone
 }
 
@@ -208,16 +208,16 @@ func (s *SharedAppState) SetError(message, status string) {
 }
 
 func (s *SharedAppState) SetCurrentSQL(sql string) {
-	s.Query.CurrentSQL = sql
+	s.Interaction.CurrentSQL = sql
 }
 
 func (s *SharedAppState) SetLastSubmittedSQL(sql string) {
-	s.Query.LastSubmittedSQL = sql
+	s.Interaction.LastSubmittedSQL = sql
 }
 
 func (s *SharedAppState) SetPendingIntent(intent PendingIntent, action, status string) {
-	s.Query.PendingIntent = intent
-	s.Query.LastAction = strings.TrimSpace(action)
+	s.Interaction.PendingIntent = intent
+	s.Interaction.LastAction = strings.TrimSpace(action)
 	s.Status = strings.TrimSpace(status)
 }
 
@@ -226,7 +226,7 @@ func (s *SharedAppState) SetActiveMode(mode AppMode) {
 		mode = ModeCommand
 	}
 
-	s.Query.ActiveMode = mode
+	s.Interaction.ActiveMode = mode
 }
 
 func (s *SharedAppState) SetLayout(layout AppLayout) {
@@ -237,52 +237,52 @@ func (s *SharedAppState) SetLayout(layout AppLayout) {
 		layout = LayoutCommandOnly
 	}
 
-	s.Query.Layout = layout
+	s.Interaction.Layout = layout
 }
 
 func (s *SharedAppState) SetRunningQueryContext(context *RunningQueryContext) {
-	s.Query.Running = cloneRunningQueryContext(context)
+	s.Interaction.Running = cloneRunningQueryContext(context)
 }
 
 func (s *SharedAppState) SetSessionHistory(entries []HistoryEntryContext) {
-	s.Query.SessionHistory = cloneHistoryEntries(entries)
+	s.Interaction.SessionHistory = cloneHistoryEntries(entries)
 }
 
 func (s *SharedAppState) SetHistorySearchContext(context *HistorySearchContext) {
-	s.Query.HistorySearch = cloneHistorySearchContext(context)
+	s.Interaction.HistorySearch = cloneHistorySearchContext(context)
 }
 
 func (s *SharedAppState) SetLatestResultContext(context *LatestResultContext) {
-	s.Query.LatestResult = cloneLatestResultContext(context)
-	s.Query.ViewerPage = 0
+	s.Interaction.LatestResult = cloneLatestResultContext(context)
+	s.Interaction.ViewerPage = 0
 }
 
 func (s *SharedAppState) SetViewerPage(page int) {
-	s.Query.ViewerPage = clampRecordViewerPage(page, recordViewerRowCount(s.Query.LatestResult))
+	s.Interaction.ViewerPage = clampRecordViewerPage(page, recordViewerRowCount(s.Interaction.LatestResult))
 }
 
 func (s *SharedAppState) ChangeViewerPage(delta int) {
-	s.SetViewerPage(s.Query.ViewerPage + delta)
+	s.SetViewerPage(s.Interaction.ViewerPage + delta)
 }
 
 func (s *SharedAppState) SetSlashWizardContext(context *SlashCommandWizardContext) {
-	s.Query.SlashWizard = cloneSlashCommandWizardContext(context)
+	s.Interaction.SlashWizard = cloneSlashCommandWizardContext(context)
 }
 
 func (s *SharedAppState) SetPendingModeSwitch(context *ModeSwitchContext) {
-	s.Query.PendingModeSwitch = cloneModeSwitchContext(context)
+	s.Interaction.PendingModeSwitch = cloneModeSwitchContext(context)
 }
 
 func (s *SharedAppState) SetHelpVisible(visible bool) {
-	s.Query.HelpVisible = visible
+	s.Interaction.HelpVisible = visible
 }
 
 func (s *SharedAppState) SetAutocompleteSchema(schema *AutocompleteSchemaContext) {
-	s.Query.AutocompleteSchema = cloneAutocompleteSchemaContext(schema)
+	s.Interaction.AutocompleteSchema = cloneAutocompleteSchemaContext(schema)
 }
 
 func (s *SharedAppState) SetSelectedHistoryEntry(entry *HistoryEntryContext) {
-	s.Query.SelectedHistoryEntry = cloneHistoryEntryContext(entry)
+	s.Interaction.SelectedHistoryEntry = cloneHistoryEntryContext(entry)
 }
 
 func (q InteractionState) snapshot() InteractionState {

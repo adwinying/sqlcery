@@ -10,7 +10,7 @@ import (
 )
 
 func (m *Model) handleRecordViewerWriteKey(msg tea.KeyPressMsg) bool {
-	if m.state.Query.ActiveMode != ModeRecordViewer {
+	if m.state.Interaction.ActiveMode != ModeRecordViewer {
 		m.viewer.pendingAction = recordViewerPendingActionNone
 		m.viewer.writeBuffer = ""
 		return false
@@ -61,7 +61,7 @@ func (m *Model) writeRecordViewerExport(command string) bool {
 		return true
 	}
 
-	latest := m.state.Query.LatestResult
+	latest := m.state.Interaction.LatestResult
 	if latest == nil || latest.PreservedResult == nil {
 		m.state.SetPendingIntent(IntentNone, "viewer-export", "Record viewer has no rows to export.")
 		return true
