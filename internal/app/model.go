@@ -394,7 +394,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.command.Clear()
 		m.syncCurrentSQL()
 		m.state.SetReady("")
-		m.state.SetPendingIntent(IntentClearInput, "clear", "Cleared current input.")
+		m.state.SetPendingIntent(IntentClearCommandPane, "clear", "Cleared current input.")
 		return m, nil
 	case historyIntentMsg:
 		m.syncCurrentSQL()
@@ -755,7 +755,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		// falls through to textarea to insert a newline for multi-line SQL.
 		m.syncCurrentSQL()
 		currentSQL := m.command.Value()
-		if isCompleteSQLStatement(currentSQL) || isSlashCommandInput(currentSQL) {
+		if isCompleteSQLStatement(currentSQL) || isSlashCommandText(currentSQL) {
 			return func() tea.Msg { return submitIntentMsg{} }
 		}
 		return nil
@@ -1974,8 +1974,8 @@ func describeStatementStatus(result *db.StatementResult) string {
 	return "Statement executed successfully."
 }
 
-func isSlashCommandInput(input string) bool {
-	return strings.HasPrefix(strings.TrimSpace(input), "/")
+func isSlashCommandText(text string) bool {
+	return strings.HasPrefix(strings.TrimSpace(text), "/")
 }
 
 func formatReplStatementOutput(result *db.StatementResult, err error) string {

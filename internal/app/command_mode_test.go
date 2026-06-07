@@ -348,9 +348,9 @@ func TestCommandModeViewRendersInlineExecResult(t *testing.T) {
 
 func TestCommandModeViewShowsWarningForDestructiveGeneratedCommands(t *testing.T) {
 	sql := "DELETE FROM \"users\"\nWHERE\n  \"id\" = 7;"
-	warning := renderGeneratedCommandWarning(sql)
+	warning := renderGeneratedStatementWarning(sql)
 	if !strings.Contains(warning, "Warning: generated DELETE statement. Review carefully before submitting.") {
-		t.Fatalf("renderGeneratedCommandWarning() = %q, want destructive warning", warning)
+		t.Fatalf("renderGeneratedStatementWarning() = %q, want destructive warning", warning)
 	}
 }
 

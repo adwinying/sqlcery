@@ -39,7 +39,7 @@ const (
 	IntentSubmit     PendingIntent = "submit"
 	IntentHistory    PendingIntent = "history"
 	IntentSwitchMode PendingIntent = "switch-mode"
-	IntentClearInput PendingIntent = "clear-input"
+	IntentClearCommandPane PendingIntent = "clear-command-pane"
 )
 
 type SharedAppState struct {

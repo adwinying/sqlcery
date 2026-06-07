@@ -520,7 +520,7 @@ func (m commandModeModel) ghostText(interaction InteractionState) string {
 	return insert[len(prefix):]
 }
 
-func renderGeneratedCommandWarning(sql string) string {
+func renderGeneratedStatementWarning(sql string) string {
 	switch leadingSQLKeyword(sql) {
 	case "DELETE":
 		return appTheme.warningNotice.Render("Warning: generated DELETE statement. Review carefully before submitting.")

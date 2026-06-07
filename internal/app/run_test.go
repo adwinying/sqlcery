@@ -2118,8 +2118,8 @@ func TestModelUpdateDDComposesDeleteAndReturnsToCommandMode(t *testing.T) {
 	model = next.(Model)
 	// In REPL mode, the destructive warning is not rendered in View();
 	// verify the warning function still detects the DELETE statement.
-	if got := renderGeneratedCommandWarning(model.command.Value()); got == "" {
-		t.Fatal("renderGeneratedCommandWarning() = empty, want destructive warning for DELETE")
+	if got := renderGeneratedStatementWarning(model.command.Value()); got == "" {
+		t.Fatal("renderGeneratedStatementWarning() = empty, want destructive warning for DELETE")
 	}
 }
 
@@ -2156,8 +2156,8 @@ func TestModelUpdateDDKeepsSplitLayoutWhenComposingDelete(t *testing.T) {
 	}
 	next2, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next2.(Model)
-	if got := renderGeneratedCommandWarning(model.command.Value()); !strings.Contains(got, "Warning: generated DELETE statement. Review carefully before submitting.") {
-		t.Fatalf("renderGeneratedCommandWarning() = %q, want destructive warning", got)
+	if got := renderGeneratedStatementWarning(model.command.Value()); !strings.Contains(got, "Warning: generated DELETE statement. Review carefully before submitting.") {
+		t.Fatalf("renderGeneratedStatementWarning() = %q, want destructive warning", got)
 	}
 }
 
