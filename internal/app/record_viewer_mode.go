@@ -651,8 +651,8 @@ func formatRecordViewerRowRange(page recordViewerPageContext) string {
 	return fmt.Sprintf("%d-%d", page.StartRow, page.EndRow)
 }
 
-func summarizeViewerQuery(query string, width int) string {
-	trimmed := strings.Join(strings.Fields(strings.TrimSpace(query)), " ")
+func summarizeViewerQuery(statement string, width int) string {
+	trimmed := strings.Join(strings.Fields(strings.TrimSpace(statement)), " ")
 	if trimmed == "" {
 		return "(unknown query)"
 	}

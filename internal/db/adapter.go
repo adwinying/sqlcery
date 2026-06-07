@@ -39,7 +39,7 @@ type MetadataProvider interface {
 type Adapter interface {
 	Runner
 	Dialect() Dialect
-	ExecuteStatementContext(ctx context.Context, query string, options ResultOptions, args ...any) (*StatementResult, error)
+	ExecuteStatementContext(ctx context.Context, statement string, options ResultOptions, args ...any) (*StatementResult, error)
 	QueryResultContext(ctx context.Context, query string, options ResultOptions, args ...any) (*ResultSet, error)
 	Tables(ctx context.Context, filter TableFilter) ([]Table, error)
 	Columns(ctx context.Context, table TableRef) ([]Column, error)
@@ -170,9 +170,9 @@ func (a *SQLAdapter) QueryRowContext(ctx context.Context, query string, args ...
 	return a.runner.QueryRowContext(ctx, query, args...)
 }
 
-func (a *SQLAdapter) ExecuteStatementContext(ctx context.Context, query string, options ResultOptions, args ...any) (*StatementResult, error) {
-	if statementReturnsRows(query) {
-		resultSet, err := a.QueryResultContext(ctx, query, options, args...)
+func (a *SQLAdapter) ExecuteStatementContext(ctx context.Context, statement string, options ResultOptions, args ...any) (*StatementResult, error) {
+	if statementReturnsRows(statement) {
+		resultSet, err := a.QueryResultContext(ctx, statement, options, args...)
 		if err != nil {
 			return nil, err
 		}
@@ -183,7 +183,7 @@ func (a *SQLAdapter) ExecuteStatementContext(ctx context.Context, query string, 
 		}, nil
 	}
 
-	execResult, err := a.ExecContext(ctx, query, args...)
+	execResult, err := a.ExecContext(ctx, statement, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -301,8 +301,8 @@ func (r sqlRows) ColumnTypes() ([]*sql.ColumnType, error) {
 	return r.rows.ColumnTypes()
 }
 
-func statementReturnsRows(query string) bool {
-	switch statementLeadingKeyword(query) {
+func statementReturnsRows(statement string) bool {
+	switch statementLeadingKeyword(statement) {
 	case "DESC", "DESCRIBE", "EXPLAIN", "PRAGMA", "SELECT", "SHOW", "VALUES", "WITH":
 		return true
 	default:
@@ -310,8 +310,8 @@ func statementReturnsRows(query string) bool {
 	}
 }
 
-func statementLeadingKeyword(query string) string {
-	runes := []rune(query)
+func statementLeadingKeyword(statement string) string {
+	runes := []rune(statement)
 	for i := 0; i < len(runes); {
 		switch {
 		case isSpaceRune(runes[i]):

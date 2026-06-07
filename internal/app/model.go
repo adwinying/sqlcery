@@ -1376,17 +1376,17 @@ func (m *Model) moveSlashWizardSelection(delta int) {
 	}
 }
 
-func (m *Model) updateWizardTargetFilter(query string) {
+func (m *Model) updateWizardTargetFilter(filter string) {
 	wizard := cloneSlashCommandWizardContext(m.state.Interaction.SlashWizard)
 	if wizard == nil || wizard.Step != SlashCommandWizardStepTarget {
 		return
 	}
-	wizard.TargetFilter = query
+	wizard.TargetFilter = filter
 	wizard.SelectedTarget = 0
 	m.state.SetSlashWizardContext(wizard)
-	filtered := filterWizardTargets(wizard.Targets, query)
+	filtered := filterWizardTargets(wizard.Targets, filter)
 	if len(filtered) == 0 {
-		m.state.SetReady(fmt.Sprintf("No tables match %q.", query))
+		m.state.SetReady(fmt.Sprintf("No tables match %q.", filter))
 	} else {
 		m.state.SetReady(fmt.Sprintf("%d table(s) match filter.", len(filtered)))
 	}
@@ -1416,15 +1416,15 @@ func wrapSelection(index, size int) int {
 	return index
 }
 
-func executeStatementCmd(adapter *db.SQLAdapter, query string) func(context.Context, time.Time) tea.Cmd {
+func executeStatementCmd(adapter *db.SQLAdapter, statement string) func(context.Context, time.Time) tea.Cmd {
 	return func(ctx context.Context, _ time.Time) tea.Cmd {
 		return func() tea.Msg {
 			if adapter == nil {
-				return statementExecutedMsg{Query: query, ResultSummary: "error: adapter is required", Err: fmt.Errorf("adapter is required")}
+				return statementExecutedMsg{Query: statement, ResultSummary: "error: adapter is required", Err: fmt.Errorf("adapter is required")}
 			}
 
-			result, err := adapter.ExecuteStatementContext(ctx, query, db.ResultOptions{Source: inferQuerySourceTable(query)})
-			return statementExecutedMsg{Query: query, Result: result, ResultSummary: summarizeStatementResult(result, err), Err: err}
+			result, err := adapter.ExecuteStatementContext(ctx, statement, db.ResultOptions{Source: inferQuerySourceTable(statement)})
+			return statementExecutedMsg{Query: statement, Result: result, ResultSummary: summarizeStatementResult(result, err), Err: err}
 		}
 	}
 }

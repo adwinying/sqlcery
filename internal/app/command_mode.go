@@ -910,7 +910,7 @@ func renderSlashWizard(interaction InteractionState) string {
 			headerLines += 2
 		}
 		// Filter input row
-		lines = append(lines, appTheme.panelText.Render(fmt.Sprintf("filter> %s", defaultWizardFilterQuery(wizard.TargetFilter))))
+		lines = append(lines, appTheme.panelText.Render(fmt.Sprintf("filter> %s", defaultWizardFilter(wizard.TargetFilter))))
 		headerLines++
 
 		filteredTargets := filterWizardTargets(wizard.Targets, wizard.TargetFilter)
@@ -1099,8 +1099,8 @@ func runeWidth(value string) int {
 	return ansi.StringWidth(value)
 }
 
-func filterWizardTargets(targets []SlashCommandWizardTarget, query string) []SlashCommandWizardTarget {
-	trimmed := strings.TrimSpace(query)
+func filterWizardTargets(targets []SlashCommandWizardTarget, filter string) []SlashCommandWizardTarget {
+	trimmed := strings.TrimSpace(filter)
 	if trimmed == "" {
 		return targets
 	}
@@ -1114,7 +1114,7 @@ func filterWizardTargets(targets []SlashCommandWizardTarget, query string) []Sla
 	return filtered
 }
 
-func defaultWizardFilterQuery(value string) string {
+func defaultWizardFilter(value string) string {
 	if strings.TrimSpace(value) == "" {
 		return "(empty)"
 	}

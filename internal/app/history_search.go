@@ -69,13 +69,13 @@ func (m *Model) cycleHistorySearch(delta int) {
 	m.state.SetPendingIntent(IntentHistory, "history", historySearchStatus(m.state.Interaction))
 }
 
-func (m *Model) updateHistorySearchQuery(query string) {
+func (m *Model) updateHistorySearchFilter(filter string) {
 	search := m.state.Interaction.HistorySearch
 	if search == nil {
 		search = &HistorySearchContext{}
 	}
 
-	search.Filter = query
+	search.Filter = filter
 	search.SelectedIndex = 0
 	m.state.SetHistorySearchContext(search)
 	m.syncHistorySearchSelection()
@@ -129,7 +129,7 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.openHistorySearch()
 			return nil
 		}
-		m.updateHistorySearchQuery(trimLastRune(search.Filter))
+		m.updateHistorySearchFilter(trimLastRune(search.Filter))
 		return nil
 	case msg.String() == "space":
 		search := m.state.Interaction.HistorySearch
@@ -137,7 +137,7 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.openHistorySearch()
 			search = m.state.Interaction.HistorySearch
 		}
-		m.updateHistorySearchQuery(search.Filter + " ")
+		m.updateHistorySearchFilter(search.Filter + " ")
 		return nil
 	case len(msg.Text) > 0 && !msg.Mod.Contains(tea.ModAlt):
 		search := m.state.Interaction.HistorySearch
@@ -145,7 +145,7 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.openHistorySearch()
 			search = m.state.Interaction.HistorySearch
 		}
-		m.updateHistorySearchQuery(search.Filter + msg.Text)
+		m.updateHistorySearchFilter(search.Filter + msg.Text)
 		return nil
 	default:
 		return nil
@@ -213,8 +213,8 @@ func historySearchStatus(interaction InteractionState) string {
 	return fmt.Sprintf("History search matched %d entries; selected %q.", len(matches), historySearchDisplaySQL(selected.SQL))
 }
 
-func filterHistorySearchEntries(entries []HistoryEntryContext, query string) []HistoryEntryContext {
-	matches := rankHistorySearchEntries(entries, query)
+func filterHistorySearchEntries(entries []HistoryEntryContext, filter string) []HistoryEntryContext {
+	matches := rankHistorySearchEntries(entries, filter)
 	filtered := make([]HistoryEntryContext, 0, len(matches))
 	for _, match := range matches {
 		filtered = append(filtered, match.Entry)
@@ -222,8 +222,8 @@ func filterHistorySearchEntries(entries []HistoryEntryContext, query string) []H
 	return filtered
 }
 
-func rankHistorySearchEntries(entries []HistoryEntryContext, query string) []historySearchMatch {
-	trimmed := strings.TrimSpace(query)
+func rankHistorySearchEntries(entries []HistoryEntryContext, filter string) []historySearchMatch {
+	trimmed := strings.TrimSpace(filter)
 	matches := make([]historySearchMatch, 0, len(entries))
 	seen := make(map[string]struct{}, len(entries))
 	for i := len(entries) - 1; i >= 0; i-- {
