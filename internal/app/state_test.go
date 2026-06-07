@@ -40,7 +40,7 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 	state.SetPendingIntent(IntentSubmit, "submit", "ready")
 	state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL", StartedAt: stamp, Elapsed: 1500 * time.Millisecond, SpinnerFrame: 2})
 	state.SetLayout(LayoutSplit)
-	state.SetActiveMode(ModeRecordViewer)
+	state.SetActiveMode(ModeResultsPane)
 	state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1", ConnectionName: "local", ExecutedAt: stamp}})
 	state.SetHistorySearchContext(&HistorySearchContext{Filter: "sel", SelectedIndex: 1})
 	state.SetAutocompleteSchema(&AutocompleteSchemaContext{
@@ -83,9 +83,9 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 	})
 	state.SetPendingModeSwitch(&ModeSwitchContext{
 		FromLayout:    LayoutSplit,
-		ToLayout:      LayoutViewerOnly,
+		ToLayout:      LayoutResultsPaneOnly,
 		FromMode:      ModeCommand,
-		ToMode:        ModeRecordViewer,
+		ToMode:        ModeResultsPane,
 		ResultContext: state.Interaction.LatestResult,
 	})
 	state.SetSelectedHistoryEntry(&HistoryEntryContext{
@@ -100,7 +100,7 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 	state.Interaction.LastSubmittedSQL = "mutated"
 	state.Interaction.LastAction = "mutated"
 	state.Interaction.Running.Label = "mutated"
-	state.Interaction.Layout = LayoutViewerOnly
+	state.Interaction.Layout = LayoutResultsPaneOnly
 	state.Interaction.Running.Elapsed = 9 * time.Second
 	state.Interaction.Running.SpinnerFrame = 1
 	state.Interaction.SessionHistory[0].SQL = "mutated history"
@@ -228,7 +228,7 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 		t.Fatalf("snapshot.Interaction.LatestResult.InlineResult.Rows[0].Values[0] = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Interaction.PendingModeSwitch.ToMode, ModeRecordViewer; got != want {
+	if got, want := snapshot.Interaction.PendingModeSwitch.ToMode, ModeResultsPane; got != want {
 		t.Fatalf("snapshot.Interaction.PendingModeSwitch.ToMode = %q, want %q", got, want)
 	}
 

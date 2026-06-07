@@ -12,7 +12,7 @@ type AppMode string
 const (
 	ModeCommand       AppMode = "command"
 	ModeHistorySearch AppMode = "history-search"
-	ModeRecordViewer  AppMode = "record-viewer"
+	ModeResultsPane  AppMode = "results-pane"
 )
 
 type AppLayout string
@@ -20,7 +20,7 @@ type AppLayout string
 const (
 	LayoutSplit       AppLayout = "split"
 	LayoutCommandOnly AppLayout = "command-only"
-	LayoutViewerOnly  AppLayout = "viewer-only"
+	LayoutResultsPaneOnly  AppLayout = "results-pane-only"
 )
 
 type AppState string
@@ -231,7 +231,7 @@ func (s *SharedAppState) SetActiveMode(mode AppMode) {
 
 func (s *SharedAppState) SetLayout(layout AppLayout) {
 	switch layout {
-	case LayoutSplit, LayoutViewerOnly:
+	case LayoutSplit, LayoutResultsPaneOnly:
 		// keep requested layout
 	default:
 		layout = LayoutCommandOnly
@@ -258,7 +258,7 @@ func (s *SharedAppState) SetLatestResultContext(context *LatestResultContext) {
 }
 
 func (s *SharedAppState) SetViewerPage(page int) {
-	s.Interaction.ViewerPage = clampRecordViewerPage(page, recordViewerRowCount(s.Interaction.LatestResult))
+	s.Interaction.ViewerPage = clampResultsPanePage(page, resultsPaneRowCount(s.Interaction.LatestResult))
 }
 
 func (s *SharedAppState) ChangeViewerPage(delta int) {

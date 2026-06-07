@@ -8,7 +8,7 @@ import (
 	"github.com/adwinying/sqlcery/internal/db"
 )
 
-func TestComposeRecordViewerInsertSQLBuildsDialectAwareSQL(t *testing.T) {
+func TestComposeResultsPaneInsertSQLBuildsDialectAwareSQL(t *testing.T) {
 	tests := []struct {
 		name    string
 		dialect db.Dialect
@@ -55,7 +55,7 @@ func TestComposeRecordViewerInsertSQLBuildsDialectAwareSQL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := composeRecordViewerInsertSQL(tt.dialect, &LatestResultContext{
+			result, err := composeResultsPaneInsertSQL(tt.dialect, &LatestResultContext{
 				Query: "select id, payload from widgets;",
 				PreservedResult: &db.ResultSet{
 					Source: tt.source,
@@ -67,9 +67,9 @@ func TestComposeRecordViewerInsertSQLBuildsDialectAwareSQL(t *testing.T) {
 				},
 			}, 0)
 			if err != nil {
-				t.Fatalf("composeRecordViewerInsertSQL() error = %v", err)
+				t.Fatalf("composeResultsPaneInsertSQL() error = %v", err)
 			}
-			if got, want := result.Action, recordViewerComposeActionInsert; got != want {
+			if got, want := result.Action, resultsPaneComposeActionInsert; got != want {
 				t.Fatalf("Action = %q, want %q", got, want)
 			}
 			for _, want := range tt.want {
@@ -81,7 +81,7 @@ func TestComposeRecordViewerInsertSQLBuildsDialectAwareSQL(t *testing.T) {
 	}
 }
 
-func TestComposeRecordViewerUpdateSQLBuildsDialectAwareSQL(t *testing.T) {
+func TestComposeResultsPaneUpdateSQLBuildsDialectAwareSQL(t *testing.T) {
 	tests := []struct {
 		name    string
 		dialect db.Dialect
@@ -122,7 +122,7 @@ func TestComposeRecordViewerUpdateSQLBuildsDialectAwareSQL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := composeRecordViewerUpdateSQL(tt.dialect, &LatestResultContext{
+			result, err := composeResultsPaneUpdateSQL(tt.dialect, &LatestResultContext{
 				Query: "select id, payload from widgets;",
 				PreservedResult: &db.ResultSet{
 					Source: tt.source,
@@ -134,9 +134,9 @@ func TestComposeRecordViewerUpdateSQLBuildsDialectAwareSQL(t *testing.T) {
 				},
 			}, 0)
 			if err != nil {
-				t.Fatalf("composeRecordViewerUpdateSQL() error = %v", err)
+				t.Fatalf("composeResultsPaneUpdateSQL() error = %v", err)
 			}
-			if got, want := result.Action, recordViewerComposeActionUpdate; got != want {
+			if got, want := result.Action, resultsPaneComposeActionUpdate; got != want {
 				t.Fatalf("Action = %q, want %q", got, want)
 			}
 			if !result.UsedPrimaryKeys {
@@ -151,7 +151,7 @@ func TestComposeRecordViewerUpdateSQLBuildsDialectAwareSQL(t *testing.T) {
 	}
 }
 
-func TestRecordViewerValueLiteralFormatsTimestamps(t *testing.T) {
+func TestResultsPaneValueLiteralFormatsTimestamps(t *testing.T) {
 	pst := time.FixedZone("PST", -8*60*60)
 
 	type pgTimestamp struct {
@@ -218,16 +218,16 @@ func TestRecordViewerValueLiteralFormatsTimestamps(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := recordViewerValueLiteral(db.PostgresDialect(), tt.value)
+			got := resultsPaneValueLiteral(db.PostgresDialect(), tt.value)
 			if got != tt.want {
-				t.Fatalf("recordViewerValueLiteral() = %q, want %q", got, tt.want)
+				t.Fatalf("resultsPaneValueLiteral() = %q, want %q", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestComposeRecordViewerUpdateSQLQuotesTimestampColumns(t *testing.T) {
-	result, err := composeRecordViewerUpdateSQL(db.PostgresDialect(), &LatestResultContext{
+func TestComposeResultsPaneUpdateSQLQuotesTimestampColumns(t *testing.T) {
+	result, err := composeResultsPaneUpdateSQL(db.PostgresDialect(), &LatestResultContext{
 		Query: "select id, updated_at from widgets;",
 		PreservedResult: &db.ResultSet{
 			Source: &db.TableRef{Schema: "public", Name: "widgets"},
@@ -242,7 +242,7 @@ func TestComposeRecordViewerUpdateSQLQuotesTimestampColumns(t *testing.T) {
 		},
 	}, 0)
 	if err != nil {
-		t.Fatalf("composeRecordViewerUpdateSQL() error = %v", err)
+		t.Fatalf("composeResultsPaneUpdateSQL() error = %v", err)
 	}
 	want := `"updated_at" = '2026-04-22 10:30:45.123456+00:00'`
 	if !containsLine(result.SQL, want) {

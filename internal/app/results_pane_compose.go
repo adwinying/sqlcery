@@ -10,60 +10,60 @@ import (
 	"github.com/adwinying/sqlcery/internal/db"
 )
 
-type recordViewerPendingAction string
+type resultsPanePendingAction string
 
 const (
-	recordViewerPendingActionNone          recordViewerPendingAction = ""
-	recordViewerPendingActionComposeInsert recordViewerPendingAction = "compose-insert"
-	recordViewerPendingActionComposeUpdate recordViewerPendingAction = "compose-update"
-	recordViewerPendingActionComposeDelete recordViewerPendingAction = "compose-delete"
-	recordViewerPendingActionWrite         recordViewerPendingAction = "write"
+	resultsPanePendingActionNone          resultsPanePendingAction = ""
+	resultsPanePendingActionComposeInsert resultsPanePendingAction = "compose-insert"
+	resultsPanePendingActionComposeUpdate resultsPanePendingAction = "compose-update"
+	resultsPanePendingActionComposeDelete resultsPanePendingAction = "compose-delete"
+	resultsPanePendingActionWrite         resultsPanePendingAction = "write"
 )
 
-type recordViewerComposeAction string
+type resultsPaneComposeAction string
 
 const (
-	recordViewerComposeActionInsert recordViewerComposeAction = "INSERT"
-	recordViewerComposeActionUpdate recordViewerComposeAction = "UPDATE"
-	recordViewerComposeActionDelete recordViewerComposeAction = "DELETE"
+	resultsPaneComposeActionInsert resultsPaneComposeAction = "INSERT"
+	resultsPaneComposeActionUpdate resultsPaneComposeAction = "UPDATE"
+	resultsPaneComposeActionDelete resultsPaneComposeAction = "DELETE"
 )
 
-type recordViewerComposeResult struct {
+type resultsPaneComposeResult struct {
 	SQL             string
 	Row             int
 	UsedPrimaryKeys bool
 	Source          db.TableRef
-	Action          recordViewerComposeAction
+	Action          resultsPaneComposeAction
 }
 
-func composeRecordViewerUpdateSQL(dialect db.Dialect, latest *LatestResultContext, rowIndex int) (recordViewerComposeResult, error) {
+func composeResultsPaneUpdateSQL(dialect db.Dialect, latest *LatestResultContext, rowIndex int) (resultsPaneComposeResult, error) {
 	if latest == nil || latest.PreservedResult == nil {
-		return recordViewerComposeResult{}, fmt.Errorf("record viewer has no rows to compose")
+		return resultsPaneComposeResult{}, fmt.Errorf("Results Pane has no rows to compose")
 	}
 
 	result := latest.PreservedResult
 	if rowIndex < 0 || rowIndex >= len(result.Rows) {
-		return recordViewerComposeResult{}, fmt.Errorf("selected row is out of range")
+		return resultsPaneComposeResult{}, fmt.Errorf("selected row is out of range")
 	}
 
-	source, ok := recordViewerResultSource(latest)
+	source, ok := resultsPaneResultSource(latest)
 	if !ok {
-		return recordViewerComposeResult{}, fmt.Errorf("result source table is unknown")
+		return resultsPaneComposeResult{}, fmt.Errorf("result source table is unknown")
 	}
 
-	assignments := recordViewerUpdateAssignments(dialect, result, result.Rows[rowIndex])
-	predicates, usedPrimaryKeys := recordViewerRowPredicates(dialect, result, result.Rows[rowIndex])
+	assignments := resultsPaneUpdateAssignments(dialect, result, result.Rows[rowIndex])
+	predicates, usedPrimaryKeys := resultsPaneRowPredicates(dialect, result, result.Rows[rowIndex])
 	if len(assignments) == 0 {
-		return recordViewerComposeResult{}, fmt.Errorf("selected row has no columns to update")
+		return resultsPaneComposeResult{}, fmt.Errorf("selected row has no columns to update")
 	}
 	if !usedPrimaryKeys {
-		return recordViewerComposeResult{}, fmt.Errorf("selected row has no primary key columns; cannot compose a safe UPDATE")
+		return resultsPaneComposeResult{}, fmt.Errorf("selected row has no primary key columns; cannot compose a safe UPDATE")
 	}
 	if len(predicates) == 0 {
-		return recordViewerComposeResult{}, fmt.Errorf("selected row has no identifying predicate")
+		return resultsPaneComposeResult{}, fmt.Errorf("selected row has no identifying predicate")
 	}
 
-	return recordViewerComposeResult{
+	return resultsPaneComposeResult{
 		SQL: fmt.Sprintf("UPDATE %s\nSET\n%s\nWHERE\n%s;",
 			quoteSlashTableRef(dialect, source),
 			strings.Join(assignments, ",\n"),
@@ -72,32 +72,32 @@ func composeRecordViewerUpdateSQL(dialect db.Dialect, latest *LatestResultContex
 		Row:             rowIndex,
 		UsedPrimaryKeys: usedPrimaryKeys,
 		Source:          source,
-		Action:          recordViewerComposeActionUpdate,
+		Action:          resultsPaneComposeActionUpdate,
 	}, nil
 }
 
-func composeRecordViewerInsertSQL(dialect db.Dialect, latest *LatestResultContext, rowIndex int) (recordViewerComposeResult, error) {
+func composeResultsPaneInsertSQL(dialect db.Dialect, latest *LatestResultContext, rowIndex int) (resultsPaneComposeResult, error) {
 	if latest == nil || latest.PreservedResult == nil {
-		return recordViewerComposeResult{}, fmt.Errorf("record viewer has no rows to compose")
+		return resultsPaneComposeResult{}, fmt.Errorf("Results Pane has no rows to compose")
 	}
 
 	result := latest.PreservedResult
 	if rowIndex < 0 || rowIndex >= len(result.Rows) {
-		return recordViewerComposeResult{}, fmt.Errorf("selected row is out of range")
+		return resultsPaneComposeResult{}, fmt.Errorf("selected row is out of range")
 	}
 
-	source, ok := recordViewerResultSource(latest)
+	source, ok := resultsPaneResultSource(latest)
 	if !ok {
-		return recordViewerComposeResult{}, fmt.Errorf("result source table is unknown")
+		return resultsPaneComposeResult{}, fmt.Errorf("result source table is unknown")
 	}
 
-	columns := recordViewerInsertColumns(dialect, result)
-	values := recordViewerInsertValues(dialect, result, result.Rows[rowIndex])
+	columns := resultsPaneInsertColumns(dialect, result)
+	values := resultsPaneInsertValues(dialect, result, result.Rows[rowIndex])
 	if len(columns) == 0 {
-		return recordViewerComposeResult{}, fmt.Errorf("selected row has no columns to insert")
+		return resultsPaneComposeResult{}, fmt.Errorf("selected row has no columns to insert")
 	}
 
-	return recordViewerComposeResult{
+	return resultsPaneComposeResult{
 		SQL: fmt.Sprintf("INSERT INTO %s (\n%s\n) VALUES (\n%s\n);",
 			quoteSlashTableRef(dialect, source),
 			strings.Join(columns, ",\n"),
@@ -105,31 +105,31 @@ func composeRecordViewerInsertSQL(dialect db.Dialect, latest *LatestResultContex
 		),
 		Row:    rowIndex,
 		Source: source,
-		Action: recordViewerComposeActionInsert,
+		Action: resultsPaneComposeActionInsert,
 	}, nil
 }
 
-func composeRecordViewerDeleteSQL(dialect db.Dialect, latest *LatestResultContext, rowIndex int) (recordViewerComposeResult, error) {
+func composeResultsPaneDeleteSQL(dialect db.Dialect, latest *LatestResultContext, rowIndex int) (resultsPaneComposeResult, error) {
 	if latest == nil || latest.PreservedResult == nil {
-		return recordViewerComposeResult{}, fmt.Errorf("record viewer has no rows to compose")
+		return resultsPaneComposeResult{}, fmt.Errorf("Results Pane has no rows to compose")
 	}
 
 	result := latest.PreservedResult
 	if rowIndex < 0 || rowIndex >= len(result.Rows) {
-		return recordViewerComposeResult{}, fmt.Errorf("selected row is out of range")
+		return resultsPaneComposeResult{}, fmt.Errorf("selected row is out of range")
 	}
 
-	source, ok := recordViewerResultSource(latest)
+	source, ok := resultsPaneResultSource(latest)
 	if !ok {
-		return recordViewerComposeResult{}, fmt.Errorf("result source table is unknown")
+		return resultsPaneComposeResult{}, fmt.Errorf("result source table is unknown")
 	}
 
-	predicates, usedPrimaryKeys := recordViewerRowPredicates(dialect, result, result.Rows[rowIndex])
+	predicates, usedPrimaryKeys := resultsPaneRowPredicates(dialect, result, result.Rows[rowIndex])
 	if len(predicates) == 0 {
-		return recordViewerComposeResult{}, fmt.Errorf("selected row has no identifying predicate")
+		return resultsPaneComposeResult{}, fmt.Errorf("selected row has no identifying predicate")
 	}
 
-	return recordViewerComposeResult{
+	return resultsPaneComposeResult{
 		SQL: fmt.Sprintf("DELETE FROM %s\nWHERE\n%s;",
 			quoteSlashTableRef(dialect, source),
 			strings.Join(predicates, "\n  AND "),
@@ -137,12 +137,12 @@ func composeRecordViewerDeleteSQL(dialect db.Dialect, latest *LatestResultContex
 		Row:             rowIndex,
 		UsedPrimaryKeys: usedPrimaryKeys,
 		Source:          source,
-		Action:          recordViewerComposeActionDelete,
+		Action:          resultsPaneComposeActionDelete,
 	}, nil
 }
 
-func recordViewerComposeStatus(result recordViewerComposeResult) string {
-	if result.Action == recordViewerComposeActionInsert {
+func resultsPaneComposeStatus(result resultsPaneComposeResult) string {
+	if result.Action == resultsPaneComposeActionInsert {
 		return fmt.Sprintf("Loaded INSERT for row %d from %s into command mode.", result.Row+1, displaySlashTableRef(result.Source))
 	}
 
@@ -152,28 +152,28 @@ func recordViewerComposeStatus(result recordViewerComposeResult) string {
 	}
 	action := string(result.Action)
 	if action == "" {
-		action = string(recordViewerComposeActionUpdate)
+		action = string(resultsPaneComposeActionUpdate)
 	}
 	return fmt.Sprintf("Loaded %s for row %d from %s into command mode using %s.", action, result.Row+1, displaySlashTableRef(result.Source), predicate)
 }
 
-func recordViewerInsertColumns(dialect db.Dialect, result *db.ResultSet) []string {
+func resultsPaneInsertColumns(dialect db.Dialect, result *db.ResultSet) []string {
 	columns := make([]string, 0, len(result.Columns))
 	for i := range result.Columns {
-		columns = append(columns, "  "+quoteSlashIdentifier(dialect, recordViewerColumnName(result.Columns, i)))
+		columns = append(columns, "  "+quoteSlashIdentifier(dialect, resultsPaneColumnName(result.Columns, i)))
 	}
 	return columns
 }
 
-func recordViewerInsertValues(dialect db.Dialect, result *db.ResultSet, row db.ResultRow) []string {
+func resultsPaneInsertValues(dialect db.Dialect, result *db.ResultSet, row db.ResultRow) []string {
 	values := make([]string, 0, len(result.Columns))
 	for i := range result.Columns {
-		values = append(values, "  "+recordViewerValueLiteral(dialect, recordViewerRowValue(row, i)))
+		values = append(values, "  "+resultsPaneValueLiteral(dialect, resultsPaneRowValue(row, i)))
 	}
 	return values
 }
 
-func recordViewerResultSource(latest *LatestResultContext) (db.TableRef, bool) {
+func resultsPaneResultSource(latest *LatestResultContext) (db.TableRef, bool) {
 	if latest == nil || latest.PreservedResult == nil {
 		return db.TableRef{}, false
 	}
@@ -189,7 +189,7 @@ func recordViewerResultSource(latest *LatestResultContext) (db.TableRef, bool) {
 	return *inferred, true
 }
 
-func recordViewerUpdateAssignments(dialect db.Dialect, result *db.ResultSet, row db.ResultRow) []string {
+func resultsPaneUpdateAssignments(dialect db.Dialect, result *db.ResultSet, row db.ResultRow) []string {
 	indices := make([]int, 0, len(result.Columns))
 	for i, column := range result.Columns {
 		if column.PrimaryKey != nil {
@@ -207,14 +207,14 @@ func recordViewerUpdateAssignments(dialect db.Dialect, result *db.ResultSet, row
 	assignments := make([]string, 0, len(indices))
 	for _, index := range indices {
 		assignments = append(assignments, fmt.Sprintf("  %s = %s",
-			quoteSlashIdentifier(dialect, recordViewerColumnName(result.Columns, index)),
-			recordViewerValueLiteral(dialect, recordViewerRowValue(row, index)),
+			quoteSlashIdentifier(dialect, resultsPaneColumnName(result.Columns, index)),
+			resultsPaneValueLiteral(dialect, resultsPaneRowValue(row, index)),
 		))
 	}
 	return assignments
 }
 
-func recordViewerRowPredicates(dialect db.Dialect, result *db.ResultSet, row db.ResultRow) ([]string, bool) {
+func resultsPaneRowPredicates(dialect db.Dialect, result *db.ResultSet, row db.ResultRow) ([]string, bool) {
 	primaryKeyIndices := make([]int, 0, len(result.Columns))
 	for i, column := range result.Columns {
 		if column.PrimaryKey != nil {
@@ -222,20 +222,20 @@ func recordViewerRowPredicates(dialect db.Dialect, result *db.ResultSet, row db.
 		}
 	}
 	if len(primaryKeyIndices) > 1 {
-		sortRecordViewerPredicateIndices(result.Columns, primaryKeyIndices)
+		sortResultsPanePredicateIndices(result.Columns, primaryKeyIndices)
 	}
 	if len(primaryKeyIndices) > 0 {
-		return recordViewerPredicateLines(dialect, result, row, primaryKeyIndices), true
+		return resultsPanePredicateLines(dialect, result, row, primaryKeyIndices), true
 	}
 
 	indices := make([]int, len(result.Columns))
 	for i := range result.Columns {
 		indices[i] = i
 	}
-	return recordViewerPredicateLines(dialect, result, row, indices), false
+	return resultsPanePredicateLines(dialect, result, row, indices), false
 }
 
-func sortRecordViewerPredicateIndices(columns []db.ResultColumn, indices []int) {
+func sortResultsPanePredicateIndices(columns []db.ResultColumn, indices []int) {
 	for i := 0; i < len(indices); i++ {
 		for j := i + 1; j < len(indices); j++ {
 			left := columns[indices[i]].PrimaryKey
@@ -251,35 +251,35 @@ func sortRecordViewerPredicateIndices(columns []db.ResultColumn, indices []int) 
 	}
 }
 
-func recordViewerPredicateLines(dialect db.Dialect, result *db.ResultSet, row db.ResultRow, indices []int) []string {
+func resultsPanePredicateLines(dialect db.Dialect, result *db.ResultSet, row db.ResultRow, indices []int) []string {
 	predicates := make([]string, 0, len(indices))
 	for _, index := range indices {
-		column := quoteSlashIdentifier(dialect, recordViewerColumnName(result.Columns, index))
-		value := recordViewerRowValue(row, index)
+		column := quoteSlashIdentifier(dialect, resultsPaneColumnName(result.Columns, index))
+		value := resultsPaneRowValue(row, index)
 		if value.Kind == db.ValueKindNull || value.Value == nil {
 			predicates = append(predicates, fmt.Sprintf("  %s IS NULL", column))
 			continue
 		}
-		predicates = append(predicates, fmt.Sprintf("  %s = %s", column, recordViewerValueLiteral(dialect, value)))
+		predicates = append(predicates, fmt.Sprintf("  %s = %s", column, resultsPaneValueLiteral(dialect, value)))
 	}
 	return predicates
 }
 
-func recordViewerColumnName(columns []db.ResultColumn, index int) string {
+func resultsPaneColumnName(columns []db.ResultColumn, index int) string {
 	if index >= 0 && index < len(columns) && strings.TrimSpace(columns[index].Name) != "" {
 		return columns[index].Name
 	}
 	return fmt.Sprintf("column_%d", index+1)
 }
 
-func recordViewerRowValue(row db.ResultRow, index int) db.ResultValue {
+func resultsPaneRowValue(row db.ResultRow, index int) db.ResultValue {
 	if index >= 0 && index < len(row.Values) {
 		return row.Values[index]
 	}
 	return db.ResultValue{Kind: db.ValueKindNull}
 }
 
-func recordViewerValueLiteral(dialect db.Dialect, value db.ResultValue) string {
+func resultsPaneValueLiteral(dialect db.Dialect, value db.ResultValue) string {
 	switch value.Kind {
 	case db.ValueKindNull:
 		return "NULL"
@@ -293,24 +293,24 @@ func recordViewerValueLiteral(dialect db.Dialect, value db.ResultValue) string {
 	case db.ValueKindInteger, db.ValueKindFloat, db.ValueKindDecimal:
 		return fmt.Sprint(value.Value)
 	case db.ValueKindString:
-		return recordViewerStringLiteral(fmt.Sprint(value.Value))
+		return resultsPaneStringLiteral(fmt.Sprint(value.Value))
 	case db.ValueKindBytes:
 		if typed, ok := value.Value.([]byte); ok {
-			return recordViewerBytesLiteral(dialect, typed)
+			return resultsPaneBytesLiteral(dialect, typed)
 		}
 	case db.ValueKindTime:
 		t, state := extractTimeValue(value.Value)
 		switch state {
 		case timeValueValid:
-			return recordViewerTimeLiteral(t)
+			return resultsPaneTimeLiteral(t)
 		case timeValueNull:
 			return "NULL"
 		}
 		if s, ok := value.Value.(string); ok {
 			if t, ok := parseTimestampLiteral(s); ok {
-				return recordViewerTimeLiteral(t)
+				return resultsPaneTimeLiteral(t)
 			}
-			return recordViewerStringLiteral(s)
+			return resultsPaneStringLiteral(s)
 		}
 	}
 
@@ -320,18 +320,18 @@ func recordViewerValueLiteral(dialect db.Dialect, value db.ResultValue) string {
 	t, state := extractTimeValue(value.Value)
 	switch state {
 	case timeValueValid:
-		return recordViewerTimeLiteral(t)
+		return resultsPaneTimeLiteral(t)
 	case timeValueNull:
 		return "NULL"
 	}
-	return recordViewerStringLiteral(fmt.Sprint(value.Value))
+	return resultsPaneStringLiteral(fmt.Sprint(value.Value))
 }
 
-// recordViewerTimeLiteral renders a time.Time as a SQL string literal using a
+// resultsPaneTimeLiteral renders a time.Time as a SQL string literal using a
 // space-separated ISO-8601 form with an explicit numeric timezone offset. The
 // resulting literal round-trips across PostgreSQL, MySQL (8.0.19+) and SQLite.
-func recordViewerTimeLiteral(t time.Time) string {
-	return recordViewerStringLiteral(t.Format("2006-01-02 15:04:05.999999999-07:00"))
+func resultsPaneTimeLiteral(t time.Time) string {
+	return resultsPaneStringLiteral(t.Format("2006-01-02 15:04:05.999999999-07:00"))
 }
 
 type timeValueState int
@@ -392,7 +392,7 @@ func extractTimeValue(value any) (time.Time, timeValueState) {
 	return timeField.Interface().(time.Time), timeValueValid
 }
 
-var recordViewerTimestampParseLayouts = []string{
+var resultsPaneTimestampParseLayouts = []string{
 	"2006-01-02 15:04:05.999999999-07:00",
 	"2006-01-02 15:04:05.999999999-0700",
 	"2006-01-02 15:04:05.999999999 -0700 MST",
@@ -414,7 +414,7 @@ func parseTimestampLiteral(value string) (time.Time, bool) {
 	if trimmed == "" {
 		return time.Time{}, false
 	}
-	for _, layout := range recordViewerTimestampParseLayouts {
+	for _, layout := range resultsPaneTimestampParseLayouts {
 		if t, err := time.Parse(layout, trimmed); err == nil {
 			return t, true
 		}
@@ -422,11 +422,11 @@ func parseTimestampLiteral(value string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-func recordViewerStringLiteral(value string) string {
+func resultsPaneStringLiteral(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
-func recordViewerBytesLiteral(dialect db.Dialect, value []byte) string {
+func resultsPaneBytesLiteral(dialect db.Dialect, value []byte) string {
 	hex := fmt.Sprintf("%x", value)
 	if slashDialectOrFallback(dialect).Name() == "postgres" {
 		return fmt.Sprintf("decode('%s', 'hex')", hex)

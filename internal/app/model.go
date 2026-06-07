@@ -22,7 +22,7 @@ type Model struct {
 	history         *apphistory.History
 	executionCancel context.CancelFunc
 	command         commandModeModel
-	viewer          recordViewerModeModel
+	resultsPane     resultsPaneModeModel
 	state           SharedAppState
 	cache           *autocompleteSchemaCache
 	loader          autocompleteSchemaLoader
@@ -145,7 +145,7 @@ func newModelWithDependencies(session ConnectionInfo, adapter *db.SQLAdapter, de
 		adapter:    adapter,
 		history:    sessionHistory,
 		command:    newCommandModeModel(),
-		viewer:     newRecordViewerModeModel(),
+		resultsPane: newResultsPaneModeModel(),
 		state:      NewSharedAppState(),
 		cache:      cache,
 		loader:     loader,
@@ -186,23 +186,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pendingQuit = false
 		}
 
-		if m.handleRecordViewerNavigationKey(msg) {
+		if m.handleResultsPaneNavigationKey(msg) {
 			return m, nil
 		}
 
-		if m.handleRecordViewerWriteKey(msg) {
+		if m.handleResultsPaneWriteKey(msg) {
 			return m, nil
 		}
 
-		if m.handleRecordViewerSelectionKey(msg) {
+		if m.handleResultsPaneSelectionKey(msg) {
 			return m, nil
 		}
 
-		if m.handleRecordViewerComposeKey(msg) {
+		if m.handleResultsPaneComposeKey(msg) {
 			return m, nil
 		}
 
-		if m.handleRecordViewerPagingKey(msg) {
+		if m.handleResultsPanePagingKey(msg) {
 			return m, nil
 		}
 
@@ -462,7 +462,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncPaneSizes()
 	}
 
-	if m.state.Interaction.ActiveMode == ModeRecordViewer && !layoutShowsCommand(m.state.Interaction.Layout) {
+	if m.state.Interaction.ActiveMode == ModeResultsPane && !layoutShowsCommand(m.state.Interaction.Layout) {
 		return m, nil
 	}
 
@@ -547,22 +547,22 @@ func (m *Model) syncPaneSizes() {
 
 	switch m.state.Interaction.Layout {
 	case LayoutSplit:
-		viewerOuterH := int(float64(contentHeight) * m.splitRatio)
-		if viewerOuterH < 3 {
-			viewerOuterH = 3
+		resultsPaneOuterH := int(float64(contentHeight) * m.splitRatio)
+		if resultsPaneOuterH < 3 {
+			resultsPaneOuterH = 3
 		}
-		commandOuterH := contentHeight - viewerOuterH
+		commandOuterH := contentHeight - resultsPaneOuterH
 		if commandOuterH < 3 {
 			commandOuterH = 3
 		}
-		m.viewer.SetSize(innerWidth, viewerOuterH-2)
+		m.resultsPane.SetSize(innerWidth, resultsPaneOuterH-2)
 		m.command.SetSize(innerWidth, commandOuterH-2)
-	case LayoutViewerOnly:
-		m.viewer.SetSize(innerWidth, contentHeight-2)
+	case LayoutResultsPaneOnly:
+		m.resultsPane.SetSize(innerWidth, contentHeight-2)
 		m.command.SetSize(innerWidth, contentHeight-2)
 	default: // LayoutCommandOnly
 		m.command.SetSize(innerWidth, contentHeight-2)
-		m.viewer.SetSize(innerWidth, contentHeight-2)
+		m.resultsPane.SetSize(innerWidth, contentHeight-2)
 	}
 }
 
@@ -642,23 +642,23 @@ func (m Model) readyStateView(totalHeight int) string {
 	var base string
 	switch interaction.Layout {
 	case LayoutSplit:
-		viewerOuterH := int(float64(totalHeight) * m.splitRatio)
-		if viewerOuterH < 3 {
-			viewerOuterH = 3
+		resultsPaneOuterH := int(float64(totalHeight) * m.splitRatio)
+		if resultsPaneOuterH < 3 {
+			resultsPaneOuterH = 3
 		}
-		commandOuterH := totalHeight - viewerOuterH
+		commandOuterH := totalHeight - resultsPaneOuterH
 		if commandOuterH < 3 {
 			commandOuterH = 3
 		}
-		viewerContent := m.viewer.View(interaction)
+		resultsPaneContent := m.resultsPane.View(interaction)
 		commandContent := m.command.View(interaction)
-		viewerActive := interaction.ActiveMode == ModeRecordViewer
-		viewerPane := m.renderBorderedPane(viewerContent, "[1] Results", viewerActive, w, viewerOuterH-2)
-		commandPane := m.renderBorderedPane(commandContent, "[2] Commands", !viewerActive, w, commandOuterH-2)
-		base = viewerPane + "\n" + commandPane
-	case LayoutViewerOnly:
-		viewerContent := m.viewer.View(interaction)
-		base = m.renderBorderedPane(viewerContent, "[1] Results", true, w, totalHeight-2)
+		resultsPaneActive := interaction.ActiveMode == ModeResultsPane
+		resultsPanePane := m.renderBorderedPane(resultsPaneContent, "[1] Results", resultsPaneActive, w, resultsPaneOuterH-2)
+		commandPane := m.renderBorderedPane(commandContent, "[2] Commands", !resultsPaneActive, w, commandOuterH-2)
+		base = resultsPanePane + "\n" + commandPane
+	case LayoutResultsPaneOnly:
+		resultsPaneContent := m.resultsPane.View(interaction)
+		base = m.renderBorderedPane(resultsPaneContent, "[1] Results", true, w, totalHeight-2)
 	default: // LayoutCommandOnly
 		commandContent := m.command.View(interaction)
 		base = m.renderBorderedPane(commandContent, "[2] Commands", true, w, totalHeight-2)
@@ -847,22 +847,22 @@ func (m Model) handleLayoutKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 }
 
-func (m *Model) handleRecordViewerPagingKey(msg tea.KeyPressMsg) bool {
+func (m *Model) handleResultsPanePagingKey(msg tea.KeyPressMsg) bool {
 	key := msg.String()
 	isScroll := key == "ctrl+u" || key == "ctrl+d"
 	isPaging := key == "ctrl+p" || key == "ctrl+n"
 	if !isScroll && !isPaging {
 		return false
 	}
-	if m.state.Interaction.ActiveMode != ModeRecordViewer {
-		m.viewer.pendingAction = recordViewerPendingActionNone
+	if m.state.Interaction.ActiveMode != ModeResultsPane {
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
 		return false
 	}
-	m.viewer.pendingAction = recordViewerPendingActionNone
+	m.resultsPane.pendingAction = resultsPanePendingActionNone
 
 	latest := m.state.Interaction.LatestResult
 	if latest == nil || latest.PreservedResult == nil {
-		m.state.SetPendingIntent(IntentNone, "viewer-page", "Record viewer has no rows to page.")
+		m.state.SetPendingIntent(IntentNone, "results-pane-page", "Results Pane has no rows to page.")
 		return true
 	}
 
@@ -874,17 +874,17 @@ func (m *Model) handleRecordViewerPagingKey(msg tea.KeyPressMsg) bool {
 		if len(result.Rows) == 0 {
 			return true
 		}
-		m.viewer.syncSelection(m.state.Interaction)
-		page := recordViewerPageContextFor(m.state.Interaction.ViewerPage, len(result.Rows))
+		m.resultsPane.syncSelection(m.state.Interaction)
+		page := resultsPanePageContextFor(m.state.Interaction.ViewerPage, len(result.Rows))
 		pageMinRow := page.StartRow - 1 // inclusive lower bound (0-indexed)
 		pageMaxRow := page.EndRow - 1   // inclusive upper bound (0-indexed)
-		scrollAmount := max(1, m.viewer.height/2)
+		scrollAmount := max(1, m.resultsPane.height/2)
 		if key == "ctrl+d" {
-			m.viewer.selectedRow = min(m.viewer.selectedRow+scrollAmount, pageMaxRow)
+			m.resultsPane.selectedRow = min(m.resultsPane.selectedRow+scrollAmount, pageMaxRow)
 		} else {
-			m.viewer.selectedRow = max(m.viewer.selectedRow-scrollAmount, pageMinRow)
+			m.resultsPane.selectedRow = max(m.resultsPane.selectedRow-scrollAmount, pageMinRow)
 		}
-		m.viewer.selectionActive = true
+		m.resultsPane.selectionActive = true
 		// Do not call SetViewerPage — the page must not change on scroll.
 		return true
 	}
@@ -897,49 +897,49 @@ func (m *Model) handleRecordViewerPagingKey(msg tea.KeyPressMsg) bool {
 		m.state.ChangeViewerPage(1)
 	}
 
-	page := recordViewerPageContextFor(m.state.Interaction.ViewerPage, len(latest.PreservedResult.Rows))
+	page := resultsPanePageContextFor(m.state.Interaction.ViewerPage, len(latest.PreservedResult.Rows))
 	if m.state.Interaction.ViewerPage == previous {
 		if previous == 0 {
-			m.state.SetPendingIntent(IntentNone, "viewer-page", fmt.Sprintf("Already at the first record viewer page (%s).", formatRecordViewerRowRange(page)))
+			m.state.SetPendingIntent(IntentNone, "results-pane-page", fmt.Sprintf("Already at the first Results Pane page (%s).", formatResultsPaneRowRange(page)))
 			return true
 		}
-		m.state.SetPendingIntent(IntentNone, "viewer-page", fmt.Sprintf("Already at the last record viewer page (%s).", formatRecordViewerRowRange(page)))
+		m.state.SetPendingIntent(IntentNone, "results-pane-page", fmt.Sprintf("Already at the last Results Pane page (%s).", formatResultsPaneRowRange(page)))
 		return true
 	}
 
-	m.state.SetPendingIntent(IntentNone, "viewer-page", fmt.Sprintf("Showing record viewer page %d/%d (%s).", page.Number, page.TotalPages, formatRecordViewerRowRange(page)))
+	m.state.SetPendingIntent(IntentNone, "results-pane-page", fmt.Sprintf("Showing Results Pane page %d/%d (%s).", page.Number, page.TotalPages, formatResultsPaneRowRange(page)))
 	return true
 }
 
-func (m *Model) handleRecordViewerNavigationKey(msg tea.KeyPressMsg) bool {
-	if m.state.Interaction.ActiveMode != ModeRecordViewer {
-		m.viewer.pendingAction = recordViewerPendingActionNone
+func (m *Model) handleResultsPaneNavigationKey(msg tea.KeyPressMsg) bool {
+	if m.state.Interaction.ActiveMode != ModeResultsPane {
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
 		return false
 	}
 
-	page, handled := m.viewer.Navigate(msg, m.state.Interaction)
+	page, handled := m.resultsPane.Navigate(msg, m.state.Interaction)
 	if !handled {
 		return false
 	}
-	m.viewer.pendingAction = recordViewerPendingActionNone
+	m.resultsPane.pendingAction = resultsPanePendingActionNone
 
 	m.state.SetViewerPage(page)
 	return true
 }
 
-func (m *Model) handleRecordViewerSelectionKey(msg tea.KeyPressMsg) bool {
+func (m *Model) handleResultsPaneSelectionKey(msg tea.KeyPressMsg) bool {
 	if msg.String() != "space" && msg.String() != " " {
 		return false
 	}
-	if m.state.Interaction.ActiveMode != ModeRecordViewer {
-		m.viewer.pendingAction = recordViewerPendingActionNone
+	if m.state.Interaction.ActiveMode != ModeResultsPane {
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
 		return false
 	}
-	m.viewer.pendingAction = recordViewerPendingActionNone
+	m.resultsPane.pendingAction = resultsPanePendingActionNone
 
-	row, selected, handled := m.viewer.ToggleSelectedRow(&m.state.Interaction)
+	row, selected, handled := m.resultsPane.ToggleSelectedRow(&m.state.Interaction)
 	if !handled {
-		m.state.SetPendingIntent(IntentNone, "viewer-select", "Record viewer has no rows to select.")
+		m.state.SetPendingIntent(IntentNone, "viewer-select", "Results Pane has no rows to select.")
 		return true
 	}
 
@@ -952,54 +952,54 @@ func (m *Model) handleRecordViewerSelectionKey(msg tea.KeyPressMsg) bool {
 	return true
 }
 
-func (m *Model) handleRecordViewerComposeKey(msg tea.KeyPressMsg) bool {
-	if m.state.Interaction.ActiveMode != ModeRecordViewer {
-		m.viewer.pendingAction = recordViewerPendingActionNone
+func (m *Model) handleResultsPaneComposeKey(msg tea.KeyPressMsg) bool {
+	if m.state.Interaction.ActiveMode != ModeResultsPane {
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
 		return false
 	}
 
 	if len(msg.Text) != 1 || msg.Mod.Contains(tea.ModAlt) {
-		m.viewer.pendingAction = recordViewerPendingActionNone
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
 		return false
 	}
 
 	switch []rune(msg.Text)[0] {
 	case 'y':
-		if m.viewer.pendingAction != recordViewerPendingActionComposeInsert {
-			m.viewer.pendingAction = recordViewerPendingActionComposeInsert
+		if m.resultsPane.pendingAction != resultsPanePendingActionComposeInsert {
+			m.resultsPane.pendingAction = resultsPanePendingActionComposeInsert
 			m.state.SetPendingIntent(IntentNone, "viewer-compose", "Press y again to load INSERT for the selected row into command mode.")
 			return true
 		}
-		m.viewer.pendingAction = recordViewerPendingActionNone
-		return m.composeRecordViewerInsert()
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
+		return m.composeResultsPaneInsert()
 	case 'c':
-		if m.viewer.pendingAction != recordViewerPendingActionComposeUpdate {
-			m.viewer.pendingAction = recordViewerPendingActionComposeUpdate
+		if m.resultsPane.pendingAction != resultsPanePendingActionComposeUpdate {
+			m.resultsPane.pendingAction = resultsPanePendingActionComposeUpdate
 			return true
 		}
-		m.viewer.pendingAction = recordViewerPendingActionNone
-		return m.composeRecordViewerUpdate()
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
+		return m.composeResultsPaneUpdate()
 	case 'd':
-		if m.viewer.pendingAction != recordViewerPendingActionComposeDelete {
-			m.viewer.pendingAction = recordViewerPendingActionComposeDelete
+		if m.resultsPane.pendingAction != resultsPanePendingActionComposeDelete {
+			m.resultsPane.pendingAction = resultsPanePendingActionComposeDelete
 			m.state.SetPendingIntent(IntentNone, "viewer-compose", "Press d again to load DELETE for the selected row into command mode.")
 			return true
 		}
-		m.viewer.pendingAction = recordViewerPendingActionNone
-		return m.composeRecordViewerDelete()
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
+		return m.composeResultsPaneDelete()
 	default:
-		m.viewer.pendingAction = recordViewerPendingActionNone
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
 		return false
 	}
 }
 
-func (m *Model) composeRecordViewerInsert() bool {
+func (m *Model) composeResultsPaneInsert() bool {
 	if m.state.Interaction.LatestResult == nil || m.state.Interaction.LatestResult.PreservedResult == nil {
-		m.state.SetPendingIntent(IntentNone, "viewer-compose", "Record viewer has no rows to compose.")
+		m.state.SetPendingIntent(IntentNone, "viewer-compose", "Results Pane has no rows to compose.")
 		return true
 	}
 
-	result, err := composeRecordViewerInsertSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.viewer.selectedRow)
+	result, err := composeResultsPaneInsertSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
 	if err != nil {
 		m.state.SetPendingIntent(IntentNone, "viewer-compose", fmt.Sprintf("Could not compose INSERT: %v", err))
 		return true
@@ -1009,21 +1009,21 @@ func (m *Model) composeRecordViewerInsert() bool {
 	m.syncCurrentSQL()
 	m.closeHistorySearch()
 	m.command.Focus()
-	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, ModeRecordViewer))
+	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, ModeResultsPane))
 	m.state.SetActiveMode(ModeCommand)
 	m.state.SetPendingModeSwitch(nil)
-	m.state.SetPendingIntent(IntentNone, "viewer-compose", recordViewerComposeStatus(result))
+	m.state.SetPendingIntent(IntentNone, "viewer-compose", resultsPaneComposeStatus(result))
 	m.syncPaneSizes()
 	return true
 }
 
-func (m *Model) composeRecordViewerUpdate() bool {
+func (m *Model) composeResultsPaneUpdate() bool {
 	if m.state.Interaction.LatestResult == nil || m.state.Interaction.LatestResult.PreservedResult == nil {
-		m.state.SetPendingIntent(IntentNone, "viewer-compose", "Record viewer has no rows to compose.")
+		m.state.SetPendingIntent(IntentNone, "viewer-compose", "Results Pane has no rows to compose.")
 		return true
 	}
 
-	result, err := composeRecordViewerUpdateSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.viewer.selectedRow)
+	result, err := composeResultsPaneUpdateSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
 	if err != nil {
 		m.state.SetPendingIntent(IntentNone, "viewer-compose", fmt.Sprintf("Could not compose UPDATE: %v", err))
 		return true
@@ -1033,21 +1033,21 @@ func (m *Model) composeRecordViewerUpdate() bool {
 	m.syncCurrentSQL()
 	m.closeHistorySearch()
 	m.command.Focus()
-	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, ModeRecordViewer))
+	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, ModeResultsPane))
 	m.state.SetActiveMode(ModeCommand)
 	m.state.SetPendingModeSwitch(nil)
-	m.state.SetPendingIntent(IntentNone, "viewer-compose", recordViewerComposeStatus(result))
+	m.state.SetPendingIntent(IntentNone, "viewer-compose", resultsPaneComposeStatus(result))
 	m.syncPaneSizes()
 	return true
 }
 
-func (m *Model) composeRecordViewerDelete() bool {
+func (m *Model) composeResultsPaneDelete() bool {
 	if m.state.Interaction.LatestResult == nil || m.state.Interaction.LatestResult.PreservedResult == nil {
-		m.state.SetPendingIntent(IntentNone, "viewer-compose", "Record viewer has no rows to compose.")
+		m.state.SetPendingIntent(IntentNone, "viewer-compose", "Results Pane has no rows to compose.")
 		return true
 	}
 
-	result, err := composeRecordViewerDeleteSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.viewer.selectedRow)
+	result, err := composeResultsPaneDeleteSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
 	if err != nil {
 		m.state.SetPendingIntent(IntentNone, "viewer-compose", fmt.Sprintf("Could not compose DELETE: %v", err))
 		return true
@@ -1057,10 +1057,10 @@ func (m *Model) composeRecordViewerDelete() bool {
 	m.syncCurrentSQL()
 	m.closeHistorySearch()
 	m.command.Focus()
-	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, ModeRecordViewer))
+	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, ModeResultsPane))
 	m.state.SetActiveMode(ModeCommand)
 	m.state.SetPendingModeSwitch(nil)
-	m.state.SetPendingIntent(IntentNone, "viewer-compose", recordViewerComposeStatus(result))
+	m.state.SetPendingIntent(IntentNone, "viewer-compose", resultsPaneComposeStatus(result))
 	m.syncPaneSizes()
 	return true
 }
@@ -1568,10 +1568,10 @@ func buildModeSwitchContext(fromLayout, toLayout AppLayout, fromMode, toMode App
 
 func nextModeForIntent(current AppMode) AppMode {
 	switch current {
-	case ModeRecordViewer:
+	case ModeResultsPane:
 		return ModeCommand
 	default:
-		return ModeRecordViewer
+		return ModeResultsPane
 	}
 }
 
@@ -1579,13 +1579,13 @@ func nextLayoutForModeIntent(currentLayout AppLayout, currentMode AppMode) AppLa
 	switch currentLayout {
 	case LayoutSplit:
 		return LayoutSplit
-	case LayoutViewerOnly:
+	case LayoutResultsPaneOnly:
 		return LayoutCommandOnly
 	default:
-		if currentMode == ModeRecordViewer {
+		if currentMode == ModeResultsPane {
 			return LayoutCommandOnly
 		}
-		return LayoutViewerOnly
+		return LayoutResultsPaneOnly
 	}
 }
 
@@ -1603,16 +1603,16 @@ func describeModeSwitchStatus(context *ModeSwitchContext) string {
 
 	if context.ResultContext == nil || context.ResultContext.PreservedResult == nil {
 		if context.ToLayout == LayoutSplit {
-			return "Focused the record viewer in split layout. Run a query that returns rows to populate it."
+			return "Focused the Results Pane in split layout. Run a query that returns rows to populate it."
 		}
 		return "Record viewer is available after running a query that returns tabular results."
 	}
 
 	result := context.ResultContext.PreservedResult
 	if context.ToLayout == LayoutSplit {
-		return fmt.Sprintf("Focused the record viewer in split layout for %d row(s) across %d column(s).", len(result.Rows), len(result.Columns))
+		return fmt.Sprintf("Focused the Results Pane in split layout for %d row(s) across %d column(s).", len(result.Rows), len(result.Columns))
 	}
-	return fmt.Sprintf("Opened record viewer for %d row(s) across %d column(s).", len(result.Rows), len(result.Columns))
+	return fmt.Sprintf("Opened Results Pane for %d row(s) across %d column(s).", len(result.Rows), len(result.Columns))
 }
 
 func (m *Model) applyModeSwitch(context *ModeSwitchContext) {
@@ -1671,19 +1671,19 @@ func (m *Model) applyLayoutSwitch(layout AppLayout) {
 	m.state.SetLayout(layout)
 
 	switch layout {
-	case LayoutViewerOnly:
+	case LayoutResultsPaneOnly:
 		if m.state.Interaction.ActiveMode == ModeHistorySearch {
 			m.closeHistorySearch()
 		}
 		m.command.Blur()
-		m.state.SetActiveMode(ModeRecordViewer)
+		m.state.SetActiveMode(ModeResultsPane)
 		if latest := m.state.Interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
 			m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s with %d row(s) visible.", layoutLabel(layout), len(latest.PreservedResult.Rows)))
 			return
 		}
 		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s. Run a query that returns rows to populate the viewer.", layoutLabel(layout)))
 	case LayoutSplit:
-		if m.state.Interaction.ActiveMode == ModeRecordViewer {
+		if m.state.Interaction.ActiveMode == ModeResultsPane {
 			m.command.Blur()
 		} else {
 			m.command.Focus()
@@ -1694,7 +1694,7 @@ func (m *Model) applyLayoutSwitch(layout AppLayout) {
 		}
 		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s.", layoutLabel(layout)))
 	case LayoutCommandOnly:
-		if m.state.Interaction.ActiveMode == ModeRecordViewer {
+		if m.state.Interaction.ActiveMode == ModeResultsPane {
 			m.state.SetActiveMode(ModeCommand)
 		}
 		m.command.Focus()
@@ -1715,20 +1715,20 @@ func (m *Model) handleFocusPane(pane PaneTarget) {
 		case LayoutCommandOnly:
 			m.command.Blur()
 			m.state.SetLayout(LayoutSplit)
-			m.state.SetActiveMode(ModeRecordViewer)
+			m.state.SetActiveMode(ModeResultsPane)
 			m.state.SetPendingIntent(IntentNone, "focus-pane", "Switched to split layout with results pane focused.")
-		case LayoutViewerOnly:
-			m.state.SetActiveMode(ModeRecordViewer)
+		case LayoutResultsPaneOnly:
+			m.state.SetActiveMode(ModeResultsPane)
 			m.state.SetPendingIntent(IntentNone, "focus-pane", "Results pane is already focused.")
 		default: // LayoutSplit
 			m.command.Blur()
-			m.state.SetActiveMode(ModeRecordViewer)
+			m.state.SetActiveMode(ModeResultsPane)
 			m.state.SetPendingIntent(IntentNone, "focus-pane", "Focused results pane.")
 		}
 	case PaneCommand:
 		m.closeHistorySearch()
 		switch m.state.Interaction.Layout {
-		case LayoutViewerOnly:
+		case LayoutResultsPaneOnly:
 			m.command.Focus()
 			m.state.SetLayout(LayoutSplit)
 			m.state.SetActiveMode(ModeCommand)
@@ -1748,10 +1748,10 @@ func (m *Model) handleFocusPane(pane PaneTarget) {
 func (m *Model) handleToggleZoom() {
 	switch m.state.Interaction.Layout {
 	case LayoutSplit:
-		if m.state.Interaction.ActiveMode == ModeRecordViewer {
+		if m.state.Interaction.ActiveMode == ModeResultsPane {
 			m.command.Blur()
-			m.state.SetLayout(LayoutViewerOnly)
-			m.state.SetActiveMode(ModeRecordViewer)
+			m.state.SetLayout(LayoutResultsPaneOnly)
+			m.state.SetActiveMode(ModeResultsPane)
 			m.state.SetPendingIntent(IntentNone, "zoom", "Zoomed results pane.")
 		} else {
 			m.command.Focus()
@@ -1765,9 +1765,9 @@ func (m *Model) handleToggleZoom() {
 		m.state.SetActiveMode(ModeCommand)
 		m.command.Focus()
 		m.state.SetPendingIntent(IntentNone, "zoom", "Returned to split layout.")
-	case LayoutViewerOnly:
+	case LayoutResultsPaneOnly:
 		m.state.SetLayout(LayoutSplit)
-		m.state.SetActiveMode(ModeRecordViewer)
+		m.state.SetActiveMode(ModeResultsPane)
 		m.command.Blur()
 		m.state.SetPendingIntent(IntentNone, "zoom", "Returned to split layout.")
 	}
@@ -1810,7 +1810,7 @@ func renderHelpSurface(st InteractionState) string {
 
 	if st.Layout == LayoutSplit {
 		var layoutLines []string
-		if st.ActiveMode == ModeRecordViewer {
+		if st.ActiveMode == ModeResultsPane {
 			layoutLines = []string{"Record viewer [active]", "Command line"}
 		} else {
 			layoutLines = []string{"Record viewer", "Command line [active]"}
@@ -1860,14 +1860,14 @@ func renderHelpSurface(st InteractionState) string {
 }
 
 func layoutShowsCommand(layout AppLayout) bool {
-	return layout != LayoutViewerOnly
+	return layout != LayoutResultsPaneOnly
 }
 
 func layoutLabel(layout AppLayout) string {
 	switch layout {
 	case LayoutSplit:
 		return "split"
-	case LayoutViewerOnly:
+	case LayoutResultsPaneOnly:
 		return "viewer only"
 	default:
 		return "command only"

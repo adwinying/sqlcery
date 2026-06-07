@@ -374,7 +374,7 @@ func TestCommandModeFooterShowsViewerPagingWhenViewerFocusedInSplit(t *testing.T
 	mode.SetSize(80, 20)
 	footer := mode.Footer("local", "sqlite", InteractionState{
 		Layout:     LayoutSplit,
-		ActiveMode: ModeRecordViewer,
+		ActiveMode: ModeResultsPane,
 	})
 
 	for _, want := range []string{"Command line hidden focus", "layout split", "alt+h help", "ctrl+u scroll up", "ctrl+d scroll down"} {

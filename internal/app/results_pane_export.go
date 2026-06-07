@@ -9,20 +9,20 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-func (m *Model) handleRecordViewerWriteKey(msg tea.KeyPressMsg) bool {
-	if m.state.Interaction.ActiveMode != ModeRecordViewer {
-		m.viewer.pendingAction = recordViewerPendingActionNone
-		m.viewer.writeBuffer = ""
+func (m *Model) handleResultsPaneWriteKey(msg tea.KeyPressMsg) bool {
+	if m.state.Interaction.ActiveMode != ModeResultsPane {
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
+		m.resultsPane.writeBuffer = ""
 		return false
 	}
 
-	if m.viewer.pendingAction == recordViewerPendingActionWrite {
-		return m.updateRecordViewerWritePrompt(msg)
+	if m.resultsPane.pendingAction == resultsPanePendingActionWrite {
+		return m.updateResultsPaneWritePrompt(msg)
 	}
 
 	if msg.String() == ":" {
-		m.viewer.pendingAction = recordViewerPendingActionWrite
-		m.viewer.writeBuffer = ":"
+		m.resultsPane.pendingAction = resultsPanePendingActionWrite
+		m.resultsPane.writeBuffer = ":"
 		m.state.SetPendingIntent(IntentNone, "viewer-export", "Type :w [filename] to export selected rows or the current result rows.")
 		return true
 	}
@@ -30,17 +30,17 @@ func (m *Model) handleRecordViewerWriteKey(msg tea.KeyPressMsg) bool {
 	return false
 }
 
-func (m *Model) updateRecordViewerWritePrompt(msg tea.KeyPressMsg) bool {
+func (m *Model) updateResultsPaneWritePrompt(msg tea.KeyPressMsg) bool {
 	switch msg.String() {
 	case "enter":
-		command := strings.TrimSpace(m.viewer.writeBuffer)
-		m.viewer.pendingAction = recordViewerPendingActionNone
-		m.viewer.writeBuffer = ""
-		return m.writeRecordViewerExport(command)
+		command := strings.TrimSpace(m.resultsPane.writeBuffer)
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
+		m.resultsPane.writeBuffer = ""
+		return m.writeResultsPaneExport(command)
 	case "backspace", "delete":
-		if len(m.viewer.writeBuffer) > 0 {
-			runes := []rune(m.viewer.writeBuffer)
-			m.viewer.writeBuffer = string(runes[:len(runes)-1])
+		if len(m.resultsPane.writeBuffer) > 0 {
+			runes := []rune(m.resultsPane.writeBuffer)
+			m.resultsPane.writeBuffer = string(runes[:len(runes)-1])
 		}
 		return true
 	default:
@@ -48,26 +48,26 @@ func (m *Model) updateRecordViewerWritePrompt(msg tea.KeyPressMsg) bool {
 			if msg.Mod.Contains(tea.ModAlt) {
 				return false
 			}
-			m.viewer.writeBuffer += msg.Text
+			m.resultsPane.writeBuffer += msg.Text
 		}
 		return true
 	}
 }
 
-func (m *Model) writeRecordViewerExport(command string) bool {
-	filename, ok := parseRecordViewerWriteCommand(command)
+func (m *Model) writeResultsPaneExport(command string) bool {
+	filename, ok := parseResultsPaneWriteCommand(command)
 	if !ok {
-		m.state.SetPendingIntent(IntentNone, "viewer-export", "Use :w [filename] with .csv, .tsv, .json, or .md while record viewer is focused.")
+		m.state.SetPendingIntent(IntentNone, "viewer-export", "Use :w [filename] with .csv, .tsv, .json, or .md while Results Pane is focused.")
 		return true
 	}
 
 	latest := m.state.Interaction.LatestResult
 	if latest == nil || latest.PreservedResult == nil {
-		m.state.SetPendingIntent(IntentNone, "viewer-export", "Record viewer has no rows to export.")
+		m.state.SetPendingIntent(IntentNone, "viewer-export", "Results Pane has no rows to export.")
 		return true
 	}
 	if len(latest.PreservedResult.Rows) == 0 {
-		m.state.SetPendingIntent(IntentNone, "viewer-export", "Record viewer has no rows to export.")
+		m.state.SetPendingIntent(IntentNone, "viewer-export", "Results Pane has no rows to export.")
 		return true
 	}
 
@@ -97,7 +97,7 @@ func (m *Model) writeRecordViewerExport(command string) bool {
 	return true
 }
 
-func parseRecordViewerWriteCommand(input string) (string, bool) {
+func parseResultsPaneWriteCommand(input string) (string, bool) {
 	trimmed := strings.TrimSpace(input)
 	if !strings.HasPrefix(trimmed, ":") {
 		return "", false

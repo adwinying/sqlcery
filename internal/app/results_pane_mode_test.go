@@ -11,8 +11,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func TestRecordViewerModeViewRendersFullResultSet(t *testing.T) {
-	mode := newRecordViewerModeModel()
+func TestResultsPaneModeViewRendersFullResultSet(t *testing.T) {
+	mode := newResultsPaneModeModel()
 	mode.SetSize(80, 8)
 
 	view := mode.View(InteractionState{
@@ -47,8 +47,8 @@ func TestRecordViewerModeViewRendersFullResultSet(t *testing.T) {
 
 }
 
-func TestRecordViewerModeViewRendersSelectedPage(t *testing.T) {
-	mode := newRecordViewerModeModel()
+func TestResultsPaneModeViewRendersSelectedPage(t *testing.T) {
+	mode := newResultsPaneModeModel()
 	mode.SetSize(80, 12)
 
 	rows := make([]db.ResultRow, 0, 305)
@@ -85,8 +85,8 @@ func TestRecordViewerModeViewRendersSelectedPage(t *testing.T) {
 	}
 }
 
-func TestRecordViewerModeViewClipsRowsToVisibleViewport(t *testing.T) {
-	mode := newRecordViewerModeModel()
+func TestResultsPaneModeViewClipsRowsToVisibleViewport(t *testing.T) {
+	mode := newResultsPaneModeModel()
 	mode.SetSize(80, 14)
 	mode.selectedRow = 15
 	mode.selectionActive = true
@@ -119,10 +119,10 @@ func TestRecordViewerModeViewClipsRowsToVisibleViewport(t *testing.T) {
 	}
 }
 
-func TestRecordViewerModeFooterIncludesModeDetails(t *testing.T) {
-	mode := newRecordViewerModeModel()
+func TestResultsPaneModeFooterIncludesModeDetails(t *testing.T) {
+	mode := newResultsPaneModeModel()
 	footer := mode.Footer("local", "sqlite", InteractionState{
-		Layout:       LayoutViewerOnly,
+		Layout:       LayoutResultsPaneOnly,
 		LatestResult: &LatestResultContext{PreservedResult: &db.ResultSet{Rows: []db.ResultRow{{}, {}}}, SelectedRows: []int{0}},
 		Running:      &RunningStatementContext{Label: "/tables", Elapsed: 2*time.Second + 300*time.Millisecond},
 	})
@@ -134,8 +134,8 @@ func TestRecordViewerModeFooterIncludesModeDetails(t *testing.T) {
 	}
 }
 
-func TestComposeRecordViewerInsertSQLUsesVisibleColumns(t *testing.T) {
-	result, err := composeRecordViewerInsertSQL(db.PostgresDialect(), &LatestResultContext{
+func TestComposeResultsPaneInsertSQLUsesVisibleColumns(t *testing.T) {
+	result, err := composeResultsPaneInsertSQL(db.PostgresDialect(), &LatestResultContext{
 		Statement: "select id, name, active from public.users order by id;",
 		PreservedResult: &db.ResultSet{
 			Source: &db.TableRef{Schema: "public", Name: "users"},
@@ -148,9 +148,9 @@ func TestComposeRecordViewerInsertSQLUsesVisibleColumns(t *testing.T) {
 		},
 	}, 0)
 	if err != nil {
-		t.Fatalf("composeRecordViewerInsertSQL() error = %v", err)
+		t.Fatalf("composeResultsPaneInsertSQL() error = %v", err)
 	}
-	if got, want := result.Action, recordViewerComposeActionInsert; got != want {
+	if got, want := result.Action, resultsPaneComposeActionInsert; got != want {
 		t.Fatalf("Action = %q, want %q", got, want)
 	}
 	for _, want := range []string{
@@ -168,8 +168,8 @@ func TestComposeRecordViewerInsertSQLUsesVisibleColumns(t *testing.T) {
 	}
 }
 
-func TestComposeRecordViewerInsertSQLFallsBackToVisibleColumnsWithQuotedValues(t *testing.T) {
-	result, err := composeRecordViewerInsertSQL(db.SQLiteDialect(), &LatestResultContext{
+func TestComposeResultsPaneInsertSQLFallsBackToVisibleColumnsWithQuotedValues(t *testing.T) {
+	result, err := composeResultsPaneInsertSQL(db.SQLiteDialect(), &LatestResultContext{
 		Statement: "select name, note, payload from widgets;",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "name"}, {Name: "note"}, {Name: "payload"}},
@@ -177,7 +177,7 @@ func TestComposeRecordViewerInsertSQLFallsBackToVisibleColumnsWithQuotedValues(t
 		},
 	}, 0)
 	if err != nil {
-		t.Fatalf("composeRecordViewerInsertSQL() error = %v", err)
+		t.Fatalf("composeResultsPaneInsertSQL() error = %v", err)
 	}
 	for _, want := range []string{
 		"INSERT INTO \"widgets\"",
@@ -194,8 +194,8 @@ func TestComposeRecordViewerInsertSQLFallsBackToVisibleColumnsWithQuotedValues(t
 	}
 }
 
-func TestComposeRecordViewerDeleteSQLUsesPrimaryKeys(t *testing.T) {
-	result, err := composeRecordViewerDeleteSQL(db.PostgresDialect(), &LatestResultContext{
+func TestComposeResultsPaneDeleteSQLUsesPrimaryKeys(t *testing.T) {
+	result, err := composeResultsPaneDeleteSQL(db.PostgresDialect(), &LatestResultContext{
 		Statement: "select id, name from public.users order by id;",
 		PreservedResult: &db.ResultSet{
 			Source: &db.TableRef{Schema: "public", Name: "users"},
@@ -207,12 +207,12 @@ func TestComposeRecordViewerDeleteSQLUsesPrimaryKeys(t *testing.T) {
 		},
 	}, 0)
 	if err != nil {
-		t.Fatalf("composeRecordViewerDeleteSQL() error = %v", err)
+		t.Fatalf("composeResultsPaneDeleteSQL() error = %v", err)
 	}
 	if !result.UsedPrimaryKeys {
 		t.Fatal("UsedPrimaryKeys = false, want true")
 	}
-	if got, want := result.Action, recordViewerComposeActionDelete; got != want {
+	if got, want := result.Action, resultsPaneComposeActionDelete; got != want {
 		t.Fatalf("Action = %q, want %q", got, want)
 	}
 	for _, want := range []string{
@@ -228,8 +228,8 @@ func TestComposeRecordViewerDeleteSQLUsesPrimaryKeys(t *testing.T) {
 	}
 }
 
-func TestComposeRecordViewerDeleteSQLFallsBackToVisibleColumnPredicate(t *testing.T) {
-	result, err := composeRecordViewerDeleteSQL(db.SQLiteDialect(), &LatestResultContext{
+func TestComposeResultsPaneDeleteSQLFallsBackToVisibleColumnPredicate(t *testing.T) {
+	result, err := composeResultsPaneDeleteSQL(db.SQLiteDialect(), &LatestResultContext{
 		Statement: "select name, note from widgets;",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "name"}, {Name: "note"}},
@@ -237,7 +237,7 @@ func TestComposeRecordViewerDeleteSQLFallsBackToVisibleColumnPredicate(t *testin
 		},
 	}, 0)
 	if err != nil {
-		t.Fatalf("composeRecordViewerDeleteSQL() error = %v", err)
+		t.Fatalf("composeResultsPaneDeleteSQL() error = %v", err)
 	}
 	if result.UsedPrimaryKeys {
 		t.Fatal("UsedPrimaryKeys = true, want false")
@@ -253,8 +253,8 @@ func TestComposeRecordViewerDeleteSQLFallsBackToVisibleColumnPredicate(t *testin
 	}
 }
 
-func TestComposeRecordViewerUpdateSQLUsesPrimaryKeys(t *testing.T) {
-	result, err := composeRecordViewerUpdateSQL(db.PostgresDialect(), &LatestResultContext{
+func TestComposeResultsPaneUpdateSQLUsesPrimaryKeys(t *testing.T) {
+	result, err := composeResultsPaneUpdateSQL(db.PostgresDialect(), &LatestResultContext{
 		Statement: "select id, name, active from public.users order by id;",
 		PreservedResult: &db.ResultSet{
 			Source: &db.TableRef{Schema: "public", Name: "users"},
@@ -267,7 +267,7 @@ func TestComposeRecordViewerUpdateSQLUsesPrimaryKeys(t *testing.T) {
 		},
 	}, 0)
 	if err != nil {
-		t.Fatalf("composeRecordViewerUpdateSQL() error = %v", err)
+		t.Fatalf("composeResultsPaneUpdateSQL() error = %v", err)
 	}
 	if !result.UsedPrimaryKeys {
 		t.Fatal("UsedPrimaryKeys = false, want true")
@@ -287,8 +287,8 @@ func TestComposeRecordViewerUpdateSQLUsesPrimaryKeys(t *testing.T) {
 	}
 }
 
-func TestComposeRecordViewerUpdateSQLRejectsNoPrimaryKeys(t *testing.T) {
-	_, err := composeRecordViewerUpdateSQL(db.SQLiteDialect(), &LatestResultContext{
+func TestComposeResultsPaneUpdateSQLRejectsNoPrimaryKeys(t *testing.T) {
+	_, err := composeResultsPaneUpdateSQL(db.SQLiteDialect(), &LatestResultContext{
 		Statement: "select name, note, payload from widgets;",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "name"}, {Name: "note"}, {Name: "payload"}},
@@ -296,7 +296,7 @@ func TestComposeRecordViewerUpdateSQLRejectsNoPrimaryKeys(t *testing.T) {
 		},
 	}, 0)
 	if err == nil {
-		t.Fatal("composeRecordViewerUpdateSQL() error = nil, want error when no primary key columns")
+		t.Fatal("composeResultsPaneUpdateSQL() error = nil, want error when no primary key columns")
 	}
 }
 
@@ -306,25 +306,25 @@ func TestInferQuerySourceTableReturnsNilForJoins(t *testing.T) {
 	}
 }
 
-func TestRenderRecordViewerTableOnlyStylesPrimaryKeyColumns(t *testing.T) {
-	table := renderRecordViewerTable(&db.ResultSet{
+func TestRenderResultsPaneTableOnlyStylesPrimaryKeyColumns(t *testing.T) {
+	table := renderResultsPaneTable(&db.ResultSet{
 		Columns: []db.ResultColumn{
 			{Name: "id", PrimaryKey: &db.PrimaryKey{Column: "id", Position: 1}},
 			{Name: "name"},
 		},
 		Rows: []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(7)}, {Kind: db.ValueKindString, Value: "Ada"}}}},
-	}, 0, 80, 10, recordViewerRenderState{})
+	}, 0, 80, 10, resultsPaneRenderState{})
 
 	plain := ansi.Strip(table)
 	if !strings.Contains(plain, "id | name") {
-		t.Fatalf("renderRecordViewerTable() = %q, want id and name columns in header", plain)
+		t.Fatalf("renderResultsPaneTable() = %q, want id and name columns in header", plain)
 	}
 	if !strings.Contains(plain, "7  | Ada") {
-		t.Fatalf("renderRecordViewerTable() = %q, want row values aligned", plain)
+		t.Fatalf("renderResultsPaneTable() = %q, want row values aligned", plain)
 	}
 }
 
-func TestClampRecordViewerPage(t *testing.T) {
+func TestClampResultsPanePage(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		page      int
@@ -337,15 +337,15 @@ func TestClampRecordViewerPage(t *testing.T) {
 		{name: "beyond end", page: 9, totalRows: 305, want: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := clampRecordViewerPage(tc.page, tc.totalRows); got != tc.want {
-				t.Fatalf("clampRecordViewerPage(%d, %d) = %d, want %d", tc.page, tc.totalRows, got, tc.want)
+			if got := clampResultsPanePage(tc.page, tc.totalRows); got != tc.want {
+				t.Fatalf("clampResultsPanePage(%d, %d) = %d, want %d", tc.page, tc.totalRows, got, tc.want)
 			}
 		})
 	}
 }
 
-func TestRecordViewerModeNavigateSupportsArrowsAndHJKL(t *testing.T) {
-	mode := newRecordViewerModeModel()
+func TestResultsPaneModeNavigateSupportsArrowsAndHJKL(t *testing.T) {
+	mode := newResultsPaneModeModel()
 	query := InteractionState{
 		LatestResult: &LatestResultContext{
 			PreservedResult: &db.ResultSet{
@@ -387,23 +387,23 @@ func TestRecordViewerModeNavigateSupportsArrowsAndHJKL(t *testing.T) {
 	}
 }
 
-func TestRenderRecordViewerTableHighlightsSelectedCell(t *testing.T) {
-	table := renderRecordViewerTable(&db.ResultSet{
+func TestRenderResultsPaneTableHighlightsSelectedCell(t *testing.T) {
+	table := renderResultsPaneTable(&db.ResultSet{
 		Columns: []db.ResultColumn{{Name: "id"}, {Name: "name"}},
 		Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(7)}, {Kind: db.ValueKindString, Value: "Ada"}}}},
-	}, 0, 80, 10, recordViewerRenderState{Active: recordViewerSelection{Row: 0, Column: 1, Active: true}})
+	}, 0, 80, 10, resultsPaneRenderState{Active: resultsPaneSelection{Row: 0, Column: 1, Active: true}})
 
 	if !strings.Contains(table, "\x1b[") {
-		t.Fatalf("renderRecordViewerTable() = %q, want ANSI styling for selected cell", table)
+		t.Fatalf("renderResultsPaneTable() = %q, want ANSI styling for selected cell", table)
 	}
 	plain := ansi.Strip(table)
 	if !strings.Contains(plain, "7  | Ada") && !strings.Contains(plain, "7 | Ada") {
-		t.Fatalf("renderRecordViewerTable() = %q, want selected cell text preserved", plain)
+		t.Fatalf("renderResultsPaneTable() = %q, want selected cell text preserved", plain)
 	}
 }
 
-func TestRecordViewerModeViewShowsSelectedRowCount(t *testing.T) {
-	mode := newRecordViewerModeModel()
+func TestResultsPaneModeViewShowsSelectedRowCount(t *testing.T) {
+	mode := newResultsPaneModeModel()
 	mode.SetSize(80, 8)
 
 	view := ansi.Strip(mode.View(InteractionState{
@@ -428,8 +428,8 @@ func TestRecordViewerModeViewShowsSelectedRowCount(t *testing.T) {
 	}
 }
 
-func TestRecordViewerModeToggleSelectedRowTracksMultipleRows(t *testing.T) {
-	mode := newRecordViewerModeModel()
+func TestResultsPaneModeToggleSelectedRowTracksMultipleRows(t *testing.T) {
+	mode := newResultsPaneModeModel()
 	query := InteractionState{
 		LatestResult: &LatestResultContext{
 			PreservedResult: &db.ResultSet{
@@ -469,9 +469,9 @@ func TestRecordViewerModeToggleSelectedRowTracksMultipleRows(t *testing.T) {
 	}
 }
 
-// TestPrepareRecordViewerPageCJKColumnWidths verifies that CJK characters are
+// TestPrepareResultsPanePageCJKColumnWidths verifies that CJK characters are
 // measured at display width 2 each when computing column widths.
-func TestPrepareRecordViewerPageCJKColumnWidths(t *testing.T) {
+func TestPrepareResultsPanePageCJKColumnWidths(t *testing.T) {
 	// "名前" = 2 CJK chars → display width 4
 	// "中文テスト" = 5 CJK chars → display width 10
 	result := &db.ResultSet{
@@ -488,7 +488,7 @@ func TestPrepareRecordViewerPageCJKColumnWidths(t *testing.T) {
 		},
 	}
 
-	prepared := prepareRecordViewerPage(result, 0, false)
+	prepared := prepareResultsPanePage(result, 0, false)
 
 	// "名前" header has display width 4; cell "テスト長い値" has display width 12 → column 0 width = 12
 	if got, want := prepared.Widths[0], 12; got != want {
@@ -527,10 +527,10 @@ func TestRenderInlineResultLineCJKPadding(t *testing.T) {
 	}
 }
 
-// TestRecordViewerModeViewCJKCharacters is an end-to-end test ensuring the
+// TestResultsPaneModeViewCJKCharacters is an end-to-end test ensuring the
 // record viewer renders CJK column headers and values with correct alignment.
-func TestRecordViewerModeViewCJKCharacters(t *testing.T) {
-	mode := newRecordViewerModeModel()
+func TestResultsPaneModeViewCJKCharacters(t *testing.T) {
+	mode := newResultsPaneModeModel()
 	mode.SetSize(80, 12)
 
 	view := ansi.Strip(mode.View(InteractionState{
@@ -583,7 +583,7 @@ func TestRecordViewerModeViewCJKCharacters(t *testing.T) {
 	}
 }
 
-func TestFormatRecordViewerValueTruncatesNewlines(t *testing.T) {
+func TestFormatResultsPaneValueTruncatesNewlines(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		value db.ResultValue
@@ -606,15 +606,15 @@ func TestFormatRecordViewerValueTruncatesNewlines(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := formatRecordViewerValue(tc.value); got != tc.want {
-				t.Fatalf("formatRecordViewerValue() = %q, want %q", got, tc.want)
+			if got := formatResultsPaneValue(tc.value); got != tc.want {
+				t.Fatalf("formatResultsPaneValue() = %q, want %q", got, tc.want)
 			}
 		})
 	}
 }
 
-func TestRecordViewerTableTruncatesMultilineValues(t *testing.T) {
-	mode := newRecordViewerModeModel()
+func TestResultsPaneTableTruncatesMultilineValues(t *testing.T) {
+	mode := newResultsPaneModeModel()
 	mode.SetSize(80, 8)
 
 	view := ansi.Strip(mode.View(InteractionState{
@@ -647,8 +647,8 @@ func TestRecordViewerTableTruncatesMultilineValues(t *testing.T) {
 	}
 }
 
-func BenchmarkRecordViewerModeViewLargePage(b *testing.B) {
-	mode := newRecordViewerModeModel()
+func BenchmarkResultsPaneModeViewLargePage(b *testing.B) {
+	mode := newResultsPaneModeModel()
 	mode.SetSize(140, 24)
 	mode.selectedRow = 150
 	mode.selectedColumn = 3

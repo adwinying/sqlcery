@@ -11,12 +11,12 @@ import (
 )
 
 const (
-	defaultRecordViewerWidth          = 80
-	defaultRecordViewerHeight         = 24
-	minimumRecordViewerWidth          = 20
-	minimumRecordViewerHeight         = 8
-	recordViewerPageSize              = 300
-	recordViewerViewportClipThreshold = 20
+	defaultResultsPaneWidth          = 80
+	defaultResultsPaneHeight         = 24
+	minimumResultsPaneWidth          = 20
+	minimumResultsPaneHeight         = 8
+	resultsPanePageSize              = 300
+	resultsPaneViewportClipThreshold = 20
 )
 
 // sqlceryLogo is the "SQLcery" ASCII art rendered in ANSI Shadow style.
@@ -31,12 +31,12 @@ const sqlceryLogo = `███████╗ ██████╗ ██╗   
 const sqlceryLogoWidth = 58
 const sqlceryLogoHeight = 6
 
-type recordViewerColumn struct {
+type resultsPaneColumn struct {
 	Header     string
 	PrimaryKey bool
 }
 
-type recordViewerPageContext struct {
+type resultsPanePageContext struct {
 	Index      int
 	Number     int
 	TotalPages int
@@ -45,57 +45,57 @@ type recordViewerPageContext struct {
 	TotalRows  int
 }
 
-type recordViewerSelection struct {
+type resultsPaneSelection struct {
 	Row    int
 	Column int
 	Active bool
 }
 
-type recordViewerRenderState struct {
-	Active          recordViewerSelection
+type resultsPaneRenderState struct {
+	Active          resultsPaneSelection
 	SelectedRows    map[int]struct{}
 	ColScrollOffset int
 }
 
-type recordViewerPreparedPageKey struct {
+type resultsPanePreparedPageKey struct {
 	Result              *db.ResultSet
 	Page                int
 	ShowSelectionMarker bool
 }
 
-type recordViewerPreparedPage struct {
-	Key     recordViewerPreparedPageKey
-	Context recordViewerPageContext
+type resultsPanePreparedPage struct {
+	Key     resultsPanePreparedPageKey
+	Context resultsPanePageContext
 	Headers []string
 	Widths  []int
 	Rows    [][]string
 }
 
-type recordViewerModeModel struct {
+type resultsPaneModeModel struct {
 	width            int
 	height           int
 	selectedRow      int
 	selectedColumn   int
 	colScrollOffset  int
 	selectionActive  bool
-	pendingAction    recordViewerPendingAction
+	pendingAction    resultsPanePendingAction
 	writeBuffer      string
-	cachedPage       *recordViewerPreparedPage
+	cachedPage       *resultsPanePreparedPage
 }
 
-func newRecordViewerModeModel() recordViewerModeModel {
-	return recordViewerModeModel{
-		width:  defaultRecordViewerWidth,
-		height: defaultRecordViewerHeight,
+func newResultsPaneModeModel() resultsPaneModeModel {
+	return resultsPaneModeModel{
+		width:  defaultResultsPaneWidth,
+		height: defaultResultsPaneHeight,
 	}
 }
 
-func (m *recordViewerModeModel) SetSize(width, height int) {
-	m.width = clampEditorSize(width, minimumRecordViewerWidth)
-	m.height = clampEditorSize(height, minimumRecordViewerHeight)
+func (m *resultsPaneModeModel) SetSize(width, height int) {
+	m.width = clampEditorSize(width, minimumResultsPaneWidth)
+	m.height = clampEditorSize(height, minimumResultsPaneHeight)
 }
 
-func (m *recordViewerModeModel) renderEmptyState(subtitle string) string {
+func (m *resultsPaneModeModel) renderEmptyState(subtitle string) string {
 	logoLines := strings.Split(sqlceryLogo, "\n")
 
 	// Center the logo horizontally
@@ -135,7 +135,7 @@ func (m *recordViewerModeModel) renderEmptyState(subtitle string) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m *recordViewerModeModel) View(interaction InteractionState) string {
+func (m *resultsPaneModeModel) View(interaction InteractionState) string {
 	latest := interaction.LatestResult
 	if latest == nil || latest.PreservedResult == nil {
 		if interaction.Layout == LayoutSplit {
@@ -151,8 +151,8 @@ func (m *recordViewerModeModel) View(interaction InteractionState) string {
 	// In split layout, show just the table with no metadata header
 	if interaction.Layout == LayoutSplit {
 		preparedPage := m.preparePage(result, interaction.ViewerPage, len(latest.SelectedRows) > 0)
-		body := renderPreparedRecordViewerPage(preparedPage, m.width, m.height, recordViewerRenderState{
-			Active:          recordViewerSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
+		body := renderPreparedResultsPanePage(preparedPage, m.width, m.height, resultsPaneRenderState{
+			Active:          resultsPaneSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
 			SelectedRows:    selectedRowSet(latest.SelectedRows),
 			ColScrollOffset: m.colScrollOffset,
 		})
@@ -162,14 +162,14 @@ func (m *recordViewerModeModel) View(interaction InteractionState) string {
 		return body
 	}
 
-	page := recordViewerPageContextFor(interaction.ViewerPage, len(result.Rows))
+	page := resultsPanePageContextFor(interaction.ViewerPage, len(result.Rows))
 	header := []string{
-		appTheme.viewerTitle.Render("Record viewer"),
-		appTheme.viewerMeta.Render(fmt.Sprintf("Query: %s", summarizeViewerQuery(latest.Statement, m.width))),
+		appTheme.viewerTitle.Render("Results Pane"),
+		appTheme.viewerMeta.Render(fmt.Sprintf("Query: %s", summarizeResultsPaneStatement(latest.Statement, m.width))),
 		appTheme.viewerMeta.Render(fmt.Sprintf("Rows: %d  Columns: %d", len(result.Rows), len(result.Columns))),
-		appTheme.viewerMeta.Render(fmt.Sprintf("Page: %d/%d  Showing rows %s", page.Number, page.TotalPages, formatRecordViewerRowRange(page))),
+		appTheme.viewerMeta.Render(fmt.Sprintf("Page: %d/%d  Showing rows %s", page.Number, page.TotalPages, formatResultsPaneRowRange(page))),
 	}
-	if m.pendingAction == recordViewerPendingActionWrite {
+	if m.pendingAction == resultsPanePendingActionWrite {
 		header = append(header, appTheme.warningNotice.Render(fmt.Sprintf("Command: %s", m.writeBuffer)))
 	}
 	if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
@@ -177,8 +177,8 @@ func (m *recordViewerModeModel) View(interaction InteractionState) string {
 	}
 
 	preparedPage := m.preparePage(result, interaction.ViewerPage, len(latest.SelectedRows) > 0)
-	body := renderPreparedRecordViewerPage(preparedPage, m.width, m.height-len(header)-2, recordViewerRenderState{
-		Active:          recordViewerSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
+	body := renderPreparedResultsPanePage(preparedPage, m.width, m.height-len(header)-2, resultsPaneRenderState{
+		Active:          resultsPaneSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
 		SelectedRows:    selectedRowSet(latest.SelectedRows),
 		ColScrollOffset: m.colScrollOffset,
 	})
@@ -189,10 +189,10 @@ func (m *recordViewerModeModel) View(interaction InteractionState) string {
 	return strings.Join(append(header, "", body), "\n")
 }
 
-func (m recordViewerModeModel) FooterHints(interaction InteractionState) string {
-	parts := []string{"Record viewer"}
+func (m resultsPaneModeModel) FooterHints(interaction InteractionState) string {
+	parts := []string{"Results Pane"}
 	if latest := interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
-		page := recordViewerPageContextFor(interaction.ViewerPage, len(latest.PreservedResult.Rows))
+		page := resultsPanePageContextFor(interaction.ViewerPage, len(latest.PreservedResult.Rows))
 		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
 		if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
 			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
@@ -201,15 +201,15 @@ func (m recordViewerModeModel) FooterHints(interaction InteractionState) string 
 	if running := formatRunningIndicator(interaction.Running); running != "" {
 		parts = append(parts, running)
 	}
-	if m.pendingAction == recordViewerPendingActionWrite {
+	if m.pendingAction == resultsPanePendingActionWrite {
 		parts = append(parts, ":w [file] export", "enter save", "esc cancel")
 	}
 	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit")
 	return strings.Join(parts, " | ")
 }
 
-func (m recordViewerModeModel) Footer(connectionName, dialect string, interaction InteractionState) string {
-	parts := []string{"Record viewer", fmt.Sprintf("layout %s", layoutLabel(interaction.Layout))}
+func (m resultsPaneModeModel) Footer(connectionName, dialect string, interaction InteractionState) string {
+	parts := []string{"Results Pane", fmt.Sprintf("layout %s", layoutLabel(interaction.Layout))}
 	if label := strings.TrimSpace(connectionName); label != "" {
 		parts = append(parts, fmt.Sprintf("connection %s", label))
 	}
@@ -217,7 +217,7 @@ func (m recordViewerModeModel) Footer(connectionName, dialect string, interactio
 		parts = append(parts, label)
 	}
 	if latest := interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
-		page := recordViewerPageContextFor(interaction.ViewerPage, len(latest.PreservedResult.Rows))
+		page := resultsPanePageContextFor(interaction.ViewerPage, len(latest.PreservedResult.Rows))
 		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
 		if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
 			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
@@ -226,14 +226,14 @@ func (m recordViewerModeModel) Footer(connectionName, dialect string, interactio
 	if running := formatRunningIndicator(interaction.Running); running != "" {
 		parts = append(parts, running)
 	}
-	if m.pendingAction == recordViewerPendingActionWrite {
+	if m.pendingAction == resultsPanePendingActionWrite {
 		parts = append(parts, ":w [file] export", "enter save", "esc cancel")
 	}
 	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit")
 	return appTheme.footer.Render(strings.Join(parts, " | "))
 }
 
-func (m *recordViewerModeModel) syncSelection(interaction InteractionState) {
+func (m *resultsPaneModeModel) syncSelection(interaction InteractionState) {
 	latest := interaction.LatestResult
 	if latest == nil || latest.PreservedResult == nil {
 		m.selectedRow = 0
@@ -251,7 +251,7 @@ func (m *recordViewerModeModel) syncSelection(interaction InteractionState) {
 		return
 	}
 
-	page := recordViewerPageContextFor(interaction.ViewerPage, len(result.Rows))
+	page := resultsPanePageContextFor(interaction.ViewerPage, len(result.Rows))
 	if m.selectedRow < page.StartRow-1 || m.selectedRow >= page.EndRow {
 		m.selectedRow = max(0, page.StartRow-1)
 	}
@@ -266,19 +266,19 @@ func (m *recordViewerModeModel) syncSelection(interaction InteractionState) {
 	}
 }
 
-func (m *recordViewerModeModel) preparePage(result *db.ResultSet, page int, showSelectionMarker bool) *recordViewerPreparedPage {
-	key := recordViewerPreparedPageKey{Result: result, Page: page, ShowSelectionMarker: showSelectionMarker}
+func (m *resultsPaneModeModel) preparePage(result *db.ResultSet, page int, showSelectionMarker bool) *resultsPanePreparedPage {
+	key := resultsPanePreparedPageKey{Result: result, Page: page, ShowSelectionMarker: showSelectionMarker}
 	if m.cachedPage != nil && m.cachedPage.Key == key {
 		return m.cachedPage
 	}
 
-	prepared := prepareRecordViewerPage(result, page, showSelectionMarker)
+	prepared := prepareResultsPanePage(result, page, showSelectionMarker)
 	m.cachedPage = prepared
 	return prepared
 }
 
-func (m *recordViewerModeModel) Navigate(msg tea.KeyPressMsg, interaction InteractionState) (int, bool) {
-	deltaRow, deltaColumn, ok := recordViewerNavigationDelta(msg)
+func (m *resultsPaneModeModel) Navigate(msg tea.KeyPressMsg, interaction InteractionState) (int, bool) {
+	deltaRow, deltaColumn, ok := resultsPaneNavigationDelta(msg)
 	if !ok {
 		return interaction.ViewerPage, false
 	}
@@ -300,13 +300,13 @@ func (m *recordViewerModeModel) Navigate(msg tea.KeyPressMsg, interaction Intera
 	// Update horizontal scroll offset to keep the selected column visible.
 	if deltaColumn != 0 {
 		preparedPage := m.preparePage(result, interaction.ViewerPage, false)
-		m.colScrollOffset = recordViewerColumnScrollOffset(m.colScrollOffset, m.selectedColumn, preparedPage.Widths, m.width)
+		m.colScrollOffset = resultsPaneColumnScrollOffset(m.colScrollOffset, m.selectedColumn, preparedPage.Widths, m.width)
 	}
 
-	return clampRecordViewerPage(m.selectedRow/recordViewerPageSize, len(result.Rows)), true
+	return clampResultsPanePage(m.selectedRow/resultsPanePageSize, len(result.Rows)), true
 }
 
-func (m *recordViewerModeModel) ToggleSelectedRow(interaction *InteractionState) (int, bool, bool) {
+func (m *resultsPaneModeModel) ToggleSelectedRow(interaction *InteractionState) (int, bool, bool) {
 	if interaction == nil || interaction.LatestResult == nil || interaction.LatestResult.PreservedResult == nil {
 		m.selectedRow = 0
 		m.selectedColumn = 0
@@ -328,12 +328,12 @@ func (m *recordViewerModeModel) ToggleSelectedRow(interaction *InteractionState)
 	return m.selectedRow, rowIndexSelected(interaction.LatestResult.SelectedRows, m.selectedRow), true
 }
 
-func renderRecordViewerTable(result *db.ResultSet, page, width, height int, state recordViewerRenderState) string {
-	prepared := prepareRecordViewerPage(result, page, len(state.SelectedRows) > 0)
-	return renderPreparedRecordViewerPage(prepared, width, recordViewerPageHeightHint(height), state)
+func renderResultsPaneTable(result *db.ResultSet, page, width, height int, state resultsPaneRenderState) string {
+	prepared := prepareResultsPanePage(result, page, len(state.SelectedRows) > 0)
+	return renderPreparedResultsPanePage(prepared, width, resultsPanePageHeightHint(height), state)
 }
 
-func renderPreparedRecordViewerPage(prepared *recordViewerPreparedPage, width, height int, state recordViewerRenderState) string {
+func renderPreparedResultsPanePage(prepared *resultsPanePreparedPage, width, height int, state resultsPaneRenderState) string {
 	if prepared == nil {
 		return ""
 	}
@@ -360,7 +360,7 @@ func renderPreparedRecordViewerPage(prepared *recordViewerPreparedPage, width, h
 		return trimRenderedWidth(strings.Join(lines, "\n"), width)
 	}
 
-	start, end := recordViewerVisibleRowWindow(prepared.Context, len(prepared.Rows), height, state.Active)
+	start, end := resultsPaneVisibleRowWindow(prepared.Context, len(prepared.Rows), height, state.Active)
 	for rowIndex := start; rowIndex < end; rowIndex++ {
 		absoluteRowIndex := prepared.Context.StartRow - 1 + rowIndex
 		values := append([]string(nil), prepared.Rows[rowIndex][colOffset:]...)
@@ -371,27 +371,27 @@ func renderPreparedRecordViewerPage(prepared *recordViewerPreparedPage, width, h
 				values[columnIndex] = appTheme.selectedRowMarker.Render("* ") + values[columnIndex]
 			}
 			if isActiveRow {
-				values[columnIndex] = renderRecordViewerActiveRowCell(values[columnIndex])
+				values[columnIndex] = renderResultsPaneActiveRowCell(values[columnIndex])
 			}
 		}
 		lines = append(lines, renderInlineResultLine(values, widths))
 	}
 
 	ctx := prepared.Context
-	lines = append(lines, appTheme.panelHint.Render(fmt.Sprintf("Showing rows %s of %d", formatRecordViewerRowRange(ctx), ctx.TotalRows)))
+	lines = append(lines, appTheme.panelHint.Render(fmt.Sprintf("Showing rows %s of %d", formatResultsPaneRowRange(ctx), ctx.TotalRows)))
 
 	return trimRenderedWidth(strings.Join(lines, "\n"), width)
 }
 
-func prepareRecordViewerPage(result *db.ResultSet, page int, showSelectionMarker bool) *recordViewerPreparedPage {
+func prepareResultsPanePage(result *db.ResultSet, page int, showSelectionMarker bool) *resultsPanePreparedPage {
 	if result == nil {
-		return &recordViewerPreparedPage{}
+		return &resultsPanePreparedPage{}
 	}
 
 	columns := viewerColumns(result.Columns)
-	pageRows, context := recordViewerRowsForPage(result.Rows, page)
-	prepared := &recordViewerPreparedPage{
-		Key:     recordViewerPreparedPageKey{Result: result, Page: page, ShowSelectionMarker: showSelectionMarker},
+	pageRows, context := resultsPaneRowsForPage(result.Rows, page)
+	prepared := &resultsPanePreparedPage{
+		Key:     resultsPanePreparedPageKey{Result: result, Page: page, ShowSelectionMarker: showSelectionMarker},
 		Context: context,
 		Headers: make([]string, len(columns)),
 		Widths:  make([]int, len(columns)),
@@ -411,7 +411,7 @@ func prepareRecordViewerPage(result *db.ResultSet, page int, showSelectionMarker
 		for i := range columns {
 			formatted := ""
 			if i < len(row.Values) {
-				formatted = formatRecordViewerValue(row.Values[i])
+				formatted = formatResultsPaneValue(row.Values[i])
 			}
 			values[i] = formatted
 
@@ -429,7 +429,7 @@ func prepareRecordViewerPage(result *db.ResultSet, page int, showSelectionMarker
 	return prepared
 }
 
-func recordViewerVisibleRowWindow(context recordViewerPageContext, totalRows, height int, active recordViewerSelection) (int, int) {
+func resultsPaneVisibleRowWindow(context resultsPanePageContext, totalRows, height int, active resultsPaneSelection) (int, int) {
 	if totalRows <= 0 {
 		return 0, 0
 	}
@@ -446,7 +446,7 @@ func recordViewerVisibleRowWindow(context recordViewerPageContext, totalRows, he
 	if visibleRows >= totalRows {
 		return 0, totalRows
 	}
-	if totalRows <= recordViewerViewportClipThreshold {
+	if totalRows <= resultsPaneViewportClipThreshold {
 		return 0, totalRows
 	}
 
@@ -459,18 +459,18 @@ func recordViewerVisibleRowWindow(context recordViewerPageContext, totalRows, he
 	return start, start + visibleRows
 }
 
-func formatRecordViewerViewportRange(start, end int) string {
+func formatResultsPaneViewportRange(start, end int) string {
 	if start == end {
 		return fmt.Sprintf("%d", start)
 	}
 	return fmt.Sprintf("%d-%d", start, end)
 }
 
-func recordViewerPageHeightHint(height int) int {
+func resultsPanePageHeightHint(height int) int {
 	return height
 }
 
-func recordViewerNavigationDelta(msg tea.KeyPressMsg) (int, int, bool) {
+func resultsPaneNavigationDelta(msg tea.KeyPressMsg) (int, int, bool) {
 	switch msg.String() {
 	case "up", "k":
 		return -1, 0, true
@@ -485,7 +485,7 @@ func recordViewerNavigationDelta(msg tea.KeyPressMsg) (int, int, bool) {
 	}
 }
 
-func renderRecordViewerActiveRowCell(value string) string {
+func renderResultsPaneActiveRowCell(value string) string {
 	// Use raw ANSI bold + foreground color 221 (accentWarm dark) to highlight the entire row via text color.
 	return "\x1b[1;38;5;221m" + value + "\x1b[0m"
 }
@@ -530,19 +530,19 @@ func rowIndexSelectedSet(rows map[int]struct{}, row int) bool {
 	return ok
 }
 
-func viewerColumns(columns []db.ResultColumn) []recordViewerColumn {
-	names := make([]recordViewerColumn, 0, len(columns))
+func viewerColumns(columns []db.ResultColumn) []resultsPaneColumn {
+	names := make([]resultsPaneColumn, 0, len(columns))
 	for i, column := range columns {
 		name := strings.TrimSpace(column.Name)
 		if name == "" {
 			name = fmt.Sprintf("column_%d", i+1)
 		}
-		names = append(names, recordViewerColumn{Header: name, PrimaryKey: column.PrimaryKey != nil})
+		names = append(names, resultsPaneColumn{Header: name, PrimaryKey: column.PrimaryKey != nil})
 	}
 	return names
 }
 
-func formatRecordViewerValue(value db.ResultValue) string {
+func formatResultsPaneValue(value db.ResultValue) string {
 	switch value.Kind {
 	case db.ValueKindNull:
 		return "NULL"
@@ -579,7 +579,7 @@ func truncateNewlines(s string) string {
 	return s
 }
 
-func recordViewerRowCount(latest *LatestResultContext) int {
+func resultsPaneRowCount(latest *LatestResultContext) int {
 	if latest == nil || latest.PreservedResult == nil {
 		return 0
 	}
@@ -587,8 +587,8 @@ func recordViewerRowCount(latest *LatestResultContext) int {
 	return len(latest.PreservedResult.Rows)
 }
 
-func clampRecordViewerPage(page, totalRows int) int {
-	totalPages := recordViewerTotalPages(totalRows)
+func clampResultsPanePage(page, totalRows int) int {
+	totalPages := resultsPaneTotalPages(totalRows)
 	if totalPages <= 1 {
 		return 0
 	}
@@ -601,35 +601,35 @@ func clampRecordViewerPage(page, totalRows int) int {
 	return page
 }
 
-func recordViewerTotalPages(totalRows int) int {
+func resultsPaneTotalPages(totalRows int) int {
 	if totalRows <= 0 {
 		return 1
 	}
 
-	return (totalRows-1)/recordViewerPageSize + 1
+	return (totalRows-1)/resultsPanePageSize + 1
 }
 
-func recordViewerPageContextFor(page, totalRows int) recordViewerPageContext {
-	clamped := clampRecordViewerPage(page, totalRows)
-	context := recordViewerPageContext{
+func resultsPanePageContextFor(page, totalRows int) resultsPanePageContext {
+	clamped := clampResultsPanePage(page, totalRows)
+	context := resultsPanePageContext{
 		Index:      clamped,
 		Number:     clamped + 1,
-		TotalPages: recordViewerTotalPages(totalRows),
+		TotalPages: resultsPaneTotalPages(totalRows),
 		TotalRows:  totalRows,
 	}
 	if totalRows == 0 {
 		return context
 	}
 
-	start := clamped * recordViewerPageSize
-	end := min(start+recordViewerPageSize, totalRows)
+	start := clamped * resultsPanePageSize
+	end := min(start+resultsPanePageSize, totalRows)
 	context.StartRow = start + 1
 	context.EndRow = end
 	return context
 }
 
-func recordViewerRowsForPage(rows []db.ResultRow, page int) ([]db.ResultRow, recordViewerPageContext) {
-	context := recordViewerPageContextFor(page, len(rows))
+func resultsPaneRowsForPage(rows []db.ResultRow, page int) ([]db.ResultRow, resultsPanePageContext) {
+	context := resultsPanePageContextFor(page, len(rows))
 	if len(rows) == 0 {
 		return nil, context
 	}
@@ -639,7 +639,7 @@ func recordViewerRowsForPage(rows []db.ResultRow, page int) ([]db.ResultRow, rec
 	return rows[start:end], context
 }
 
-func formatRecordViewerRowRange(page recordViewerPageContext) string {
+func formatResultsPaneRowRange(page resultsPanePageContext) string {
 	if page.TotalRows == 0 {
 		return "0"
 	}
@@ -651,7 +651,7 @@ func formatRecordViewerRowRange(page recordViewerPageContext) string {
 	return fmt.Sprintf("%d-%d", page.StartRow, page.EndRow)
 }
 
-func summarizeViewerQuery(statement string, width int) string {
+func summarizeResultsPaneStatement(statement string, width int) string {
 	trimmed := strings.Join(strings.Fields(strings.TrimSpace(statement)), " ")
 	if trimmed == "" {
 		return "(unknown query)"
@@ -687,10 +687,10 @@ func trimRenderedWidth(value string, width int) string {
 	return strings.Join(lines, "\n")
 }
 
-// recordViewerColumnScrollOffset computes a new column scroll offset that ensures
+// resultsPaneColumnScrollOffset computes a new column scroll offset that ensures
 // the selected column is visible within the given display width.
 // It returns the smallest offset such that the selected column fits within the viewport.
-func recordViewerColumnScrollOffset(current, selectedColumn int, widths []int, viewWidth int) int {
+func resultsPaneColumnScrollOffset(current, selectedColumn int, widths []int, viewWidth int) int {
 	if len(widths) == 0 || viewWidth <= 0 {
 		return 0
 	}

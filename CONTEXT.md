@@ -31,7 +31,7 @@ A `/`-prefixed meta-command (e.g. `/tables`, `/select users`) interpreted by SQL
 The tabular data (columns + rows) returned by a Query. Displayed in the Results Pane.
 
 ### Results Pane
-The top pane of the TUI. Displays the Result Set from the most recently executed Query. Supports interactive navigation, row selection, SQL composition from rows, and export. Can be maximized. (Code currently uses `recordViewer*` — rename planned.)
+The top pane of the TUI. Displays the Result Set from the most recently executed Query. Supports interactive navigation, row selection, SQL composition from rows, and export. Can be maximized.
 
 ### Command Pane
 The bottom pane of the TUI. Where the user types and edits SQL Statements or Slash Commands. Contains the editor, autocomplete dropdown, and REPL transcript. Can be maximized to fill the terminal.
