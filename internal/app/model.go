@@ -1087,13 +1087,13 @@ func (m *Model) syncSessionHistorySnapshot() {
 	m.state.SetSessionHistory(contexts)
 }
 
-func (m *Model) appendSessionHistory(command, resultSummary string) error {
-	if m.history == nil || strings.TrimSpace(command) == "" {
+func (m *Model) appendSessionHistory(statement, resultSummary string) error {
+	if m.history == nil || strings.TrimSpace(statement) == "" {
 		return nil
 	}
 
 	err := m.history.Append(apphistory.Entry{
-		SQL:            command,
+		SQL:            statement,
 		ConnectionName: m.session.ConnectionName,
 		ExecutedAt:     time.Now().UTC(),
 		ResultSummary:  resultSummary,
