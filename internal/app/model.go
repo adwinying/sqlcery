@@ -83,7 +83,7 @@ type focusPaneIntentMsg struct {
 type clearInputIntentMsg struct{}
 
 type statementExecutedMsg struct {
-	Query         string
+	Statement     string
 	Result        *db.StatementResult
 	ResultSummary string
 	Err           error
@@ -296,30 +296,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case statementExecutedMsg:
 		running := m.state.Interaction.Running
 		m.clearExecution()
-		historyErr := m.appendSessionHistory(msg.Query, msg.ResultSummary)
+		historyErr := m.appendSessionHistory(msg.Statement, msg.ResultSummary)
 		m.state.SetRunningStatementContext(nil)
 		m.state.Interaction.PendingIntent = IntentNone
 		m.state.Interaction.LastAction = "submit"
 		m.state.SetPendingModeSwitch(nil)
 		if msg.Err != nil {
 			if status, ok := executionInterruptedStatus(running, msg.Err); ok {
-				m.command.AppendReplEntry("> ", msg.Query, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
-				m.command.Clear()
-				m.state.SetReady(withHistoryWarning(status, historyErr))
-				m.state.SetLatestResultContext(nil)
-				return m, nil
-			}
-			m.command.AppendReplEntry("> ", msg.Query, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
+			m.command.AppendReplEntry("> ", msg.Statement, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
 			m.command.Clear()
-			m.state.SetReady(withHistoryWarning(formatOperationFailure("Execution failed.", msg.Err), historyErr))
+			m.state.SetReady(withHistoryWarning(status, historyErr))
 			m.state.SetLatestResultContext(nil)
 			return m, nil
 		}
-
-		m.command.AppendReplEntry("> ", msg.Query, "OK: "+formatReplStatementOutput(msg.Result, nil))
+		m.command.AppendReplEntry("> ", msg.Statement, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
 		m.command.Clear()
-		m.state.SetReady(withHistoryWarning(describeStatementStatus(msg.Result), historyErr))
-		m.state.SetLatestResultContext(buildLatestResultContext(msg.Query, m.resultOriginMode(), msg.Result))
+		m.state.SetReady(withHistoryWarning(formatOperationFailure("Execution failed.", msg.Err), historyErr))
+		m.state.SetLatestResultContext(nil)
+		return m, nil
+	}
+
+	m.command.AppendReplEntry("> ", msg.Statement, "OK: "+formatReplStatementOutput(msg.Result, nil))
+	m.command.Clear()
+	m.state.SetReady(withHistoryWarning(describeStatementStatus(msg.Result), historyErr))
+	m.state.SetLatestResultContext(buildLatestResultContext(msg.Statement, m.resultOriginMode(), msg.Result))
 		return m, nil
 	case slashCommandExecutedMsg:
 		running := m.state.Interaction.Running
@@ -1420,11 +1420,11 @@ func executeStatementCmd(adapter *db.SQLAdapter, statement string) func(context.
 	return func(ctx context.Context, _ time.Time) tea.Cmd {
 		return func() tea.Msg {
 			if adapter == nil {
-				return statementExecutedMsg{Query: statement, ResultSummary: "error: adapter is required", Err: fmt.Errorf("adapter is required")}
-			}
+			return statementExecutedMsg{Statement: statement, ResultSummary: "error: adapter is required", Err: fmt.Errorf("adapter is required")}
+		}
 
-			result, err := adapter.ExecuteStatementContext(ctx, statement, db.ResultOptions{Source: inferQuerySourceTable(statement)})
-			return statementExecutedMsg{Query: statement, Result: result, ResultSummary: summarizeStatementResult(result, err), Err: err}
+		result, err := adapter.ExecuteStatementContext(ctx, statement, db.ResultOptions{Source: inferQuerySourceTable(statement)})
+		return statementExecutedMsg{Statement: statement, Result: result, ResultSummary: summarizeStatementResult(result, err), Err: err}
 		}
 	}
 }

@@ -391,7 +391,7 @@ func TestStatementExecutionFailureUsesFriendlyStatus(t *testing.T) {
 	model.state.SetReady("")
 
 	next, _ := model.Update(statementExecutedMsg{
-		Query:         "select * from missing;",
+		Statement:     "select * from missing;",
 		ResultSummary: "error: no such table: missing",
 		Err:           errors.New("no such table: missing"),
 	})
@@ -997,7 +997,7 @@ func TestStatementExecutionCancellationUsesFriendlyStatus(t *testing.T) {
 	model.state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL", StartedAt: startedAt, Elapsed: 2500 * time.Millisecond})
 
 	next, _ := model.Update(statementExecutedMsg{
-		Query:         "select sleep(10);",
+		Statement:     "select sleep(10);",
 		ResultSummary: "error: context canceled",
 		Err:           context.Canceled,
 	})
@@ -1017,7 +1017,7 @@ func TestStatementExecutionTimeoutUsesFriendlyStatus(t *testing.T) {
 	model.state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL", Elapsed: 30 * time.Second})
 
 	next, _ := model.Update(statementExecutedMsg{
-		Query:         "select sleep(35);",
+		Statement:     "select sleep(35);",
 		ResultSummary: "error: context deadline exceeded",
 		Err:           context.DeadlineExceeded,
 	})
