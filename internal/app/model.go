@@ -247,7 +247,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncCurrentSQL()
 		submittedSQL := m.state.Interaction.CurrentSQL
 		if strings.TrimSpace(submittedSQL) == "" {
-			m.state.SetRunningQueryContext(nil)
+			m.state.SetRunningStatementContext(nil)
 			m.state.SetReady("")
 			m.state.SetPendingIntent(IntentSubmit, "submit", "Submit requested with empty input.")
 			return m, nil
@@ -255,7 +255,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		parsedSlash, err := parseSlashCommand(submittedSQL)
 		if err != nil {
-			m.state.SetRunningQueryContext(nil)
+			m.state.SetRunningStatementContext(nil)
 			m.state.SetReady("")
 			m.state.SetPendingIntent(IntentNone, "submit", fmt.Sprintf("Slash command parse failed: %v", err))
 			m.state.SetLatestResultContext(nil)
@@ -278,7 +278,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if !isCompleteSQLStatement(submittedSQL) {
-			m.state.SetRunningQueryContext(nil)
+			m.state.SetRunningStatementContext(nil)
 			m.state.SetPendingIntent(IntentNone, "submit", "SQL is incomplete. End the statement with ';' to run it.")
 			return m, nil
 		}
@@ -297,7 +297,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		running := m.state.Interaction.Running
 		m.clearExecution()
 		historyErr := m.appendSessionHistory(msg.Query, msg.ResultSummary)
-		m.state.SetRunningQueryContext(nil)
+		m.state.SetRunningStatementContext(nil)
 		m.state.Interaction.PendingIntent = IntentNone
 		m.state.Interaction.LastAction = "submit"
 		m.state.SetPendingModeSwitch(nil)
@@ -330,7 +330,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			historyErr = m.appendSessionHistory(msg.Command.RawInput, msg.ResultSummary)
 			m.state.SetLastSubmittedSQL(msg.Command.RawInput)
 		}
-		m.state.SetRunningQueryContext(nil)
+		m.state.SetRunningStatementContext(nil)
 		m.state.Interaction.PendingIntent = IntentNone
 		m.state.Interaction.LastAction = "slash:" + msg.Command.DisplayName
 		m.state.SetPendingModeSwitch(nil)
@@ -440,7 +440,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			message = FormatTerminalError(msg.Err)
 		}
-		m.state.SetRunningQueryContext(nil)
+		m.state.SetRunningStatementContext(nil)
 		m.state.SetError(message, msg.Status)
 		return m, nil
 	case runningTickMsg:
@@ -454,7 +454,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			updated.Elapsed = msg.Now.Sub(updated.StartedAt)
 		}
 		updated.SpinnerFrame = (updated.SpinnerFrame + 1) % len(runningSpinnerFrames)
-		m.state.SetRunningQueryContext(&updated)
+		m.state.SetRunningStatementContext(&updated)
 		return m, runningTickCmd(updated.StartedAt)
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -1165,7 +1165,7 @@ func (m *Model) startExecution(label, status string, execute func(context.Contex
 	startedAt := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), defaultInteractiveExecutionTimeout)
 	m.executionCancel = cancel
-	m.state.SetRunningQueryContext(newRunningQueryContext(label, startedAt))
+	m.state.SetRunningStatementContext(newRunningStatementContext(label, startedAt))
 	m.state.SetReady("")
 	m.state.SetPendingIntent(IntentSubmit, "submit", executionStatus(status, defaultInteractiveExecutionTimeout))
 	return tea.Batch(execute(ctx, startedAt), runningTickCmd(startedAt))
@@ -1447,14 +1447,14 @@ func formatExecutionTimeout(timeout time.Duration) string {
 	return timeout.Round(100 * time.Millisecond).String()
 }
 
-func runningLabel(running *RunningQueryContext) string {
+func runningLabel(running *RunningStatementContext) string {
 	if running == nil || strings.TrimSpace(running.Label) == "" {
 		return "query"
 	}
 	return running.Label
 }
 
-func runningElapsed(running *RunningQueryContext) time.Duration {
+func runningElapsed(running *RunningStatementContext) time.Duration {
 	if running == nil {
 		return 0
 	}
@@ -1471,7 +1471,7 @@ func runningElapsed(running *RunningQueryContext) time.Duration {
 	return elapsed
 }
 
-func executionInterruptedStatus(running *RunningQueryContext, err error) (string, bool) {
+func executionInterruptedStatus(running *RunningStatementContext, err error) (string, bool) {
 	if err == nil {
 		return "", false
 	}
@@ -1530,7 +1530,7 @@ func buildLatestResultContext(query string, originMode AppMode, result *db.State
 	}
 
 	context := &LatestResultContext{
-		Query:         query,
+		Statement:     query,
 		OriginMode:    originMode,
 		StatementKind: result.Kind,
 		RowsAffected:  cloneInt64Pointer(result.RowsAffected),

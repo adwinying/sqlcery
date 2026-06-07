@@ -17,7 +17,7 @@ func TestRecordViewerModeViewRendersFullResultSet(t *testing.T) {
 
 	view := mode.View(InteractionState{
 		LatestResult: &LatestResultContext{
-			Query: "select id, name, created_at from widgets order by id",
+			Statement: "select id, name, created_at from widgets order by id",
 			PreservedResult: &db.ResultSet{
 				Columns: []db.ResultColumn{{Name: "id", PrimaryKey: &db.PrimaryKey{Column: "id", Position: 1}}, {Name: "name"}, {Name: "created_at"}},
 				Rows: []db.ResultRow{
@@ -59,7 +59,7 @@ func TestRecordViewerModeViewRendersSelectedPage(t *testing.T) {
 	view := mode.View(InteractionState{
 		ViewerPage: 1,
 		LatestResult: &LatestResultContext{
-			Query: "select id from widgets order by id",
+			Statement: "select id from widgets order by id",
 			PreservedResult: &db.ResultSet{
 				Columns: []db.ResultColumn{{Name: "id"}},
 				Rows:    rows,
@@ -98,7 +98,7 @@ func TestRecordViewerModeViewClipsRowsToVisibleViewport(t *testing.T) {
 
 	view := ansi.Strip(mode.View(InteractionState{
 		LatestResult: &LatestResultContext{
-			Query: "select label from widgets order by id",
+			Statement: "select label from widgets order by id",
 			PreservedResult: &db.ResultSet{
 				Columns: []db.ResultColumn{{Name: "label"}},
 				Rows:    rows,
@@ -124,7 +124,7 @@ func TestRecordViewerModeFooterIncludesModeDetails(t *testing.T) {
 	footer := mode.Footer("local", "sqlite", InteractionState{
 		Layout:       LayoutViewerOnly,
 		LatestResult: &LatestResultContext{PreservedResult: &db.ResultSet{Rows: []db.ResultRow{{}, {}}}, SelectedRows: []int{0}},
-		Running:      &RunningQueryContext{Label: "/tables", Elapsed: 2*time.Second + 300*time.Millisecond},
+		Running:      &RunningStatementContext{Label: "/tables", Elapsed: 2*time.Second + 300*time.Millisecond},
 	})
 
 	for _, want := range []string{"Record viewer", "layout viewer only", "connection local", "sqlite", "2 rows", "page 1/1", "1 selected", "- /tables 2.3s", "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit"} {
@@ -136,7 +136,7 @@ func TestRecordViewerModeFooterIncludesModeDetails(t *testing.T) {
 
 func TestComposeRecordViewerInsertSQLUsesVisibleColumns(t *testing.T) {
 	result, err := composeRecordViewerInsertSQL(db.PostgresDialect(), &LatestResultContext{
-		Query: "select id, name, active from public.users order by id;",
+		Statement: "select id, name, active from public.users order by id;",
 		PreservedResult: &db.ResultSet{
 			Source: &db.TableRef{Schema: "public", Name: "users"},
 			Columns: []db.ResultColumn{
@@ -170,7 +170,7 @@ func TestComposeRecordViewerInsertSQLUsesVisibleColumns(t *testing.T) {
 
 func TestComposeRecordViewerInsertSQLFallsBackToVisibleColumnsWithQuotedValues(t *testing.T) {
 	result, err := composeRecordViewerInsertSQL(db.SQLiteDialect(), &LatestResultContext{
-		Query: "select name, note, payload from widgets;",
+		Statement: "select name, note, payload from widgets;",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "name"}, {Name: "note"}, {Name: "payload"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindString, Value: "Ada's"}, {Kind: db.ValueKindNull}, {Kind: db.ValueKindBytes, Value: []byte{0xde, 0xad}}}}},
@@ -196,7 +196,7 @@ func TestComposeRecordViewerInsertSQLFallsBackToVisibleColumnsWithQuotedValues(t
 
 func TestComposeRecordViewerDeleteSQLUsesPrimaryKeys(t *testing.T) {
 	result, err := composeRecordViewerDeleteSQL(db.PostgresDialect(), &LatestResultContext{
-		Query: "select id, name from public.users order by id;",
+		Statement: "select id, name from public.users order by id;",
 		PreservedResult: &db.ResultSet{
 			Source: &db.TableRef{Schema: "public", Name: "users"},
 			Columns: []db.ResultColumn{
@@ -230,7 +230,7 @@ func TestComposeRecordViewerDeleteSQLUsesPrimaryKeys(t *testing.T) {
 
 func TestComposeRecordViewerDeleteSQLFallsBackToVisibleColumnPredicate(t *testing.T) {
 	result, err := composeRecordViewerDeleteSQL(db.SQLiteDialect(), &LatestResultContext{
-		Query: "select name, note from widgets;",
+		Statement: "select name, note from widgets;",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "name"}, {Name: "note"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindString, Value: "Ada's"}, {Kind: db.ValueKindNull}}}},
@@ -255,7 +255,7 @@ func TestComposeRecordViewerDeleteSQLFallsBackToVisibleColumnPredicate(t *testin
 
 func TestComposeRecordViewerUpdateSQLUsesPrimaryKeys(t *testing.T) {
 	result, err := composeRecordViewerUpdateSQL(db.PostgresDialect(), &LatestResultContext{
-		Query: "select id, name, active from public.users order by id;",
+		Statement: "select id, name, active from public.users order by id;",
 		PreservedResult: &db.ResultSet{
 			Source: &db.TableRef{Schema: "public", Name: "users"},
 			Columns: []db.ResultColumn{
@@ -289,7 +289,7 @@ func TestComposeRecordViewerUpdateSQLUsesPrimaryKeys(t *testing.T) {
 
 func TestComposeRecordViewerUpdateSQLRejectsNoPrimaryKeys(t *testing.T) {
 	_, err := composeRecordViewerUpdateSQL(db.SQLiteDialect(), &LatestResultContext{
-		Query: "select name, note, payload from widgets;",
+		Statement: "select name, note, payload from widgets;",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "name"}, {Name: "note"}, {Name: "payload"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindString, Value: "Ada's"}, {Kind: db.ValueKindNull}, {Kind: db.ValueKindBytes, Value: []byte{0xde, 0xad}}}}},
@@ -408,7 +408,7 @@ func TestRecordViewerModeViewShowsSelectedRowCount(t *testing.T) {
 
 	view := ansi.Strip(mode.View(InteractionState{
 		LatestResult: &LatestResultContext{
-			Query:        "select id from widgets order by id",
+			Statement:        "select id from widgets order by id",
 			SelectedRows: []int{0, 2},
 			PreservedResult: &db.ResultSet{
 				Columns: []db.ResultColumn{{Name: "id"}},
@@ -535,7 +535,7 @@ func TestRecordViewerModeViewCJKCharacters(t *testing.T) {
 
 	view := ansi.Strip(mode.View(InteractionState{
 		LatestResult: &LatestResultContext{
-			Query: "select 名前, score from users",
+			Statement: "select 名前, score from users",
 			PreservedResult: &db.ResultSet{
 				Columns: []db.ResultColumn{{Name: "名前"}, {Name: "score"}},
 				Rows: []db.ResultRow{
@@ -619,7 +619,7 @@ func TestRecordViewerTableTruncatesMultilineValues(t *testing.T) {
 
 	view := ansi.Strip(mode.View(InteractionState{
 		LatestResult: &LatestResultContext{
-			Query: "select id, note from widgets",
+			Statement: "select id, note from widgets",
 			PreservedResult: &db.ResultSet{
 				Columns: []db.ResultColumn{{Name: "id"}, {Name: "note"}},
 				Rows: []db.ResultRow{
@@ -671,7 +671,7 @@ func BenchmarkRecordViewerModeViewLargePage(b *testing.B) {
 	query := InteractionState{
 		ViewerPage: 0,
 		LatestResult: &LatestResultContext{
-			Query: "select * from widgets order by id",
+			Statement: "select * from widgets order by id",
 			PreservedResult: &db.ResultSet{
 				Columns: columns,
 				Rows:    rows,

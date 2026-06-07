@@ -8,18 +8,18 @@ import (
 
 var runningSpinnerFrames = []string{"-", `\`, "|", "/"}
 
-func newRunningQueryContext(label string, startedAt time.Time) *RunningQueryContext {
+func newRunningStatementContext(label string, startedAt time.Time) *RunningStatementContext {
 	if startedAt.IsZero() {
 		startedAt = time.Now()
 	}
 
-	return &RunningQueryContext{
+	return &RunningStatementContext{
 		Label:     strings.TrimSpace(label),
 		StartedAt: startedAt,
 	}
 }
 
-func formatRunningIndicator(running *RunningQueryContext) string {
+func formatRunningIndicator(running *RunningStatementContext) string {
 	if running == nil {
 		return ""
 	}

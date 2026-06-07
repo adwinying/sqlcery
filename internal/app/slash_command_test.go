@@ -738,7 +738,7 @@ func TestModelSubmitUnknownSlashCommandShowsErrorAndSkipsSQLExecution(t *testing
 func TestSlashCommandCancellationUsesFriendlyStatus(t *testing.T) {
 	model := NewModel(ConnectionInfo{}, nil)
 	model.state.SetReady("")
-	model.state.SetRunningQueryContext(&RunningQueryContext{Label: "/tables", Elapsed: 1200 * time.Millisecond})
+	model.state.SetRunningStatementContext(&RunningStatementContext{Label: "/tables", Elapsed: 1200 * time.Millisecond})
 
 	next, _ := model.Update(slashCommandExecutedMsg{
 		Command:       slashCommand{RawInput: "/tables", DisplayName: "/tables", Name: "tables"},

@@ -165,7 +165,7 @@ func (m *recordViewerModeModel) View(interaction InteractionState) string {
 	page := recordViewerPageContextFor(interaction.ViewerPage, len(result.Rows))
 	header := []string{
 		appTheme.viewerTitle.Render("Record viewer"),
-		appTheme.viewerMeta.Render(fmt.Sprintf("Query: %s", summarizeViewerQuery(latest.Query, m.width))),
+		appTheme.viewerMeta.Render(fmt.Sprintf("Query: %s", summarizeViewerQuery(latest.Statement, m.width))),
 		appTheme.viewerMeta.Render(fmt.Sprintf("Rows: %d  Columns: %d", len(result.Rows), len(result.Columns))),
 		appTheme.viewerMeta.Render(fmt.Sprintf("Page: %d/%d  Showing rows %s", page.Number, page.TotalPages, formatRecordViewerRowRange(page))),
 	}

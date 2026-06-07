@@ -288,7 +288,7 @@ func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 	query := InteractionState{
 		ActiveMode: ModeHistorySearch,
 		HistorySearch: &HistorySearchContext{
-			Query:         "su",
+			Filter:        "su",
 			SelectedIndex: 0,
 		},
 		SessionHistory: []HistoryEntryContext{{SQL: "select * from user_sessions"}, {SQL: "select * from users"}},
@@ -359,7 +359,7 @@ func TestCommandModeFooterShowsRunningIndicator(t *testing.T) {
 	mode.SetSize(80, 20)
 	footer := mode.Footer("local", "sqlite", InteractionState{
 		Layout:  LayoutCommandOnly,
-		Running: &RunningQueryContext{Label: "SQL", Elapsed: 1500 * time.Millisecond},
+		Running: &RunningStatementContext{Label: "SQL", Elapsed: 1500 * time.Millisecond},
 	})
 
 	for _, want := range []string{"Command mode", "layout command only", "connection local", "sqlite", "alt+h help", "ctrl+3 command", "- SQL 1.5s", "esc cancel query"} {

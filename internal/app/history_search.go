@@ -56,7 +56,7 @@ func (m *Model) cycleHistorySearch(delta int) {
 		return
 	}
 
-	matches := filterHistorySearchEntries(m.state.Interaction.SessionHistory, search.Query)
+	matches := filterHistorySearchEntries(m.state.Interaction.SessionHistory, search.Filter)
 	if len(matches) == 0 {
 		m.syncHistorySearchSelection()
 		m.state.SetPendingIntent(IntentHistory, "history", historySearchStatus(m.state.Interaction))
@@ -75,7 +75,7 @@ func (m *Model) updateHistorySearchQuery(query string) {
 		search = &HistorySearchContext{}
 	}
 
-	search.Query = query
+	search.Filter = query
 	search.SelectedIndex = 0
 	m.state.SetHistorySearchContext(search)
 	m.syncHistorySearchSelection()
@@ -89,7 +89,7 @@ func (m *Model) syncHistorySearchSelection() {
 		return
 	}
 
-	matches := filterHistorySearchEntries(m.state.Interaction.SessionHistory, search.Query)
+	matches := filterHistorySearchEntries(m.state.Interaction.SessionHistory, search.Filter)
 	if len(matches) == 0 {
 		search.SelectedIndex = 0
 		m.state.SetHistorySearchContext(search)
@@ -129,7 +129,7 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.openHistorySearch()
 			return nil
 		}
-		m.updateHistorySearchQuery(trimLastRune(search.Query))
+		m.updateHistorySearchQuery(trimLastRune(search.Filter))
 		return nil
 	case msg.String() == "space":
 		search := m.state.Interaction.HistorySearch
@@ -137,7 +137,7 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.openHistorySearch()
 			search = m.state.Interaction.HistorySearch
 		}
-		m.updateHistorySearchQuery(search.Query + " ")
+		m.updateHistorySearchQuery(search.Filter + " ")
 		return nil
 	case len(msg.Text) > 0 && !msg.Mod.Contains(tea.ModAlt):
 		search := m.state.Interaction.HistorySearch
@@ -145,7 +145,7 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.openHistorySearch()
 			search = m.state.Interaction.HistorySearch
 		}
-		m.updateHistorySearchQuery(search.Query + msg.Text)
+		m.updateHistorySearchQuery(search.Filter + msg.Text)
 		return nil
 	default:
 		return nil
@@ -158,10 +158,10 @@ func renderHistorySearch(interaction InteractionState) string {
 	}
 
 	search := interaction.HistorySearch
-	matches := filterHistorySearchEntries(interaction.SessionHistory, search.Query)
+	matches := filterHistorySearchEntries(interaction.SessionHistory, search.Filter)
 	lines := []string{
 		appTheme.panelTitle.Render("Reverse search:"),
-		appTheme.panelText.Render(fmt.Sprintf("query> %s", defaultHistorySearchQuery(search.Query))),
+		appTheme.panelText.Render(fmt.Sprintf("query> %s", defaultHistorySearchQuery(search.Filter))),
 	}
 
 	if len(interaction.SessionHistory) == 0 {
@@ -201,12 +201,12 @@ func historySearchStatus(interaction InteractionState) string {
 		return "History search is unavailable."
 	}
 
-	matches := filterHistorySearchEntries(interaction.SessionHistory, search.Query)
+	matches := filterHistorySearchEntries(interaction.SessionHistory, search.Filter)
 	if len(interaction.SessionHistory) == 0 {
 		return "History search opened; session history is empty."
 	}
 	if len(matches) == 0 {
-		return fmt.Sprintf("History search for %q returned no matches.", search.Query)
+		return fmt.Sprintf("History search for %q returned no matches.", search.Filter)
 	}
 
 	selected := matches[wrapHistorySearchIndex(search.SelectedIndex, len(matches))]

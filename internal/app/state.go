@@ -66,7 +66,7 @@ type InteractionState struct {
 	PendingIntent        PendingIntent
 	LastAction           string
 	HelpVisible          bool
-	Running              *RunningQueryContext
+	Running              *RunningStatementContext
 	Layout               AppLayout
 	ActiveMode           AppMode
 	ViewerPage           int
@@ -80,11 +80,11 @@ type InteractionState struct {
 }
 
 type HistorySearchContext struct {
-	Query         string
+	Filter        string
 	SelectedIndex int
 }
 
-type RunningQueryContext struct {
+type RunningStatementContext struct {
 	Label        string
 	StartedAt    time.Time
 	Elapsed      time.Duration
@@ -133,7 +133,7 @@ type AutocompleteTableContext struct {
 }
 
 type LatestResultContext struct {
-	Query               string
+	Statement           string
 	OriginMode          AppMode
 	PreservedResult     *db.ResultSet
 	InlineResult        *db.ResultSet
@@ -240,8 +240,8 @@ func (s *SharedAppState) SetLayout(layout AppLayout) {
 	s.Interaction.Layout = layout
 }
 
-func (s *SharedAppState) SetRunningQueryContext(context *RunningQueryContext) {
-	s.Interaction.Running = cloneRunningQueryContext(context)
+func (s *SharedAppState) SetRunningStatementContext(context *RunningStatementContext) {
+	s.Interaction.Running = cloneRunningStatementContext(context)
 }
 
 func (s *SharedAppState) SetSessionHistory(entries []HistoryEntryContext) {
@@ -287,7 +287,7 @@ func (s *SharedAppState) SetSelectedHistoryEntry(entry *HistoryEntryContext) {
 
 func (q InteractionState) snapshot() InteractionState {
 	clone := q
-	clone.Running = cloneRunningQueryContext(q.Running)
+	clone.Running = cloneRunningStatementContext(q.Running)
 	clone.SessionHistory = cloneHistoryEntries(q.SessionHistory)
 	clone.HistorySearch = cloneHistorySearchContext(q.HistorySearch)
 	clone.AutocompleteSchema = cloneAutocompleteSchemaContext(q.AutocompleteSchema)
@@ -298,7 +298,7 @@ func (q InteractionState) snapshot() InteractionState {
 	return clone
 }
 
-func cloneRunningQueryContext(context *RunningQueryContext) *RunningQueryContext {
+func cloneRunningStatementContext(context *RunningStatementContext) *RunningStatementContext {
 	if context == nil {
 		return nil
 	}

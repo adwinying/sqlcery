@@ -182,7 +182,7 @@ func recordViewerResultSource(latest *LatestResultContext) (db.TableRef, bool) {
 		return *latest.PreservedResult.Source, true
 	}
 
-	inferred := inferQuerySourceTable(latest.Query)
+	inferred := inferQuerySourceTable(latest.Statement)
 	if inferred == nil || strings.TrimSpace(inferred.Name) == "" {
 		return db.TableRef{}, false
 	}

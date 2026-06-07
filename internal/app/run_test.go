@@ -162,7 +162,7 @@ func TestModelUpdateSubmitWarnsWhenHistoryPersistenceFails(t *testing.T) {
 	model = next.(Model)
 
 	if got, want := len(model.state.Interaction.SessionHistory), 1; got != want {
-		t.Fatalf("len(state.Query.SessionHistory) = %d, want %d", got, want)
+		t.Fatalf("len(state.Interaction.SessionHistory) = %d, want %d", got, want)
 	}
 	if got := model.state.Status; !strings.Contains(got, "History was not persisted:") {
 		t.Fatalf("state.Status = %q, want history persistence warning", got)
@@ -283,21 +283,21 @@ func TestModelViewIncludesSharedInteractionStatePlaceholders(t *testing.T) {
 	model := NewModel(ConnectionInfo{}, nil)
 	model.state.SetReady("")
 	model.state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1", ConnectionName: "local"}})
-	model.state.SetLatestResultContext(&LatestResultContext{Query: "select 1", OriginMode: ModeCommand})
+	model.state.SetLatestResultContext(&LatestResultContext{Statement: "select 1", OriginMode: ModeCommand})
 	model.state.SetPendingModeSwitch(&ModeSwitchContext{FromLayout: LayoutCommandOnly, ToLayout: LayoutViewerOnly, FromMode: ModeCommand, ToMode: ModeRecordViewer})
 	model.state.SetSelectedHistoryEntry(&HistoryEntryContext{SQL: "select 2", ConnectionName: "local"})
 
 	if model.state.Interaction.LatestResult == nil {
-		t.Fatal("state.Query.LatestResult = nil, want available")
+		t.Fatal("state.Interaction.LatestResult = nil, want available")
 	}
 	if model.state.Interaction.PendingModeSwitch == nil {
-		t.Fatal("state.Query.PendingModeSwitch = nil, want available")
+		t.Fatal("state.Interaction.PendingModeSwitch = nil, want available")
 	}
 	if got, want := len(model.state.Interaction.SessionHistory), 1; got != want {
-		t.Fatalf("len(state.Query.SessionHistory) = %d, want %d", got, want)
+		t.Fatalf("len(state.Interaction.SessionHistory) = %d, want %d", got, want)
 	}
 	if model.state.Interaction.SelectedHistoryEntry == nil {
-		t.Fatal("state.Query.SelectedHistoryEntry = nil, want available")
+		t.Fatal("state.Interaction.SelectedHistoryEntry = nil, want available")
 	}
 }
 
@@ -494,10 +494,10 @@ func TestModelUpdateSubmitSetsPendingIntent(t *testing.T) {
 		t.Fatalf("state.PendingIntent = %q, want %q", got, want)
 	}
 	if model.state.Interaction.Running == nil {
-		t.Fatal("state.Query.Running = nil, want running context")
+		t.Fatal("state.Interaction.Running = nil, want running context")
 	}
 	if got, want := model.state.Interaction.Running.Label, "SQL"; got != want {
-		t.Fatalf("state.Query.Running.Label = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.Running.Label = %q, want %q", got, want)
 	}
 
 	if got, want := model.state.Interaction.LastAction, "submit"; got != want {
@@ -505,24 +505,24 @@ func TestModelUpdateSubmitSetsPendingIntent(t *testing.T) {
 	}
 
 	if got, want := model.state.Interaction.CurrentSQL, "select;"; got != want {
-		t.Fatalf("state.Query.CurrentSQL = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.CurrentSQL = %q, want %q", got, want)
 	}
 
 	if got, want := model.state.Interaction.LastSubmittedSQL, "select;"; got != want {
-		t.Fatalf("state.Query.LastSubmittedSQL = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.LastSubmittedSQL = %q, want %q", got, want)
 	}
 
 	view := model.View().Content
 	_ = view // "esc cancel query" may be truncated at 120-char width; check state directly
 	if model.state.Interaction.Running == nil {
-		t.Fatal("state.Query.Running should still be set (pending)")
+		t.Fatal("state.Interaction.Running should still be set (pending)")
 	}
 }
 
 func TestModelUpdateSubmitWhileRunningShowsCancelGuidance(t *testing.T) {
 	model := NewModel(ConnectionInfo{}, nil)
 	model.state.SetReady("")
-	model.state.SetRunningQueryContext(&RunningQueryContext{Label: "SQL"})
+	model.state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL"})
 
 	next, cmd := model.Update(submitIntentMsg{})
 	if cmd != nil {
@@ -549,10 +549,10 @@ func TestModelUpdateSubmitRejectsIncompleteSQL(t *testing.T) {
 	model = next.(Model)
 
 	if got, want := model.state.Interaction.PendingIntent, IntentNone; got != want {
-		t.Fatalf("state.Query.PendingIntent = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.PendingIntent = %q, want %q", got, want)
 	}
 	if model.state.Interaction.Running != nil {
-		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Interaction.Running)
+		t.Fatalf("state.Interaction.Running = %#v, want nil", model.state.Interaction.Running)
 	}
 	if got, want := model.state.Status, "SQL is incomplete. End the statement with ';' to run it."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -561,13 +561,13 @@ func TestModelUpdateSubmitRejectsIncompleteSQL(t *testing.T) {
 		t.Fatalf("editor.Value() = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.CurrentSQL, "select\n1"; got != want {
-		t.Fatalf("state.Query.CurrentSQL = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.CurrentSQL = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.LastSubmittedSQL, "select 0;"; got != want {
-		t.Fatalf("state.Query.LastSubmittedSQL = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.LastSubmittedSQL = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.LastAction, "submit"; got != want {
-		t.Fatalf("state.Query.LastAction = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.LastAction = %q, want %q", got, want)
 	}
 	if got, want := model.state.App.Current, StateReady; got != want {
 		t.Fatalf("state.App.Current = %q, want %q", got, want)
@@ -580,7 +580,7 @@ func TestModelUpdateRunningTickUpdatesElapsedAndFooter(t *testing.T) {
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
 	startedAt := time.Date(2026, time.April, 8, 10, 0, 0, 0, time.UTC)
-	model.state.SetRunningQueryContext(&RunningQueryContext{Label: "SQL", StartedAt: startedAt})
+	model.state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL", StartedAt: startedAt})
 
 	next, cmd := model.Update(runningTickMsg{StartedAt: startedAt, Now: startedAt.Add(1500 * time.Millisecond)})
 	if cmd == nil {
@@ -589,13 +589,13 @@ func TestModelUpdateRunningTickUpdatesElapsedAndFooter(t *testing.T) {
 	model = next.(Model)
 
 	if model.state.Interaction.Running == nil {
-		t.Fatal("state.Query.Running = nil, want running context")
+		t.Fatal("state.Interaction.Running = nil, want running context")
 	}
 	if got, want := model.state.Interaction.Running.Elapsed, 1500*time.Millisecond; got != want {
-		t.Fatalf("state.Query.Running.Elapsed = %v, want %v", got, want)
+		t.Fatalf("state.Interaction.Running.Elapsed = %v, want %v", got, want)
 	}
 	if got, want := model.state.Interaction.Running.SpinnerFrame, 1; got != want {
-		t.Fatalf("state.Query.Running.SpinnerFrame = %d, want %d", got, want)
+		t.Fatalf("state.Interaction.Running.SpinnerFrame = %d, want %d", got, want)
 	}
 
 	view := model.View().Content
@@ -651,13 +651,13 @@ func TestModelUpdateSubmitExecutesSelectAndLimitsInlineRows(t *testing.T) {
 		t.Fatalf("state.PendingIntent = %q, want empty", got)
 	}
 	if model.state.Interaction.Running != nil {
-		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Interaction.Running)
+		t.Fatalf("state.Interaction.Running = %#v, want nil", model.state.Interaction.Running)
 	}
 	if got, want := model.state.Status, "Query returned 6 rows."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if model.state.Interaction.LatestResult == nil {
-		t.Fatal("state.Query.LatestResult = nil, want result context")
+		t.Fatal("state.Interaction.LatestResult = nil, want result context")
 	}
 	if got, want := len(model.state.Interaction.LatestResult.PreservedResult.Rows), 6; got != want {
 		t.Fatalf("len(latest.PreservedResult.Rows) = %d, want %d", got, want)
@@ -669,10 +669,10 @@ func TestModelUpdateSubmitExecutesSelectAndLimitsInlineRows(t *testing.T) {
 		t.Fatal("latest.InlineRowsTruncated = false, want true")
 	}
 	if got, want := len(model.state.Interaction.SessionHistory), 1; got != want {
-		t.Fatalf("len(state.Query.SessionHistory) = %d, want %d", got, want)
+		t.Fatalf("len(state.Interaction.SessionHistory) = %d, want %d", got, want)
 	}
 	if got, want := model.state.Interaction.SessionHistory[0].SQL, query; got != want {
-		t.Fatalf("state.Query.SessionHistory[0].SQL = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.SessionHistory[0].SQL = %q, want %q", got, want)
 	}
 
 	view := model.View().Content
@@ -715,7 +715,7 @@ func TestModelUpdateSubmitExecutesNonSelectStatement(t *testing.T) {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if model.state.Interaction.LatestResult == nil {
-		t.Fatal("state.Query.LatestResult = nil, want result context")
+		t.Fatal("state.Interaction.LatestResult = nil, want result context")
 	}
 	if got, want := model.state.Interaction.LatestResult.StatementKind, db.StatementResultKindExec; got != want {
 		t.Fatalf("latest.StatementKind = %q, want %q", got, want)
@@ -967,7 +967,7 @@ func TestAutocompleteMenuStaysClosedAfterSubmitAndRefocus(t *testing.T) {
 func TestModelUpdateCancelWhileRunningRequestsCancellation(t *testing.T) {
 	model := NewModel(ConnectionInfo{}, nil)
 	model.state.SetReady("")
-	model.state.SetRunningQueryContext(&RunningQueryContext{Label: "SQL"})
+	model.state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL"})
 
 	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	if cmd == nil {
@@ -986,7 +986,7 @@ func TestModelUpdateCancelWhileRunningRequestsCancellation(t *testing.T) {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.PendingIntent, IntentSubmit; got != want {
-		t.Fatalf("state.Query.PendingIntent = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.PendingIntent = %q, want %q", got, want)
 	}
 }
 
@@ -994,7 +994,7 @@ func TestStatementExecutionCancellationUsesFriendlyStatus(t *testing.T) {
 	model := NewModel(ConnectionInfo{}, nil)
 	model.state.SetReady("")
 	startedAt := time.Now().Add(-2500 * time.Millisecond)
-	model.state.SetRunningQueryContext(&RunningQueryContext{Label: "SQL", StartedAt: startedAt, Elapsed: 2500 * time.Millisecond})
+	model.state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL", StartedAt: startedAt, Elapsed: 2500 * time.Millisecond})
 
 	next, _ := model.Update(statementExecutedMsg{
 		Query:         "select sleep(10);",
@@ -1007,14 +1007,14 @@ func TestStatementExecutionCancellationUsesFriendlyStatus(t *testing.T) {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if model.state.Interaction.Running != nil {
-		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Interaction.Running)
+		t.Fatalf("state.Interaction.Running = %#v, want nil", model.state.Interaction.Running)
 	}
 }
 
 func TestStatementExecutionTimeoutUsesFriendlyStatus(t *testing.T) {
 	model := NewModel(ConnectionInfo{}, nil)
 	model.state.SetReady("")
-	model.state.SetRunningQueryContext(&RunningQueryContext{Label: "SQL", Elapsed: 30 * time.Second})
+	model.state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL", Elapsed: 30 * time.Second})
 
 	next, _ := model.Update(statementExecutedMsg{
 		Query:         "select sleep(35);",
@@ -1049,20 +1049,20 @@ func TestModelUpdateHistorySetsPendingIntent(t *testing.T) {
 		t.Fatalf("state.PendingIntent = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeHistorySearch; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if model.state.Interaction.HistorySearch == nil {
-		t.Fatal("state.Query.HistorySearch = nil, want search context")
+		t.Fatal("state.Interaction.HistorySearch = nil, want search context")
 	}
 
 	if got, want := model.state.Status, "History search matched 2 entries; selected \"/tables\"."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if model.state.Interaction.SelectedHistoryEntry == nil {
-		t.Fatal("state.Query.SelectedHistoryEntry = nil, want latest history entry")
+		t.Fatal("state.Interaction.SelectedHistoryEntry = nil, want latest history entry")
 	}
 	if got, want := model.state.Interaction.SelectedHistoryEntry.SQL, "/tables"; got != want {
-		t.Fatalf("state.Query.SelectedHistoryEntry.SQL = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.SelectedHistoryEntry.SQL = %q, want %q", got, want)
 	}
 }
 
@@ -1077,10 +1077,10 @@ func TestModelUpdateHistoryHandlesEmptySessionHistory(t *testing.T) {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeHistorySearch; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if model.state.Interaction.SelectedHistoryEntry != nil {
-		t.Fatalf("state.Query.SelectedHistoryEntry = %#v, want nil", model.state.Interaction.SelectedHistoryEntry)
+		t.Fatalf("state.Interaction.SelectedHistoryEntry = %#v, want nil", model.state.Interaction.SelectedHistoryEntry)
 	}
 }
 
@@ -1095,21 +1095,21 @@ func TestModelUpdateHistorySearchFiltersAndCyclesEntries(t *testing.T) {
 	next, _ = model.Update(tea.KeyPressMsg{Text: "su"})
 	model = next.(Model)
 
-	if got, want := model.state.Interaction.HistorySearch.Query, "su"; got != want {
-		t.Fatalf("state.Query.HistorySearch.Query = %q, want %q", got, want)
+	if got, want := model.state.Interaction.HistorySearch.Filter, "su"; got != want {
+		t.Fatalf("state.Interaction.HistorySearch.Filter = %q, want %q", got, want)
 	}
 	if model.state.Interaction.SelectedHistoryEntry == nil {
-		t.Fatal("state.Query.SelectedHistoryEntry = nil, want selected entry")
+		t.Fatal("state.Interaction.SelectedHistoryEntry = nil, want selected entry")
 	}
 	if got, want := model.state.Interaction.SelectedHistoryEntry.SQL, "select * from user_sessions"; got != want {
-		t.Fatalf("state.Query.SelectedHistoryEntry.SQL = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.SelectedHistoryEntry.SQL = %q, want %q", got, want)
 	}
 
 	next, _ = model.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
 	model = next.(Model)
 
 	if got, want := model.state.Interaction.SelectedHistoryEntry.SQL, "select * from users"; got != want {
-		t.Fatalf("state.Query.SelectedHistoryEntry.SQL = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.SelectedHistoryEntry.SQL = %q, want %q", got, want)
 	}
 	if got, want := model.state.Status, "History search matched 2 entries; selected \"select * from users\"."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -1128,13 +1128,13 @@ func TestModelUpdateHistorySearchCancelReturnsToCommandMode(t *testing.T) {
 	model = next.(Model)
 
 	if got, want := model.state.Interaction.ActiveMode, ModeCommand; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if model.state.Interaction.HistorySearch != nil {
-		t.Fatalf("state.Query.HistorySearch = %#v, want nil", model.state.Interaction.HistorySearch)
+		t.Fatalf("state.Interaction.HistorySearch = %#v, want nil", model.state.Interaction.HistorySearch)
 	}
 	if got, want := model.state.Interaction.PendingIntent, IntentNone; got != want {
-		t.Fatalf("state.Query.PendingIntent = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.PendingIntent = %q, want %q", got, want)
 	}
 	if got, want := model.state.Status, "Exited history search."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -1162,19 +1162,19 @@ func TestModelUpdateHistorySearchRestoreLoadsEditorAndClosesSearch(t *testing.T)
 		t.Fatalf("editor.Value() = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.CurrentSQL, "select * from user_sessions"; got != want {
-		t.Fatalf("state.Query.CurrentSQL = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.CurrentSQL = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeCommand; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if model.state.Interaction.HistorySearch != nil {
-		t.Fatalf("state.Query.HistorySearch = %#v, want nil", model.state.Interaction.HistorySearch)
+		t.Fatalf("state.Interaction.HistorySearch = %#v, want nil", model.state.Interaction.HistorySearch)
 	}
 	if model.state.Interaction.SelectedHistoryEntry != nil {
-		t.Fatalf("state.Query.SelectedHistoryEntry = %#v, want nil", model.state.Interaction.SelectedHistoryEntry)
+		t.Fatalf("state.Interaction.SelectedHistoryEntry = %#v, want nil", model.state.Interaction.SelectedHistoryEntry)
 	}
 	if got, want := model.state.Interaction.PendingIntent, IntentNone; got != want {
-		t.Fatalf("state.Query.PendingIntent = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.PendingIntent = %q, want %q", got, want)
 	}
 	if got, want := model.state.Status, "Restored selected history entry into the editor."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -1208,10 +1208,10 @@ func TestModelUpdateModeSwitchSetsPendingIntent(t *testing.T) {
 		t.Fatalf("state.PendingIntent = %q, want %q", got, want)
 	}
 	if model.state.Interaction.PendingModeSwitch != nil {
-		t.Fatalf("state.Query.PendingModeSwitch = %#v, want nil (switch completes immediately in split layout)", model.state.Interaction.PendingModeSwitch)
+		t.Fatalf("state.Interaction.PendingModeSwitch = %#v, want nil (switch completes immediately in split layout)", model.state.Interaction.PendingModeSwitch)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeRecordViewer; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 
 	if got, want := model.state.Status, "Focused the record viewer in split layout. Run a query that returns rows to populate it."; got != want {
@@ -1266,13 +1266,13 @@ func TestModelUpdateModeSwitchPreservesLatestResultContext(t *testing.T) {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.Layout, LayoutSplit; got != want {
-		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.Layout = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeRecordViewer; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if model.state.Interaction.LatestResult == nil {
-		t.Fatal("state.Query.LatestResult = nil, want preserved result context")
+		t.Fatal("state.Interaction.LatestResult = nil, want preserved result context")
 	}
 	if got, want := len(model.state.Interaction.LatestResult.PreservedResult.Rows), 6; got != want {
 		t.Fatalf("len(latest preserved rows) = %d, want %d", got, want)
@@ -1280,11 +1280,11 @@ func TestModelUpdateModeSwitchPreservesLatestResultContext(t *testing.T) {
 	if got, want := len(model.state.Interaction.LatestResult.InlineResult.Rows), 5; got != want {
 		t.Fatalf("len(latest inline rows) = %d, want %d", got, want)
 	}
-	if got, want := model.state.Interaction.LatestResult.Query, query; got != want {
+	if got, want := model.state.Interaction.LatestResult.Statement, query; got != want {
 		t.Fatalf("latest query = %q, want %q", got, want)
 	}
 	if model.state.Interaction.PendingModeSwitch != nil {
-		t.Fatalf("state.Query.PendingModeSwitch = %#v, want nil after switching", model.state.Interaction.PendingModeSwitch)
+		t.Fatalf("state.Interaction.PendingModeSwitch = %#v, want nil after switching", model.state.Interaction.PendingModeSwitch)
 	}
 
 	view := model.View().Content
@@ -1329,7 +1329,7 @@ func TestModelUpdateNewResultResetsViewerPage(t *testing.T) {
 	model = next.(Model)
 
 	if got, want := model.state.Interaction.ViewerPage, 0; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
 }
 
@@ -1347,7 +1347,7 @@ func TestModelViewRecordViewerShowsPaginatedRows(t *testing.T) {
 	}
 
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select id from widgets order by id",
+		Statement: "select id from widgets order by id",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "id"}},
 			Rows:    rows,
@@ -1358,7 +1358,7 @@ func TestModelViewRecordViewerShowsPaginatedRows(t *testing.T) {
 	// In REPL mode, record viewer is not rendered in View();
 	// verify state instead.
 	if got, want := model.state.Interaction.ViewerPage, 1; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
 	if got, want := len(model.state.Interaction.LatestResult.PreservedResult.Rows), 305; got != want {
 		t.Fatalf("len(PreservedResult.Rows) = %d, want %d", got, want)
@@ -1374,7 +1374,7 @@ func TestModelUpdateCtrlDScrollsWithinPageInViewerOnlyLayout(t *testing.T) {
 	model.state.SetLayout(LayoutViewerOnly)
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select id from widgets order by id",
+		Statement: "select id from widgets order by id",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "id"}},
 			Rows:    make([]db.ResultRow, 605),
@@ -1382,7 +1382,7 @@ func TestModelUpdateCtrlDScrollsWithinPageInViewerOnlyLayout(t *testing.T) {
 	})
 	// Start on page 0 (rows 1-300).
 	if got, want := model.state.Interaction.ViewerPage, 0; got != want {
-		t.Fatalf("initial state.Query.ViewerPage = %d, want %d", got, want)
+		t.Fatalf("initial state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
 
 	next, cmd := model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
@@ -1393,7 +1393,7 @@ func TestModelUpdateCtrlDScrollsWithinPageInViewerOnlyLayout(t *testing.T) {
 	}
 	// Page must NOT change — ctrl+d only scrolls within the current page.
 	if got, want := model.state.Interaction.ViewerPage, 0; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d (ctrl+d must not change page)", got, want)
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d (ctrl+d must not change page)", got, want)
 	}
 
 	// Repeated ctrl+d presses must not push past page boundary.
@@ -1402,7 +1402,7 @@ func TestModelUpdateCtrlDScrollsWithinPageInViewerOnlyLayout(t *testing.T) {
 		model = next.(Model)
 	}
 	if got, want := model.state.Interaction.ViewerPage, 0; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d after many ctrl+d presses", got, want)
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d after many ctrl+d presses", got, want)
 	}
 }
 
@@ -1412,7 +1412,7 @@ func TestModelUpdateCtrlUScrollsWithinPageInViewerOnlyLayout(t *testing.T) {
 	model.state.SetLayout(LayoutViewerOnly)
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select id from widgets order by id",
+		Statement: "select id from widgets order by id",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "id"}},
 			Rows:    make([]db.ResultRow, 605),
@@ -1428,7 +1428,7 @@ func TestModelUpdateCtrlUScrollsWithinPageInViewerOnlyLayout(t *testing.T) {
 	}
 	// Page must NOT change — ctrl+u only scrolls within the current page.
 	if got, want := model.state.Interaction.ViewerPage, 2; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d (ctrl+u must not change page)", got, want)
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d (ctrl+u must not change page)", got, want)
 	}
 
 	// Repeated ctrl+u presses must not push past page boundary.
@@ -1437,7 +1437,7 @@ func TestModelUpdateCtrlUScrollsWithinPageInViewerOnlyLayout(t *testing.T) {
 		model = next.(Model)
 	}
 	if got, want := model.state.Interaction.ViewerPage, 2; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d after many ctrl+u presses", got, want)
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d after many ctrl+u presses", got, want)
 	}
 }
 
@@ -1446,7 +1446,7 @@ func TestModelUpdateCtrlDScrollsOnlyWhenViewerFocusedInSplitLayout(t *testing.T)
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select id from widgets order by id",
+		Statement: "select id from widgets order by id",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "id"}},
 			Rows:    make([]db.ResultRow, 605),
@@ -1461,7 +1461,7 @@ func TestModelUpdateCtrlDScrollsOnlyWhenViewerFocusedInSplitLayout(t *testing.T)
 	next, _ := model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	model = next.(Model)
 	if got, want := model.state.Interaction.ViewerPage, 1; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
 
 	// With record viewer focus, ctrl+d scrolls within the current page — page must stay the same.
@@ -1469,7 +1469,7 @@ func TestModelUpdateCtrlDScrollsOnlyWhenViewerFocusedInSplitLayout(t *testing.T)
 	next, _ = model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	model = next.(Model)
 	if got, want := model.state.Interaction.ViewerPage, 1; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d (ctrl+d must not change page)", got, want)
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d (ctrl+d must not change page)", got, want)
 	}
 }
 
@@ -1478,9 +1478,9 @@ func TestModelUpdateCtrlDDoesNotPageDuringHistorySearch(t *testing.T) {
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetActiveMode(ModeHistorySearch)
-	model.state.SetHistorySearchContext(&HistorySearchContext{Query: "sel"})
+	model.state.SetHistorySearchContext(&HistorySearchContext{Filter: "sel"})
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select id from widgets order by id",
+		Statement: "select id from widgets order by id",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "id"}},
 			Rows:    make([]db.ResultRow, 605),
@@ -1495,13 +1495,13 @@ func TestModelUpdateCtrlDDoesNotPageDuringHistorySearch(t *testing.T) {
 		t.Fatalf("Update(ctrl+d) cmd = %#v, want nil", cmd)
 	}
 	if got, want := model.state.Interaction.ViewerPage, 1; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeHistorySearch; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
-	if model.state.Interaction.HistorySearch == nil || model.state.Interaction.HistorySearch.Query != "sel" {
-		t.Fatalf("state.Query.HistorySearch = %#v, want query preserved", model.state.Interaction.HistorySearch)
+	if model.state.Interaction.HistorySearch == nil || model.state.Interaction.HistorySearch.Filter != "sel" {
+		t.Fatalf("state.Interaction.HistorySearch = %#v, want query preserved", model.state.Interaction.HistorySearch)
 	}
 }
 
@@ -1511,7 +1511,7 @@ func TestModelUpdateArrowKeysNavigateRecordViewerSelectionAcrossPages(t *testing
 	model.state.SetLayout(LayoutViewerOnly)
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select id from widgets order by id",
+		Statement: "select id from widgets order by id",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "id"}, {Name: "name"}},
 			Rows:    make([]db.ResultRow, 301),
@@ -1527,7 +1527,7 @@ func TestModelUpdateArrowKeysNavigateRecordViewerSelectionAcrossPages(t *testing
 		t.Fatalf("viewer.selectedColumn = %d, want %d", got, want)
 	}
 	if got, want := model.state.Interaction.ViewerPage, 0; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
 
 	model.viewer.selectedRow = 299
@@ -1537,7 +1537,7 @@ func TestModelUpdateArrowKeysNavigateRecordViewerSelectionAcrossPages(t *testing
 		t.Fatalf("viewer.selectedRow = %d, want %d", got, want)
 	}
 	if got, want := model.state.Interaction.ViewerPage, 1; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
 
 	next, _ = model.Update(tea.KeyPressMsg{Text: "k"})
@@ -1546,7 +1546,7 @@ func TestModelUpdateArrowKeysNavigateRecordViewerSelectionAcrossPages(t *testing
 		t.Fatalf("viewer.selectedRow = %d, want %d", got, want)
 	}
 	if got, want := model.state.Interaction.ViewerPage, 0; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
 }
 
@@ -1556,7 +1556,7 @@ func TestModelUpdateSpaceTogglesSelectedRowsInRecordViewer(t *testing.T) {
 	model.state.SetLayout(LayoutViewerOnly)
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select id from widgets order by id",
+		Statement: "select id from widgets order by id",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "id"}},
 			Rows: []db.ResultRow{
@@ -1649,7 +1649,7 @@ func TestModelUpdateNavigationIgnoredOutsideRecordViewer(t *testing.T) {
 	model = next.(Model)
 
 	if got, want := model.state.Interaction.ViewerPage, 0; got != want {
-		t.Fatalf("state.Query.ViewerPage = %d, want %d", got, want)
+		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
 	if got, want := model.viewer.selectedColumn, 0; got != want {
 		t.Fatalf("viewer.selectedColumn = %d, want %d", got, want)
@@ -1669,7 +1669,7 @@ func TestModelUpdateModeSwitchReturnsFromRecordViewerToCommandMode(t *testing.T)
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.command.Blur()
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select 1",
+		Statement: "select 1",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "value"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}}}},
@@ -1686,19 +1686,19 @@ func TestModelUpdateModeSwitchReturnsFromRecordViewerToCommandMode(t *testing.T)
 	model = next.(Model)
 
 	if got, want := model.state.Interaction.Layout, LayoutCommandOnly; got != want {
-		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.Layout = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeCommand; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.PendingIntent, IntentNone; got != want {
-		t.Fatalf("state.Query.PendingIntent = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.PendingIntent = %q, want %q", got, want)
 	}
 	if got, want := model.state.Status, "Returned to command line."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if model.state.Interaction.PendingModeSwitch != nil {
-		t.Fatalf("state.Query.PendingModeSwitch = %#v, want nil", model.state.Interaction.PendingModeSwitch)
+		t.Fatalf("state.Interaction.PendingModeSwitch = %#v, want nil", model.state.Interaction.PendingModeSwitch)
 	}
 	if !model.command.Focused() {
 		t.Fatal("command.Focused() = false, want editor focused after returning to command mode")
@@ -1713,7 +1713,7 @@ func TestModelUpdateQQuitsWhenRecordViewerFocusedInSplitLayout(t *testing.T) {
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select 1",
+		Statement: "select 1",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "value"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}}}},
@@ -1762,13 +1762,13 @@ func TestModelUpdateFocusResultsPaneFromHistorySearchClosesHistorySearch(t *test
 	}
 
 	if got, want := model.state.Interaction.Layout, LayoutSplit; got != want {
-		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.Layout = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeRecordViewer; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if model.state.Interaction.HistorySearch != nil {
-		t.Fatalf("state.Query.HistorySearch = %#v, want nil", model.state.Interaction.HistorySearch)
+		t.Fatalf("state.Interaction.HistorySearch = %#v, want nil", model.state.Interaction.HistorySearch)
 	}
 }
 
@@ -1784,16 +1784,16 @@ func TestModelUpdateLayoutSwitchesToViewerOnlyAndClosesHistorySearch(t *testing.
 	model = next.(Model)
 
 	if got, want := model.state.Interaction.Layout, LayoutViewerOnly; got != want {
-		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.Layout = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeRecordViewer; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if model.state.Interaction.HistorySearch != nil {
-		t.Fatalf("state.Query.HistorySearch = %#v, want nil", model.state.Interaction.HistorySearch)
+		t.Fatalf("state.Interaction.HistorySearch = %#v, want nil", model.state.Interaction.HistorySearch)
 	}
 	if model.state.Interaction.SelectedHistoryEntry != nil {
-		t.Fatalf("state.Query.SelectedHistoryEntry = %#v, want nil", model.state.Interaction.SelectedHistoryEntry)
+		t.Fatalf("state.Interaction.SelectedHistoryEntry = %#v, want nil", model.state.Interaction.SelectedHistoryEntry)
 	}
 	if got, want := model.state.Status, "Switched to viewer only. Run a query that returns rows to populate the viewer."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -1806,7 +1806,7 @@ func TestModelUpdateLayoutSwitchesToCommandOnlyFromSplitViewerFocus(t *testing.T
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select 1",
+		Statement: "select 1",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "value"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}}}},
@@ -1821,10 +1821,10 @@ func TestModelUpdateLayoutSwitchesToCommandOnlyFromSplitViewerFocus(t *testing.T
 	model = next.(Model)
 
 	if got, want := model.state.Interaction.Layout, LayoutCommandOnly; got != want {
-		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.Layout = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeCommand; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 }
 
@@ -1833,7 +1833,7 @@ func TestModelUpdateCtrlXUsesSplitFocusWhenAlreadyInSplitLayout(t *testing.T) {
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select 1",
+		Statement: "select 1",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "value"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}}}},
@@ -1848,10 +1848,10 @@ func TestModelUpdateCtrlXUsesSplitFocusWhenAlreadyInSplitLayout(t *testing.T) {
 	model = next.(Model)
 
 	if got, want := model.state.Interaction.Layout, LayoutSplit; got != want {
-		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.Layout = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeRecordViewer; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if got, want := model.state.Status, "Focused the record viewer in split layout for 1 row(s) across 1 column(s)."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -1884,7 +1884,7 @@ func TestModelUpdateCCComposesUpdateAndReturnsToCommandMode(t *testing.T) {
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.command.Blur()
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select id, name from widgets order by id;",
+		Statement: "select id, name from widgets order by id;",
 		PreservedResult: &db.ResultSet{
 			Source:  &db.TableRef{Schema: "main", Name: "widgets"},
 			Columns: []db.ResultColumn{{Name: "id", PrimaryKey: &db.PrimaryKey{Column: "id", Position: 1}}, {Name: "name"}},
@@ -1898,7 +1898,7 @@ func TestModelUpdateCCComposesUpdateAndReturnsToCommandMode(t *testing.T) {
 		t.Fatalf("Update(first c) cmd = %#v, want nil", cmd)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeRecordViewer; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 
 	next, cmd = model.Update(tea.KeyPressMsg{Text: "c"})
@@ -1907,10 +1907,10 @@ func TestModelUpdateCCComposesUpdateAndReturnsToCommandMode(t *testing.T) {
 		t.Fatalf("Update(second c) cmd = %#v, want nil", cmd)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeCommand; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.Layout, LayoutCommandOnly; got != want {
-		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.Layout = %q, want %q", got, want)
 	}
 	if !model.command.Focused() {
 		t.Fatal("command.Focused() = false, want true")
@@ -1919,7 +1919,7 @@ func TestModelUpdateCCComposesUpdateAndReturnsToCommandMode(t *testing.T) {
 		t.Fatalf("command.Value() = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.CurrentSQL, model.command.Value(); got != want {
-		t.Fatalf("state.Query.CurrentSQL = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.CurrentSQL = %q, want %q", got, want)
 	}
 	if got, want := model.state.Status, "Loaded UPDATE for row 1 from main.widgets into command mode using primary key predicate."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -1933,7 +1933,7 @@ func TestModelUpdateCCRejectsUpdateWhenNoPrimaryKeys(t *testing.T) {
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.command.Blur()
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select name from widgets;",
+		Statement: "select name from widgets;",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "name"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindString, Value: "one"}}}},
@@ -1946,7 +1946,7 @@ func TestModelUpdateCCRejectsUpdateWhenNoPrimaryKeys(t *testing.T) {
 	model = next.(Model)
 
 	if got, want := model.state.Interaction.ActiveMode, ModeRecordViewer; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if !strings.Contains(model.state.Status, "Could not compose UPDATE") {
 		t.Fatalf("state.Status = %q, want error about missing primary key", model.state.Status)
@@ -1959,7 +1959,7 @@ func TestModelUpdateCCReportsUnknownSource(t *testing.T) {
 	model.state.SetLayout(LayoutViewerOnly)
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select widgets.id from widgets join owners on owners.id = widgets.owner_id;",
+		Statement: "select widgets.id from widgets join owners on owners.id = widgets.owner_id;",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "id"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}}}},
@@ -1972,7 +1972,7 @@ func TestModelUpdateCCReportsUnknownSource(t *testing.T) {
 	model = next.(Model)
 
 	if got, want := model.state.Interaction.ActiveMode, ModeRecordViewer; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if got, want := model.state.Status, "Could not compose UPDATE: result source table is unknown"; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -1986,7 +1986,7 @@ func TestModelUpdateYYComposesInsertAndReturnsToCommandMode(t *testing.T) {
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.command.Blur()
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select id, name from widgets order by id;",
+		Statement: "select id, name from widgets order by id;",
 		PreservedResult: &db.ResultSet{
 			Source:  &db.TableRef{Schema: "main", Name: "widgets"},
 			Columns: []db.ResultColumn{{Name: "id", PrimaryKey: &db.PrimaryKey{Column: "id", Position: 1}}, {Name: "name"}},
@@ -2000,7 +2000,7 @@ func TestModelUpdateYYComposesInsertAndReturnsToCommandMode(t *testing.T) {
 		t.Fatalf("Update(first y) cmd = %#v, want nil", cmd)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeRecordViewer; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if got, want := model.state.Status, "Press y again to load INSERT for the selected row into command mode."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -2012,10 +2012,10 @@ func TestModelUpdateYYComposesInsertAndReturnsToCommandMode(t *testing.T) {
 		t.Fatalf("Update(second y) cmd = %#v, want nil", cmd)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeCommand; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.Layout, LayoutCommandOnly; got != want {
-		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.Layout = %q, want %q", got, want)
 	}
 	if !model.command.Focused() {
 		t.Fatal("command.Focused() = false, want true")
@@ -2024,7 +2024,7 @@ func TestModelUpdateYYComposesInsertAndReturnsToCommandMode(t *testing.T) {
 		t.Fatalf("command.Value() = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.CurrentSQL, model.command.Value(); got != want {
-		t.Fatalf("state.Query.CurrentSQL = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.CurrentSQL = %q, want %q", got, want)
 	}
 	if got, want := model.state.Status, "Loaded INSERT for row 1 from main.widgets into command mode."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -2044,7 +2044,7 @@ func TestModelUpdateYYReportsUnknownSource(t *testing.T) {
 	model.state.SetLayout(LayoutViewerOnly)
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select widgets.id from widgets join owners on owners.id = widgets.owner_id;",
+		Statement: "select widgets.id from widgets join owners on owners.id = widgets.owner_id;",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "id"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}}}},
@@ -2057,7 +2057,7 @@ func TestModelUpdateYYReportsUnknownSource(t *testing.T) {
 	model = next.(Model)
 
 	if got, want := model.state.Interaction.ActiveMode, ModeRecordViewer; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if got, want := model.state.Status, "Could not compose INSERT: result source table is unknown"; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -2071,7 +2071,7 @@ func TestModelUpdateDDComposesDeleteAndReturnsToCommandMode(t *testing.T) {
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.command.Blur()
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select id, name from widgets order by id;",
+		Statement: "select id, name from widgets order by id;",
 		PreservedResult: &db.ResultSet{
 			Source:  &db.TableRef{Schema: "main", Name: "widgets"},
 			Columns: []db.ResultColumn{{Name: "id", PrimaryKey: &db.PrimaryKey{Column: "id", Position: 1}}, {Name: "name"}},
@@ -2085,7 +2085,7 @@ func TestModelUpdateDDComposesDeleteAndReturnsToCommandMode(t *testing.T) {
 		t.Fatalf("Update(first d) cmd = %#v, want nil", cmd)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeRecordViewer; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if got, want := model.state.Status, "Press d again to load DELETE for the selected row into command mode."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -2097,10 +2097,10 @@ func TestModelUpdateDDComposesDeleteAndReturnsToCommandMode(t *testing.T) {
 		t.Fatalf("Update(second d) cmd = %#v, want nil", cmd)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeCommand; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.Layout, LayoutCommandOnly; got != want {
-		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.Layout = %q, want %q", got, want)
 	}
 	if !model.command.Focused() {
 		t.Fatal("command.Focused() = false, want true")
@@ -2109,7 +2109,7 @@ func TestModelUpdateDDComposesDeleteAndReturnsToCommandMode(t *testing.T) {
 		t.Fatalf("command.Value() = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.CurrentSQL, model.command.Value(); got != want {
-		t.Fatalf("state.Query.CurrentSQL = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.CurrentSQL = %q, want %q", got, want)
 	}
 	if got, want := model.state.Status, "Loaded DELETE for row 1 from main.widgets into command mode using primary key predicate."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -2130,7 +2130,7 @@ func TestModelUpdateDDKeepsSplitLayoutWhenComposingDelete(t *testing.T) {
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.command.Blur()
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select name from widgets;",
+		Statement: "select name from widgets;",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "name"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindString, Value: "one"}}}},
@@ -2143,10 +2143,10 @@ func TestModelUpdateDDKeepsSplitLayoutWhenComposingDelete(t *testing.T) {
 	model = next.(Model)
 
 	if got, want := model.state.Interaction.Layout, LayoutSplit; got != want {
-		t.Fatalf("state.Query.Layout = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.Layout = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.ActiveMode, ModeCommand; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if got, want := model.state.Status, "Loaded DELETE for row 1 from widgets into command mode using visible column predicate."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -2167,7 +2167,7 @@ func TestModelUpdateDDReportsUnknownSource(t *testing.T) {
 	model.state.SetLayout(LayoutViewerOnly)
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select widgets.id from widgets join owners on owners.id = widgets.owner_id;",
+		Statement: "select widgets.id from widgets join owners on owners.id = widgets.owner_id;",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "id"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}}}},
@@ -2180,7 +2180,7 @@ func TestModelUpdateDDReportsUnknownSource(t *testing.T) {
 	model = next.(Model)
 
 	if got, want := model.state.Interaction.ActiveMode, ModeRecordViewer; got != want {
-		t.Fatalf("state.Query.ActiveMode = %q, want %q", got, want)
+		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
 	}
 	if got, want := model.state.Status, "Could not compose DELETE: result source table is unknown"; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -2198,7 +2198,7 @@ func TestModelUpdateRecordViewerWriteExportsSelectedRowsToCSV(t *testing.T) {
 	model.state.SetLayout(LayoutViewerOnly)
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select id, name from widgets order by id;",
+		Statement: "select id, name from widgets order by id;",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "id"}, {Name: "name"}},
 			Rows: []db.ResultRow{
@@ -2243,7 +2243,7 @@ func TestModelUpdateRecordViewerWriteFallsBackToAllRowsAndSupportsJSONMarkdownTS
 	base.state.SetLayout(LayoutViewerOnly)
 	base.state.SetActiveMode(ModeRecordViewer)
 	base.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select id, name from widgets order by id;",
+		Statement: "select id, name from widgets order by id;",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "id"}, {Name: "name"}},
 			Rows: []db.ResultRow{
@@ -2304,7 +2304,7 @@ func TestModelUpdateRecordViewerWriteValidatesCommandAndPathScope(t *testing.T) 
 	model.state.SetLayout(LayoutViewerOnly)
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select id from widgets;",
+		Statement: "select id from widgets;",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "id"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}}}},
@@ -2340,7 +2340,7 @@ func TestModelViewRecordViewerShowsWritePrompt(t *testing.T) {
 	model.state.SetLayout(LayoutViewerOnly)
 	model.state.SetActiveMode(ModeRecordViewer)
 	model.state.SetLatestResultContext(&LatestResultContext{
-		Query: "select id from widgets;",
+		Statement: "select id from widgets;",
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "id"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}}}},
@@ -2376,7 +2376,7 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 	model = next.(Model)
 
 	if !model.state.Interaction.HelpVisible {
-		t.Fatal("state.Query.HelpVisible = false, want true")
+		t.Fatal("state.Interaction.HelpVisible = false, want true")
 	}
 	if got, want := model.state.Status, "Opened help for keybindings and slash commands."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -2406,7 +2406,7 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 	next, _ = model.Update(cmd())
 	model = next.(Model)
 	if model.state.Interaction.HelpVisible {
-		t.Fatal("state.Query.HelpVisible = true, want false")
+		t.Fatal("state.Interaction.HelpVisible = true, want false")
 	}
 	if got, want := model.state.Status, "Closed help."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
