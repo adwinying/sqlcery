@@ -13,10 +13,10 @@ import (
 func TestSessionAppendAndLatest(t *testing.T) {
 	session := NewHistory()
 	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
-	if err := session.Append(Entry{Command: "select 1", ConnectionName: "local", ExecutedAt: stamp}); err != nil {
+	if err := session.Append(Entry{SQL: "select 1", ConnectionName: "local", ExecutedAt: stamp}); err != nil {
 		t.Fatalf("Append() error = %v", err)
 	}
-	if err := session.Append(Entry{Command: "/tables", ConnectionName: "local", ExecutedAt: stamp.Add(time.Minute)}); err != nil {
+	if err := session.Append(Entry{SQL: "/tables", ConnectionName: "local", ExecutedAt: stamp.Add(time.Minute)}); err != nil {
 		t.Fatalf("Append() error = %v", err)
 	}
 
@@ -24,25 +24,25 @@ func TestSessionAppendAndLatest(t *testing.T) {
 	if got, want := len(entries), 2; got != want {
 		t.Fatalf("len(Entries()) = %d, want %d", got, want)
 	}
-	if got, want := entries[0].Command, "select 1"; got != want {
-		t.Fatalf("entries[0].Command = %q, want %q", got, want)
+	if got, want := entries[0].SQL, "select 1"; got != want {
+		t.Fatalf("entries[0].SQL = %q, want %q", got, want)
 	}
 
 	latest, ok := session.Latest()
 	if !ok {
 		t.Fatal("Latest() ok = false, want true")
 	}
-	if got, want := latest.Command, "/tables"; got != want {
-		t.Fatalf("latest.Command = %q, want %q", got, want)
+	if got, want := latest.SQL, "/tables"; got != want {
+		t.Fatalf("latest.SQL = %q, want %q", got, want)
 	}
 }
 
 func TestSessionAppendSkipsBlankCommandsAndClonesEntries(t *testing.T) {
 	session := NewHistory()
-	if err := session.Append(Entry{Command: "   "}); err != nil {
+	if err := session.Append(Entry{SQL: "   "}); err != nil {
 		t.Fatalf("Append(blank) error = %v", err)
 	}
-	if err := session.Append(Entry{Command: "select 1"}); err != nil {
+	if err := session.Append(Entry{SQL: "select 1"}); err != nil {
 		t.Fatalf("Append() error = %v", err)
 	}
 
@@ -51,13 +51,13 @@ func TestSessionAppendSkipsBlankCommandsAndClonesEntries(t *testing.T) {
 		t.Fatalf("len(Entries()) = %d, want %d", got, want)
 	}
 
-	entries[0].Command = "changed"
+	entries[0].SQL = "changed"
 	latest, ok := session.Latest()
 	if !ok {
 		t.Fatal("Latest() ok = false, want true")
 	}
-	if got, want := latest.Command, "select 1"; got != want {
-		t.Fatalf("latest.Command = %q, want %q", got, want)
+	if got, want := latest.SQL, "select 1"; got != want {
+		t.Fatalf("latest.SQL = %q, want %q", got, want)
 	}
 }
 
@@ -66,10 +66,10 @@ func TestSessionAppendPersistsCommandsToFile(t *testing.T) {
 	session := NewFileBackedHistory(path)
 	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
 
-	if err := session.Append(Entry{Command: "select 1\n", ConnectionName: "local", ExecutedAt: stamp}); err != nil {
+	if err := session.Append(Entry{SQL: "select 1\n", ConnectionName: "local", ExecutedAt: stamp}); err != nil {
 		t.Fatalf("Append() error = %v", err)
 	}
-	if err := session.Append(Entry{Command: "/tables", ConnectionName: "local", ExecutedAt: stamp.Add(time.Minute), ResultSummary: "Listed 3 tables."}); err != nil {
+	if err := session.Append(Entry{SQL: "/tables", ConnectionName: "local", ExecutedAt: stamp.Add(time.Minute), ResultSummary: "Listed 3 tables."}); err != nil {
 		t.Fatalf("Append() error = %v", err)
 	}
 
@@ -117,8 +117,8 @@ func TestSessionAppendPersistsCommandsToFile(t *testing.T) {
 
 func TestSessionAppendRotatesHistoryLogWhenItWouldGrowPastLimit(t *testing.T) {
 	path := filepath.Join(t.TempDir(), DirName, FileName)
-	rotatedPath := path + rotatedHistorySuffix
-	original := strings.Repeat("x", maxHistoryLogSize)
+	rotatedPath := path + rotatedAuditLogSuffix
+	original := strings.Repeat("x", maxAuditLogSize)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
@@ -131,7 +131,7 @@ func TestSessionAppendRotatesHistoryLogWhenItWouldGrowPastLimit(t *testing.T) {
 
 	session := NewFileBackedHistory(path)
 	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
-	if err := session.Append(Entry{Command: "select 1", ConnectionName: "local", ExecutedAt: stamp}); err != nil {
+	if err := session.Append(Entry{SQL: "select 1", ConnectionName: "local", ExecutedAt: stamp}); err != nil {
 		t.Fatalf("Append() error = %v", err)
 	}
 
@@ -195,9 +195,9 @@ func TestLoadFromFileFiltersByConnection(t *testing.T) {
 	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
 
 	writeHistoryLines(t, path, []Entry{
-		{Command: "select 1", ConnectionName: "local", ExecutedAt: stamp},
-		{Command: "select 2", ConnectionName: "remote", ExecutedAt: stamp.Add(time.Minute)},
-		{Command: "select 3", ConnectionName: "local", ExecutedAt: stamp.Add(2 * time.Minute)},
+		{SQL: "select 1", ConnectionName: "local", ExecutedAt: stamp},
+		{SQL: "select 2", ConnectionName: "remote", ExecutedAt: stamp.Add(time.Minute)},
+		{SQL: "select 3", ConnectionName: "local", ExecutedAt: stamp.Add(2 * time.Minute)},
 	})
 
 	entries, err := LoadFromFile(path, "local")
@@ -207,11 +207,11 @@ func TestLoadFromFileFiltersByConnection(t *testing.T) {
 	if got, want := len(entries), 2; got != want {
 		t.Fatalf("len(entries) = %d, want %d", got, want)
 	}
-	if got, want := entries[0].Command, "select 1"; got != want {
-		t.Fatalf("entries[0].Command = %q, want %q", got, want)
+	if got, want := entries[0].SQL, "select 1"; got != want {
+		t.Fatalf("entries[0].SQL = %q, want %q", got, want)
 	}
-	if got, want := entries[1].Command, "select 3"; got != want {
-		t.Fatalf("entries[1].Command = %q, want %q", got, want)
+	if got, want := entries[1].SQL, "select 3"; got != want {
+		t.Fatalf("entries[1].SQL = %q, want %q", got, want)
 	}
 }
 
@@ -221,9 +221,9 @@ func TestLoadFromFileDeduplicatesKeepsMostRecent(t *testing.T) {
 	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
 
 	writeHistoryLines(t, path, []Entry{
-		{Command: "select 1", ConnectionName: "local", ExecutedAt: stamp},
-		{Command: "select 2", ConnectionName: "local", ExecutedAt: stamp.Add(time.Minute)},
-		{Command: "select 1", ConnectionName: "local", ExecutedAt: stamp.Add(2 * time.Minute)},
+		{SQL: "select 1", ConnectionName: "local", ExecutedAt: stamp},
+		{SQL: "select 2", ConnectionName: "local", ExecutedAt: stamp.Add(time.Minute)},
+		{SQL: "select 1", ConnectionName: "local", ExecutedAt: stamp.Add(2 * time.Minute)},
 	})
 
 	entries, err := LoadFromFile(path, "local")
@@ -235,11 +235,11 @@ func TestLoadFromFileDeduplicatesKeepsMostRecent(t *testing.T) {
 	}
 	// The earlier "select 1" is removed; the later one is kept.
 	// Chronological order: select 2 (older), select 1 (newer).
-	if got, want := entries[0].Command, "select 2"; got != want {
-		t.Fatalf("entries[0].Command = %q, want %q", got, want)
+	if got, want := entries[0].SQL, "select 2"; got != want {
+		t.Fatalf("entries[0].SQL = %q, want %q", got, want)
 	}
-	if got, want := entries[1].Command, "select 1"; got != want {
-		t.Fatalf("entries[1].Command = %q, want %q", got, want)
+	if got, want := entries[1].SQL, "select 1"; got != want {
+		t.Fatalf("entries[1].SQL = %q, want %q", got, want)
 	}
 	// The kept "select 1" entry should be the most recent one.
 	if got, want := entries[1].ExecutedAt, stamp.Add(2*time.Minute); !got.Equal(want) {
@@ -250,14 +250,14 @@ func TestLoadFromFileDeduplicatesKeepsMostRecent(t *testing.T) {
 func TestLoadFromFileReadsBothRotatedAndCurrentFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, DirName, FileName)
-	rotatedPath := path + rotatedHistorySuffix
+	rotatedPath := path + rotatedAuditLogSuffix
 	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
 
 	writeHistoryLines(t, rotatedPath, []Entry{
-		{Command: "select old", ConnectionName: "local", ExecutedAt: stamp},
+		{SQL: "select old", ConnectionName: "local", ExecutedAt: stamp},
 	})
 	writeHistoryLines(t, path, []Entry{
-		{Command: "select new", ConnectionName: "local", ExecutedAt: stamp.Add(time.Hour)},
+		{SQL: "select new", ConnectionName: "local", ExecutedAt: stamp.Add(time.Hour)},
 	})
 
 	entries, err := LoadFromFile(path, "local")
@@ -267,11 +267,11 @@ func TestLoadFromFileReadsBothRotatedAndCurrentFile(t *testing.T) {
 	if got, want := len(entries), 2; got != want {
 		t.Fatalf("len(entries) = %d, want %d", got, want)
 	}
-	if got, want := entries[0].Command, "select old"; got != want {
-		t.Fatalf("entries[0].Command = %q, want %q (older rotated entry should come first)", got, want)
+	if got, want := entries[0].SQL, "select old"; got != want {
+		t.Fatalf("entries[0].SQL = %q, want %q (older rotated entry should come first)", got, want)
 	}
-	if got, want := entries[1].Command, "select new"; got != want {
-		t.Fatalf("entries[1].Command = %q, want %q", got, want)
+	if got, want := entries[1].SQL, "select new"; got != want {
+		t.Fatalf("entries[1].SQL = %q, want %q", got, want)
 	}
 }
 
@@ -283,7 +283,7 @@ func TestLoadFromFileCapsAtMaxLoadedEntries(t *testing.T) {
 	all := make([]Entry, maxLoadedEntries+10)
 	for i := range all {
 		all[i] = Entry{
-			Command:        fmt.Sprintf("select %d", i),
+			SQL:        fmt.Sprintf("select %d", i),
 			ConnectionName: "local",
 			ExecutedAt:     stamp.Add(time.Duration(i) * time.Second),
 		}
@@ -298,8 +298,8 @@ func TestLoadFromFileCapsAtMaxLoadedEntries(t *testing.T) {
 		t.Fatalf("len(entries) = %d, want %d", got, want)
 	}
 	// Should be the most recent maxLoadedEntries entries.
-	if got, want := entries[0].Command, fmt.Sprintf("select %d", 10); got != want {
-		t.Fatalf("entries[0].Command = %q, want %q (should be oldest of retained entries)", got, want)
+	if got, want := entries[0].SQL, fmt.Sprintf("select %d", 10); got != want {
+		t.Fatalf("entries[0].SQL = %q, want %q (should be oldest of retained entries)", got, want)
 	}
 }
 
@@ -311,7 +311,7 @@ func TestLoadFromFileSkipsMalformedLines(t *testing.T) {
 	}
 
 	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
-	good, err := json.Marshal(newPersistedEntry(Entry{Command: "select 1", ConnectionName: "local", ExecutedAt: stamp}))
+	good, err := json.Marshal(newPersistedEntry(Entry{SQL: "select 1", ConnectionName: "local", ExecutedAt: stamp}))
 	if err != nil {
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
@@ -327,8 +327,8 @@ func TestLoadFromFileSkipsMalformedLines(t *testing.T) {
 	if got, want := len(entries), 1; got != want {
 		t.Fatalf("len(entries) = %d, want %d", got, want)
 	}
-	if got, want := entries[0].Command, "select 1"; got != want {
-		t.Fatalf("entries[0].Command = %q, want %q", got, want)
+	if got, want := entries[0].SQL, "select 1"; got != want {
+		t.Fatalf("entries[0].SQL = %q, want %q", got, want)
 	}
 }
 
@@ -343,9 +343,9 @@ func TestNewPersistentSessionSeedsEntriesFromDisk(t *testing.T) {
 
 	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
 	writeHistoryLines(t, path, []Entry{
-		{Command: "select 1", ConnectionName: "local", ExecutedAt: stamp},
-		{Command: "select 2", ConnectionName: "remote", ExecutedAt: stamp.Add(time.Minute)},
-		{Command: "select 3", ConnectionName: "local", ExecutedAt: stamp.Add(2 * time.Minute)},
+		{SQL: "select 1", ConnectionName: "local", ExecutedAt: stamp},
+		{SQL: "select 2", ConnectionName: "remote", ExecutedAt: stamp.Add(time.Minute)},
+		{SQL: "select 3", ConnectionName: "local", ExecutedAt: stamp.Add(2 * time.Minute)},
 	})
 
 	session, err := NewPersistentHistory("local")
@@ -357,11 +357,11 @@ func TestNewPersistentSessionSeedsEntriesFromDisk(t *testing.T) {
 	if got, want := len(entries), 2; got != want {
 		t.Fatalf("len(session.Entries()) = %d, want %d", got, want)
 	}
-	if got, want := entries[0].Command, "select 1"; got != want {
-		t.Fatalf("entries[0].Command = %q, want %q", got, want)
+	if got, want := entries[0].SQL, "select 1"; got != want {
+		t.Fatalf("entries[0].SQL = %q, want %q", got, want)
 	}
-	if got, want := entries[1].Command, "select 3"; got != want {
-		t.Fatalf("entries[1].Command = %q, want %q", got, want)
+	if got, want := entries[1].SQL, "select 3"; got != want {
+		t.Fatalf("entries[1].SQL = %q, want %q", got, want)
 	}
 }
 
@@ -376,7 +376,7 @@ func TestNewPersistentSessionAppendsToExistingFile(t *testing.T) {
 
 	stamp := time.Date(2026, time.April, 8, 12, 0, 0, 0, time.UTC)
 	writeHistoryLines(t, path, []Entry{
-		{Command: "select 1", ConnectionName: "local", ExecutedAt: stamp},
+		{SQL: "select 1", ConnectionName: "local", ExecutedAt: stamp},
 	})
 
 	session, err := NewPersistentHistory("local")
@@ -384,7 +384,7 @@ func TestNewPersistentSessionAppendsToExistingFile(t *testing.T) {
 		t.Fatalf("NewPersistentSession() error = %v", err)
 	}
 
-	if err := session.Append(Entry{Command: "select 2", ConnectionName: "local", ExecutedAt: stamp.Add(time.Minute)}); err != nil {
+	if err := session.Append(Entry{SQL: "select 2", ConnectionName: "local", ExecutedAt: stamp.Add(time.Minute)}); err != nil {
 		t.Fatalf("Append() error = %v", err)
 	}
 
@@ -392,11 +392,11 @@ func TestNewPersistentSessionAppendsToExistingFile(t *testing.T) {
 	if got, want := len(entries), 2; got != want {
 		t.Fatalf("len(session.Entries()) = %d, want %d", got, want)
 	}
-	if got, want := entries[0].Command, "select 1"; got != want {
-		t.Fatalf("entries[0].Command = %q, want %q", got, want)
+	if got, want := entries[0].SQL, "select 1"; got != want {
+		t.Fatalf("entries[0].SQL = %q, want %q", got, want)
 	}
-	if got, want := entries[1].Command, "select 2"; got != want {
-		t.Fatalf("entries[1].Command = %q, want %q", got, want)
+	if got, want := entries[1].SQL, "select 2"; got != want {
+		t.Fatalf("entries[1].SQL = %q, want %q", got, want)
 	}
 }
 

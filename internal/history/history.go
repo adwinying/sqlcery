@@ -14,13 +14,13 @@ import (
 const (
 	DirName              = "sqlcery"
 	FileName             = "history.log"
-	maxHistoryLogSize    = 1 << 20
-	rotatedHistorySuffix = ".1"
+	maxAuditLogSize    = 1 << 20
+	rotatedAuditLogSuffix = ".1"
 	maxLoadedEntries     = 1000
 )
 
 type Entry struct {
-	Command        string
+	SQL            string
 	ConnectionName string
 	ExecutedAt     time.Time
 	ResultSummary  string
@@ -44,7 +44,7 @@ func NewFileBackedHistory(path string) *History {
 		return NewHistory()
 	}
 
-	return &History{store: fileStore{path: path}}
+	return &History{store: auditLogStore{path: path}}
 }
 
 func NewPersistentHistory(connectionName string) (*History, error) {
@@ -70,8 +70,8 @@ func NewPersistentHistory(connectionName string) (*History, error) {
 func LoadFromFile(path string, connectionName string) ([]Entry, error) {
 	var all []Entry
 	// Read the older rotated file first so entries are in chronological order.
-	for _, p := range []string{path + rotatedHistorySuffix, path} {
-		entries, err := readHistoryFile(p)
+	for _, p := range []string{path + rotatedAuditLogSuffix, path} {
+		entries, err := readAuditLogFile(p)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
@@ -94,7 +94,7 @@ func LoadFromFile(path string, connectionName string) ([]Entry, error) {
 	seen := make(map[string]struct{}, len(filtered))
 	deduped := make([]Entry, 0, len(filtered))
 	for i := len(filtered) - 1; i >= 0; i-- {
-		cmd := filtered[i].Command
+		cmd := filtered[i].SQL
 		if _, ok := seen[cmd]; ok {
 			continue
 		}
@@ -115,9 +115,9 @@ func LoadFromFile(path string, connectionName string) ([]Entry, error) {
 	return deduped, nil
 }
 
-// readHistoryFile reads all valid JSONL history entries from a single file.
+// readAuditLogFile reads all valid JSONL history entries from a single file.
 // Malformed lines are silently skipped.
-func readHistoryFile(path string) ([]Entry, error) {
+func readAuditLogFile(path string) ([]Entry, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -134,7 +134,7 @@ func readHistoryFile(path string) ([]Entry, error) {
 			continue // skip malformed lines
 		}
 		entries = append(entries, Entry{
-			Command:        pe.Command,
+			SQL:            pe.Command,
 			ConnectionName: pe.Connection,
 			ExecutedAt:     pe.Time,
 			ResultSummary:  pe.Result,
@@ -153,7 +153,7 @@ func DefaultPath() (string, error) {
 }
 
 func (s *History) Append(entry Entry) error {
-	if s == nil || strings.TrimSpace(entry.Command) == "" {
+	if s == nil || strings.TrimSpace(entry.SQL) == "" {
 		return nil
 	}
 
@@ -203,7 +203,7 @@ func resolveDataHome(userHomeDir func() (string, error), goos string) (string, e
 	return filepath.Join(homeDir, ".local", "share"), nil
 }
 
-type fileStore struct {
+type auditLogStore struct {
 	path string
 }
 
@@ -216,7 +216,7 @@ type persistedEntry struct {
 
 func newPersistedEntry(entry Entry) persistedEntry {
 	return persistedEntry{
-		Command:    strings.TrimRight(entry.Command, "\n"),
+		Command:    strings.TrimRight(entry.SQL, "\n"),
 		Connection: entry.ConnectionName,
 		Time:       entry.ExecutedAt,
 		Result:     boundResultSummary(entry.ResultSummary),
@@ -243,13 +243,13 @@ func boundResultSummary(value string) string {
 	return string(runes[:maxRunes-3]) + "..."
 }
 
-func (s fileStore) Append(entry Entry) error {
-	if strings.TrimSpace(entry.Command) == "" {
+func (s auditLogStore) Append(entry Entry) error {
+	if strings.TrimSpace(entry.SQL) == "" {
 		return nil
 	}
 
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
-		return fmt.Errorf("create history dir: %w", err)
+		return fmt.Errorf("create audit log dir: %w", err)
 	}
 
 	line, err := json.Marshal(newPersistedEntry(entry))
@@ -264,36 +264,36 @@ func (s fileStore) Append(entry Entry) error {
 
 	file, err := os.OpenFile(s.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
-		return fmt.Errorf("open history log: %w", err)
+		return fmt.Errorf("open audit log: %w", err)
 	}
 	defer file.Close()
 
 	if _, err := file.Write(line); err != nil {
-		return fmt.Errorf("append history log: %w", err)
+		return fmt.Errorf("append audit log: %w", err)
 	}
 
 	return nil
 }
 
-func (s fileStore) rotateIfNeeded(nextWriteSize int64) error {
+func (s auditLogStore) rotateIfNeeded(nextWriteSize int64) error {
 	info, err := os.Stat(s.path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return fmt.Errorf("stat history log: %w", err)
+		return fmt.Errorf("stat audit log: %w", err)
 	}
 
-	if info.Size()+nextWriteSize <= maxHistoryLogSize {
+	if info.Size()+nextWriteSize <= maxAuditLogSize {
 		return nil
 	}
 
-	rotatedPath := s.path + rotatedHistorySuffix
+	rotatedPath := s.path + rotatedAuditLogSuffix
 	if err := os.Remove(rotatedPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("remove rotated history log: %w", err)
+		return fmt.Errorf("remove rotated audit log: %w", err)
 	}
 	if err := os.Rename(s.path, rotatedPath); err != nil {
-		return fmt.Errorf("rotate history log: %w", err)
+		return fmt.Errorf("rotate audit log: %w", err)
 	}
 
 	return nil

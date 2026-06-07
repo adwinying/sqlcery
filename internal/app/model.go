@@ -1079,7 +1079,7 @@ func (m *Model) syncSessionHistorySnapshot() {
 	contexts := make([]HistoryEntryContext, 0, len(entries))
 	for _, entry := range entries {
 		contexts = append(contexts, HistoryEntryContext{
-			SQL:            entry.Command,
+			SQL:            entry.SQL,
 			ConnectionName: entry.ConnectionName,
 			ExecutedAt:     entry.ExecutedAt,
 		})
@@ -1093,7 +1093,7 @@ func (m *Model) appendSessionHistory(command, resultSummary string) error {
 	}
 
 	err := m.history.Append(apphistory.Entry{
-		Command:        command,
+		SQL:            command,
 		ConnectionName: m.session.ConnectionName,
 		ExecutedAt:     time.Now().UTC(),
 		ResultSummary:  resultSummary,
