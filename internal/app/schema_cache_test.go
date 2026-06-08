@@ -5,7 +5,7 @@ import "testing"
 func TestAutocompleteSchemaCacheClonesStoredAndSnapshotData(t *testing.T) {
 	cache := newAutocompleteSchemaCache()
 	original := &AutocompleteSchemaContext{
-		Tables: []AutocompleteTableContext{{Schema: "main", Name: "users", Columns: []string{"id", "name"}}},
+		Tables: []AutocompleteTableContext{{Namespace: "main", Name: "users", Columns: []string{"id", "name"}}},
 	}
 
 	cache.Replace(original)

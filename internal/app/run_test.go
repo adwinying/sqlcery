@@ -91,7 +91,7 @@ func TestRunUsesProvidedHistorySession(t *testing.T) {
 	}
 
 	var persisted struct {
-		Command    string `json:"command"`
+		Statement  string `json:"statement"`
 		Connection string `json:"connection"`
 		Result     string `json:"result"`
 		Time       string `json:"time"`
@@ -99,7 +99,7 @@ func TestRunUsesProvidedHistorySession(t *testing.T) {
 	if err := json.Unmarshal(data, &persisted); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
-	if got, want := persisted.Command, "select 1;"; got != want {
+	if got, want := persisted.Statement, "select 1;"; got != want {
 		t.Fatalf("persisted command = %q, want %q", got, want)
 	}
 	if got, want := persisted.Connection, "local"; got != want {
@@ -1523,17 +1523,17 @@ func TestModelUpdateArrowKeysNavigateResultsPaneSelectionAcrossPages(t *testing.
 	if cmd != nil {
 		t.Fatalf("Update(right) cmd = %#v, want nil", cmd)
 	}
-	if got, want := model.viewer.selectedColumn, 1; got != want {
+	if got, want := model.resultsPane.selectedColumn, 1; got != want {
 		t.Fatalf("viewer.selectedColumn = %d, want %d", got, want)
 	}
 	if got, want := model.state.Interaction.ViewerPage, 0; got != want {
 		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
 
-	model.viewer.selectedRow = 299
+	model.resultsPane.selectedRow = 299
 	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	model = next.(Model)
-	if got, want := model.viewer.selectedRow, 300; got != want {
+	if got, want := model.resultsPane.selectedRow, 300; got != want {
 		t.Fatalf("viewer.selectedRow = %d, want %d", got, want)
 	}
 	if got, want := model.state.Interaction.ViewerPage, 1; got != want {
@@ -1542,7 +1542,7 @@ func TestModelUpdateArrowKeysNavigateResultsPaneSelectionAcrossPages(t *testing.
 
 	next, _ = model.Update(tea.KeyPressMsg{Text: "k"})
 	model = next.(Model)
-	if got, want := model.viewer.selectedRow, 299; got != want {
+	if got, want := model.resultsPane.selectedRow, 299; got != want {
 		t.Fatalf("viewer.selectedRow = %d, want %d", got, want)
 	}
 	if got, want := model.state.Interaction.ViewerPage, 0; got != want {
@@ -1578,7 +1578,7 @@ func TestModelUpdateSpaceTogglesSelectedRowsInResultsPane(t *testing.T) {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
-	model.viewer.selectedRow = 1
+	model.resultsPane.selectedRow = 1
 	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	model = next.(Model)
 	if got, want := model.state.Interaction.LatestResult.SelectedRows, []int{0, 1}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
@@ -1588,7 +1588,7 @@ func TestModelUpdateSpaceTogglesSelectedRowsInResultsPane(t *testing.T) {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
-	model.viewer.selectedRow = 0
+	model.resultsPane.selectedRow = 0
 	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	model = next.(Model)
 	if got, want := model.state.Interaction.LatestResult.SelectedRows, []int{1}; len(got) != len(want) || got[0] != want[0] {
@@ -1651,7 +1651,7 @@ func TestModelUpdateNavigationIgnoredOutsideResultsPane(t *testing.T) {
 	if got, want := model.state.Interaction.ViewerPage, 0; got != want {
 		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
-	if got, want := model.viewer.selectedColumn, 0; got != want {
+	if got, want := model.resultsPane.selectedColumn, 0; got != want {
 		t.Fatalf("viewer.selectedColumn = %d, want %d", got, want)
 	}
 	if got := model.command.Value(); !strings.Contains(got, "l") {
@@ -2351,10 +2351,10 @@ func TestModelViewResultsPaneShowsWritePrompt(t *testing.T) {
 	model = next.(Model)
 	next, _ = model.Update(tea.KeyPressMsg{Text: ":"})
 	model = next.(Model)
-	if got, want := model.viewer.pendingAction, resultsPanePendingActionWrite; got != want {
+	if got, want := model.resultsPane.pendingAction, resultsPanePendingActionWrite; got != want {
 		t.Fatalf("viewer.pendingAction = %q, want %q", got, want)
 	}
-	if got, want := model.viewer.writeBuffer, ":"; got != want {
+	if got, want := model.resultsPane.writeBuffer, ":"; got != want {
 		t.Fatalf("viewer.writeBuffer = %q, want %q", got, want)
 	}
 	if got := model.state.Status; !strings.Contains(got, "Type :w") {

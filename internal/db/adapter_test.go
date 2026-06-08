@@ -31,7 +31,7 @@ func TestNewAdapterDelegatesQueryExecutionAndMetadata(t *testing.T) {
 		queryRow:   stubRow{value: "sqlite"},
 	}
 	metadata := &stubMetadataProvider{
-		tables:      []Table{{Schema: "main", Name: "widgets", Type: "table"}},
+		tables:      []Table{{Namespace: "main", Name: "widgets", Type: "table"}},
 		columns:     []Column{{Name: "id", Position: 1, Type: "integer"}},
 		primaryKeys: []PrimaryKey{{Column: "id", Position: 1}},
 		types:       []TypeInfo{{Name: "integer"}},
@@ -74,7 +74,7 @@ func TestNewAdapterDelegatesQueryExecutionAndMetadata(t *testing.T) {
 		t.Fatalf("engine = %q, want %q", got, want)
 	}
 
-	tables, err := adapter.Tables(ctx, TableFilter{Schema: "main"})
+	tables, err := adapter.Tables(ctx, TableFilter{Namespace: "main"})
 	if err != nil {
 		t.Fatalf("Tables() error = %v", err)
 	}
@@ -83,7 +83,7 @@ func TestNewAdapterDelegatesQueryExecutionAndMetadata(t *testing.T) {
 		t.Fatalf("Tables() = %#v, want %#v", tables, metadata.tables)
 	}
 
-	columns, err := adapter.Columns(ctx, TableRef{Schema: "main", Name: "widgets"})
+	columns, err := adapter.Columns(ctx, TableRef{Namespace: "main", Name: "widgets"})
 	if err != nil {
 		t.Fatalf("Columns() error = %v", err)
 	}
@@ -92,7 +92,7 @@ func TestNewAdapterDelegatesQueryExecutionAndMetadata(t *testing.T) {
 		t.Fatalf("Columns() = %#v, want %#v", columns, metadata.columns)
 	}
 
-	primaryKeys, err := adapter.PrimaryKeys(ctx, TableRef{Schema: "main", Name: "widgets"})
+	primaryKeys, err := adapter.PrimaryKeys(ctx, TableRef{Namespace: "main", Name: "widgets"})
 	if err != nil {
 		t.Fatalf("PrimaryKeys() error = %v", err)
 	}
@@ -122,11 +122,11 @@ func TestNewAdapterDelegatesQueryExecutionAndMetadata(t *testing.T) {
 		t.Fatalf("runner.queryRowCalls = %#v, want %#v", got, want)
 	}
 
-	if got, want := metadata.tableFilters, []TableFilter{{Schema: "main"}}; !reflect.DeepEqual(got, want) {
+	if got, want := metadata.tableFilters, []TableFilter{{Namespace: "main"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("metadata.tableFilters = %#v, want %#v", got, want)
 	}
 
-	if got, want := metadata.tableRefs, []TableRef{{Schema: "main", Name: "widgets"}, {Schema: "main", Name: "widgets"}}; !reflect.DeepEqual(got, want) {
+	if got, want := metadata.tableRefs, []TableRef{{Namespace: "main", Name: "widgets"}, {Namespace: "main", Name: "widgets"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("metadata.tableRefs = %#v, want %#v", got, want)
 	}
 
@@ -163,7 +163,7 @@ func TestAdapterColumnsValidatesTableName(t *testing.T) {
 		t.Fatalf("newAdapter() error = %v", err)
 	}
 
-	_, err = adapter.Columns(context.Background(), TableRef{Schema: "main"})
+	_, err = adapter.Columns(context.Background(), TableRef{Namespace: "main"})
 	if err == nil {
 		t.Fatal("Columns() error = nil, want error")
 	}
@@ -179,7 +179,7 @@ func TestAdapterPrimaryKeysValidatesTableName(t *testing.T) {
 		t.Fatalf("newAdapter() error = %v", err)
 	}
 
-	_, err = adapter.PrimaryKeys(context.Background(), TableRef{Schema: "main"})
+	_, err = adapter.PrimaryKeys(context.Background(), TableRef{Namespace: "main"})
 	if err == nil {
 		t.Fatal("PrimaryKeys() error = nil, want error")
 	}
@@ -204,13 +204,13 @@ func TestQueryResultContextContinuesWithoutMetadataSupport(t *testing.T) {
 	}
 
 	result, err := adapter.QueryResultContext(ctx, "select id, name from widgets", ResultOptions{
-		Source: &TableRef{Schema: "main", Name: "widgets"},
+		Source: &TableRef{Namespace: "main", Name: "widgets"},
 	})
 	if err != nil {
 		t.Fatalf("QueryResultContext() error = %v", err)
 	}
 
-	if result.Source == nil || *result.Source != (TableRef{Schema: "main", Name: "widgets"}) {
+	if result.Source == nil || *result.Source != (TableRef{Namespace: "main", Name: "widgets"}) {
 		t.Fatalf("result.Source = %#v, want widgets source", result.Source)
 	}
 	if got, want := len(result.Columns), 2; got != want {
@@ -478,16 +478,16 @@ func TestOpenSQLiteAdapterExecutesQueriesAndMetadata(t *testing.T) {
 		t.Fatalf("count = %d, want %d", got, want)
 	}
 
-	tables, err := adapter.Tables(ctx, TableFilter{Schema: "main"})
+	tables, err := adapter.Tables(ctx, TableFilter{Namespace: "main"})
 	if err != nil {
 		t.Fatalf("Tables() error = %v", err)
 	}
 
-	if !containsTable(tables, Table{Schema: "main", Name: "widgets", Type: "table"}) {
+	if !containsTable(tables, Table{Namespace: "main", Name: "widgets", Type: "table"}) {
 		t.Fatalf("Tables() = %#v, want widgets table", tables)
 	}
 
-	columns, err := adapter.Columns(ctx, TableRef{Schema: "main", Name: "widgets"})
+	columns, err := adapter.Columns(ctx, TableRef{Namespace: "main", Name: "widgets"})
 	if err != nil {
 		t.Fatalf("Columns() error = %v", err)
 	}
@@ -500,7 +500,7 @@ func TestOpenSQLiteAdapterExecutesQueriesAndMetadata(t *testing.T) {
 		t.Fatalf("Columns() = %#v, want %#v", got, want)
 	}
 
-	primaryKeys, err := adapter.PrimaryKeys(ctx, TableRef{Schema: "main", Name: "widgets"})
+	primaryKeys, err := adapter.PrimaryKeys(ctx, TableRef{Namespace: "main", Name: "widgets"})
 	if err != nil {
 		t.Fatalf("PrimaryKeys() error = %v", err)
 	}

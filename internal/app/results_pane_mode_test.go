@@ -138,7 +138,7 @@ func TestComposeResultsPaneInsertSQLUsesVisibleColumns(t *testing.T) {
 	result, err := composeResultsPaneInsertSQL(db.PostgresDialect(), &LatestResultContext{
 		Statement: "select id, name, active from public.users order by id;",
 		PreservedResult: &db.ResultSet{
-			Source: &db.TableRef{Schema: "public", Name: "users"},
+			Source: &db.TableRef{Namespace: "public", Name: "users"},
 			Columns: []db.ResultColumn{
 				{Name: "id", PrimaryKey: &db.PrimaryKey{Column: "id", Position: 1}},
 				{Name: "name"},
@@ -198,7 +198,7 @@ func TestComposeResultsPaneDeleteSQLUsesPrimaryKeys(t *testing.T) {
 	result, err := composeResultsPaneDeleteSQL(db.PostgresDialect(), &LatestResultContext{
 		Statement: "select id, name from public.users order by id;",
 		PreservedResult: &db.ResultSet{
-			Source: &db.TableRef{Schema: "public", Name: "users"},
+			Source: &db.TableRef{Namespace: "public", Name: "users"},
 			Columns: []db.ResultColumn{
 				{Name: "id", PrimaryKey: &db.PrimaryKey{Column: "id", Position: 1}},
 				{Name: "name"},
@@ -257,7 +257,7 @@ func TestComposeResultsPaneUpdateSQLUsesPrimaryKeys(t *testing.T) {
 	result, err := composeResultsPaneUpdateSQL(db.PostgresDialect(), &LatestResultContext{
 		Statement: "select id, name, active from public.users order by id;",
 		PreservedResult: &db.ResultSet{
-			Source: &db.TableRef{Schema: "public", Name: "users"},
+			Source: &db.TableRef{Namespace: "public", Name: "users"},
 			Columns: []db.ResultColumn{
 				{Name: "id", PrimaryKey: &db.PrimaryKey{Column: "id", Position: 1}},
 				{Name: "name"},

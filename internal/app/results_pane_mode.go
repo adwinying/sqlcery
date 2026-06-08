@@ -164,7 +164,7 @@ func (m *resultsPaneModeModel) View(interaction InteractionState) string {
 
 	page := resultsPanePageContextFor(interaction.ViewerPage, len(result.Rows))
 	header := []string{
-		appTheme.viewerTitle.Render("Results Pane"),
+		appTheme.viewerTitle.Render("Record viewer"),
 		appTheme.viewerMeta.Render(fmt.Sprintf("Query: %s", summarizeResultsPaneStatement(latest.Statement, m.width))),
 		appTheme.viewerMeta.Render(fmt.Sprintf("Rows: %d  Columns: %d", len(result.Rows), len(result.Columns))),
 		appTheme.viewerMeta.Render(fmt.Sprintf("Page: %d/%d  Showing rows %s", page.Number, page.TotalPages, formatResultsPaneRowRange(page))),
@@ -190,7 +190,7 @@ func (m *resultsPaneModeModel) View(interaction InteractionState) string {
 }
 
 func (m resultsPaneModeModel) FooterHints(interaction InteractionState) string {
-	parts := []string{"Results Pane"}
+	parts := []string{"Record viewer"}
 	if latest := interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
 		page := resultsPanePageContextFor(interaction.ViewerPage, len(latest.PreservedResult.Rows))
 		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
@@ -209,7 +209,7 @@ func (m resultsPaneModeModel) FooterHints(interaction InteractionState) string {
 }
 
 func (m resultsPaneModeModel) Footer(connectionName, dialect string, interaction InteractionState) string {
-	parts := []string{"Results Pane", fmt.Sprintf("layout %s", layoutLabel(interaction.Layout))}
+	parts := []string{"Record viewer", fmt.Sprintf("layout %s", layoutLabel(interaction.Layout))}
 	if label := strings.TrimSpace(connectionName); label != "" {
 		parts = append(parts, fmt.Sprintf("connection %s", label))
 	}

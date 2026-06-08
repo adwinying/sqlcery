@@ -21,7 +21,7 @@ func TestNormalizeRowsCapturesTypedValuesAndMetadata(t *testing.T) {
 	}
 
 	result, err := NormalizeRows(rows, ResultOptions{
-		Source: &TableRef{Schema: "main", Name: "widgets"},
+		Source: &TableRef{Namespace: "main", Name: "widgets"},
 		Columns: []Column{
 			{Name: "id", Position: 1, Type: "INTEGER", Nullable: true},
 			{Name: "name", Position: 2, Type: "TEXT", Nullable: false},
@@ -36,7 +36,7 @@ func TestNormalizeRowsCapturesTypedValuesAndMetadata(t *testing.T) {
 		t.Fatal("NormalizeRows() did not close rows")
 	}
 
-	if result.Source == nil || *result.Source != (TableRef{Schema: "main", Name: "widgets"}) {
+	if result.Source == nil || *result.Source != (TableRef{Namespace: "main", Name: "widgets"}) {
 		t.Fatalf("NormalizeRows() source = %#v, want widgets source", result.Source)
 	}
 
@@ -162,7 +162,7 @@ func TestQueryResultContextSQLiteIncludesResultMetadata(t *testing.T) {
 	}
 
 	result, err := adapter.QueryResultContext(ctx, "select id, name, score, note from widgets order by id", ResultOptions{
-		Source: &TableRef{Schema: "main", Name: "widgets"},
+		Source: &TableRef{Namespace: "main", Name: "widgets"},
 	})
 	if err != nil {
 		t.Fatalf("QueryResultContext() error = %v", err)

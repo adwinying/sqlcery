@@ -90,8 +90,8 @@ func TestPostgresAdapterIntegration(t *testing.T) {
 		priceValueKind:   ValueKindDecimal,
 		priceValue:       "7.50",
 		typeChecks: []TypeInfo{
-			{Schema: "pg_catalog", Name: "text"},
-			{Schema: "pg_catalog", Name: "uuid"},
+			{Namespace: "pg_catalog", Name: "text"},
+			{Namespace: "pg_catalog", Name: "uuid"},
 		},
 	})
 }
@@ -210,7 +210,7 @@ func runAdapterIntegrationSuite(t *testing.T, ctx context.Context, adapter *SQLA
 		t.Fatalf("count = %d, want %d", got, want)
 	}
 
-	tables, err := adapter.Tables(ctx, TableFilter{Schema: expect.schema})
+	tables, err := adapter.Tables(ctx, TableFilter{Namespace: expect.schema})
 	if err != nil {
 		t.Fatalf("Tables() error = %v", err)
 	}
@@ -218,7 +218,7 @@ func runAdapterIntegrationSuite(t *testing.T, ctx context.Context, adapter *SQLA
 		t.Fatalf("Tables() = %#v, want widgets table", tables)
 	}
 
-	columns, err := adapter.Columns(ctx, TableRef{Schema: expect.schema, Name: "widgets"})
+	columns, err := adapter.Columns(ctx, TableRef{Namespace: expect.schema, Name: "widgets"})
 	if err != nil {
 		t.Fatalf("Columns() error = %v", err)
 	}
@@ -231,7 +231,7 @@ func runAdapterIntegrationSuite(t *testing.T, ctx context.Context, adapter *SQLA
 		t.Fatalf("Columns() = %#v, want %#v", got, want)
 	}
 
-	primaryKeys, err := adapter.PrimaryKeys(ctx, TableRef{Schema: expect.schema, Name: "widgets"})
+	primaryKeys, err := adapter.PrimaryKeys(ctx, TableRef{Namespace: expect.schema, Name: "widgets"})
 	if err != nil {
 		t.Fatalf("PrimaryKeys() error = %v", err)
 	}
@@ -250,7 +250,7 @@ func runAdapterIntegrationSuite(t *testing.T, ctx context.Context, adapter *SQLA
 	}
 
 	result, err := adapter.QueryResultContext(ctx, queryWidgetsStatement(expect.typeName), ResultOptions{
-		Source: &TableRef{Schema: expect.schema, Name: "widgets"},
+		Source: &TableRef{Namespace: expect.schema, Name: "widgets"},
 	})
 	if err != nil {
 		t.Fatalf("QueryResultContext() error = %v", err)
@@ -270,7 +270,7 @@ func runAdapterIntegrationSuite(t *testing.T, ctx context.Context, adapter *SQLA
 	assertResultValue(t, result.Rows[0].Values[3], ValueKindString, "draft")
 
 	statementResult, err := adapter.ExecuteStatementContext(ctx, queryWidgetsStatement(expect.typeName), ResultOptions{
-		Source: &TableRef{Schema: expect.schema, Name: "widgets"},
+		Source: &TableRef{Namespace: expect.schema, Name: "widgets"},
 	})
 	if err != nil {
 		t.Fatalf("ExecuteStatementContext(query) error = %v", err)
@@ -349,7 +349,7 @@ func integrationStatusQuery(dialect string) (string, []any) {
 
 func containsTableByIdentity(tables []Table, schema string, name string, tableType string) bool {
 	for _, table := range tables {
-		if table.Schema == schema && table.Name == name && table.Type == tableType {
+		if table.Namespace == schema && table.Name == name && table.Type == tableType {
 			return true
 		}
 	}

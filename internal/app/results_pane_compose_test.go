@@ -30,7 +30,7 @@ func TestComposeResultsPaneInsertSQLBuildsDialectAwareSQL(t *testing.T) {
 		{
 			name:    "postgres",
 			dialect: db.PostgresDialect(),
-			source:  &db.TableRef{Schema: "public", Name: "widgets"},
+			source:  &db.TableRef{Namespace: "public", Name: "widgets"},
 			want: []string{
 				`INSERT INTO "public"."widgets"`,
 				`"id"`,
@@ -42,7 +42,7 @@ func TestComposeResultsPaneInsertSQLBuildsDialectAwareSQL(t *testing.T) {
 		{
 			name:    "mysql",
 			dialect: db.MySQLDialect(),
-			source:  &db.TableRef{Schema: "warehouse", Name: "widgets"},
+			source:  &db.TableRef{Namespace: "warehouse", Name: "widgets"},
 			want: []string{
 				"INSERT INTO `warehouse`.`widgets`",
 				"`id`",
@@ -56,7 +56,7 @@ func TestComposeResultsPaneInsertSQLBuildsDialectAwareSQL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := composeResultsPaneInsertSQL(tt.dialect, &LatestResultContext{
-				Query: "select id, payload from widgets;",
+				Statement: "select id, payload from widgets;",
 				PreservedResult: &db.ResultSet{
 					Source: tt.source,
 					Columns: []db.ResultColumn{
@@ -101,7 +101,7 @@ func TestComposeResultsPaneUpdateSQLBuildsDialectAwareSQL(t *testing.T) {
 		{
 			name:    "postgres",
 			dialect: db.PostgresDialect(),
-			source:  &db.TableRef{Schema: "public", Name: "widgets"},
+			source:  &db.TableRef{Namespace: "public", Name: "widgets"},
 			want: []string{
 				`UPDATE "public"."widgets"`,
 				`"payload" = decode('dead', 'hex')`,
@@ -111,7 +111,7 @@ func TestComposeResultsPaneUpdateSQLBuildsDialectAwareSQL(t *testing.T) {
 		{
 			name:    "mysql",
 			dialect: db.MySQLDialect(),
-			source:  &db.TableRef{Schema: "warehouse", Name: "widgets"},
+			source:  &db.TableRef{Namespace: "warehouse", Name: "widgets"},
 			want: []string{
 				"UPDATE `warehouse`.`widgets`",
 				"`payload` = X'dead'",
@@ -123,7 +123,7 @@ func TestComposeResultsPaneUpdateSQLBuildsDialectAwareSQL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := composeResultsPaneUpdateSQL(tt.dialect, &LatestResultContext{
-				Query: "select id, payload from widgets;",
+				Statement: "select id, payload from widgets;",
 				PreservedResult: &db.ResultSet{
 					Source: tt.source,
 					Columns: []db.ResultColumn{
@@ -228,9 +228,9 @@ func TestResultsPaneValueLiteralFormatsTimestamps(t *testing.T) {
 
 func TestComposeResultsPaneUpdateSQLQuotesTimestampColumns(t *testing.T) {
 	result, err := composeResultsPaneUpdateSQL(db.PostgresDialect(), &LatestResultContext{
-		Query: "select id, updated_at from widgets;",
+		Statement: "select id, updated_at from widgets;",
 		PreservedResult: &db.ResultSet{
-			Source: &db.TableRef{Schema: "public", Name: "widgets"},
+			Source: &db.TableRef{Namespace: "public", Name: "widgets"},
 			Columns: []db.ResultColumn{
 				{Name: "id", PrimaryKey: &db.PrimaryKey{Column: "id", Position: 1}},
 				{Name: "updated_at", DatabaseType: "TIMESTAMPTZ"},

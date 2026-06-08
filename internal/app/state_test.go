@@ -44,7 +44,7 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 	state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1", ConnectionName: "local", ExecutedAt: stamp}})
 	state.SetHistorySearchContext(&HistorySearchContext{Filter: "sel", SelectedIndex: 1})
 	state.SetAutocompleteSchema(&AutocompleteSchemaContext{
-		Tables: []AutocompleteTableContext{{Schema: "main", Name: "widgets", Columns: []string{"id", "payload"}}},
+		Tables: []AutocompleteTableContext{{Namespace: "main", Name: "widgets", Columns: []string{"id", "payload"}}},
 	})
 	state.SetLatestResultContext(&LatestResultContext{
 		Statement:           "select * from widgets",

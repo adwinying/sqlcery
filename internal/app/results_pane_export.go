@@ -57,7 +57,7 @@ func (m *Model) updateResultsPaneWritePrompt(msg tea.KeyPressMsg) bool {
 func (m *Model) writeResultsPaneExport(command string) bool {
 	filename, ok := parseResultsPaneWriteCommand(command)
 	if !ok {
-		m.state.SetPendingIntent(IntentNone, "viewer-export", "Use :w [filename] with .csv, .tsv, .json, or .md while Results Pane is focused.")
+		m.state.SetPendingIntent(IntentNone, "viewer-export", "Use :w [filename] with .csv, .tsv, .json, or .md while record viewer is focused.")
 		return true
 	}
 

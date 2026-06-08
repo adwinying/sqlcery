@@ -1603,14 +1603,14 @@ func describeModeSwitchStatus(context *ModeSwitchContext) string {
 
 	if context.ResultContext == nil || context.ResultContext.PreservedResult == nil {
 		if context.ToLayout == LayoutSplit {
-			return "Focused the Results Pane in split layout. Run a query that returns rows to populate it."
+			return "Focused the record viewer in split layout. Run a query that returns rows to populate it."
 		}
 		return "Record viewer is available after running a query that returns tabular results."
 	}
 
 	result := context.ResultContext.PreservedResult
 	if context.ToLayout == LayoutSplit {
-		return fmt.Sprintf("Focused the Results Pane in split layout for %d row(s) across %d column(s).", len(result.Rows), len(result.Columns))
+		return fmt.Sprintf("Focused the record viewer in split layout for %d row(s) across %d column(s).", len(result.Rows), len(result.Columns))
 	}
 	return fmt.Sprintf("Opened Results Pane for %d row(s) across %d column(s).", len(result.Rows), len(result.Columns))
 }

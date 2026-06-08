@@ -36,16 +36,16 @@ func TestPostgresMetadataHelpers(t *testing.T) {
 	metadata := postgresMetadata{runner: runner}
 	ctx := context.Background()
 
-	tables, err := metadata.Tables(ctx, TableFilter{Catalog: "appdb", Schema: "public"})
+	tables, err := metadata.Tables(ctx, TableFilter{Catalog: "appdb", Namespace: "public"})
 	if err != nil {
 		t.Fatalf("Tables() error = %v", err)
 	}
 
-	if got, want := tables, []Table{{Catalog: "appdb", Schema: "public", Name: "widgets", Type: "table"}, {Catalog: "appdb", Schema: "public", Name: "widget_rollup", Type: "view"}}; !reflect.DeepEqual(got, want) {
+	if got, want := tables, []Table{{Catalog: "appdb", Namespace: "public", Name: "widgets", Type: "table"}, {Catalog: "appdb", Namespace: "public", Name: "widget_rollup", Type: "view"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Tables() = %#v, want %#v", got, want)
 	}
 
-	columns, err := metadata.Columns(ctx, TableRef{Schema: "public", Name: "widgets"})
+	columns, err := metadata.Columns(ctx, TableRef{Namespace: "public", Name: "widgets"})
 	if err != nil {
 		t.Fatalf("Columns() error = %v", err)
 	}
@@ -54,7 +54,7 @@ func TestPostgresMetadataHelpers(t *testing.T) {
 		t.Fatalf("Columns() = %#v, want %#v", got, want)
 	}
 
-	primaryKeys, err := metadata.PrimaryKeys(ctx, TableRef{Schema: "public", Name: "widgets"})
+	primaryKeys, err := metadata.PrimaryKeys(ctx, TableRef{Namespace: "public", Name: "widgets"})
 	if err != nil {
 		t.Fatalf("PrimaryKeys() error = %v", err)
 	}
@@ -68,7 +68,7 @@ func TestPostgresMetadataHelpers(t *testing.T) {
 		t.Fatalf("Types() error = %v", err)
 	}
 
-	if !containsType(types, TypeInfo{Schema: "pg_catalog", Name: "text"}) || !containsType(types, TypeInfo{Schema: "pg_catalog", Name: "uuid"}) {
+	if !containsType(types, TypeInfo{Namespace: "pg_catalog", Name: "text"}) || !containsType(types, TypeInfo{Namespace: "pg_catalog", Name: "uuid"}) {
 		t.Fatalf("Types() = %#v, want text and uuid entries", types)
 	}
 
@@ -116,7 +116,7 @@ func TestMySQLMetadataHelpers(t *testing.T) {
 		t.Fatalf("Tables() error = %v", err)
 	}
 
-	if got, want := tables, []Table{{Schema: "warehouse", Name: "widgets", Type: "table"}, {Schema: "warehouse", Name: "widget_rollup", Type: "view"}}; !reflect.DeepEqual(got, want) {
+	if got, want := tables, []Table{{Namespace: "warehouse", Name: "widgets", Type: "table"}, {Namespace: "warehouse", Name: "widget_rollup", Type: "view"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Tables() = %#v, want %#v", got, want)
 	}
 
