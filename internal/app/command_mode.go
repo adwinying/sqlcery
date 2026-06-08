@@ -915,7 +915,7 @@ func renderSlashWizard(interaction InteractionState) string {
 
 		filteredTargets := filterWizardTargets(wizard.Targets, wizard.TargetFilter)
 		const footerLines = 1
-		listViewport := popupBoxFixedRows - headerLines - footerLines
+		listViewport := modalFixedRows - headerLines - footerLines
 		if listViewport < 1 {
 			listViewport = 1
 		}
@@ -944,7 +944,7 @@ func renderSlashWizard(interaction InteractionState) string {
 		lines = append(lines, appTheme.panelText.Render("Step 1/2: choose a slash command"))
 		const headerLines = 2 // title + step description
 		const footerLines = 1
-		listViewport := popupBoxFixedRows - headerLines - footerLines
+		listViewport := modalFixedRows - headerLines - footerLines
 		if listViewport < 1 {
 			listViewport = 1
 		}

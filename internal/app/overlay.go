@@ -8,18 +8,18 @@ import (
 )
 
 const (
-	popupBoxMinWidth  = 30
-	popupBoxMaxWidth  = 64
-	popupBoxFixedRows = 16 // fixed inner height: content is padded or clipped to this many rows
+	modalMinWidth  = 30
+	modalMaxWidth  = 64
+	modalFixedRows = 16 // fixed inner height: content is padded or clipped to this many rows
 )
 
-// renderPopupBox wraps content in a rounded-border popup box with a fixed inner
-// height of popupBoxFixedRows rows and a fixed inner width derived from maxOuterWidth.
+// renderModal wraps content in a rounded-border modal box with a fixed inner
+// height of modalFixedRows rows and a fixed inner width derived from maxOuterWidth.
 // Content lines are padded or truncated to fit the inner width.
-// If there are fewer content lines than popupBoxFixedRows, blank lines are added.
-// If there are more, excess lines are silently dropped (the popup acts like a
+// If there are fewer content lines than modalFixedRows, blank lines are added.
+// If there are more, excess lines are silently dropped (the modal acts like a
 // fixed-size viewport — callers are responsible for pre-scrolling the slice).
-func renderPopupBox(content string, maxOuterWidth int) string {
+func renderModal(content string, maxOuterWidth int) string {
 	lines := strings.Split(content, "\n")
 
 	// Inner width accounts for left and right border chars (│ = 1 char each).
@@ -28,13 +28,13 @@ func renderPopupBox(content string, maxOuterWidth int) string {
 		innerWidth = 1
 	}
 
-	// Pad or clip to exactly popupBoxFixedRows rows.
-	for len(lines) < popupBoxFixedRows {
+	// Pad or clip to exactly modalFixedRows rows.
+	for len(lines) < modalFixedRows {
 		lines = append(lines, "")
 	}
-	lines = lines[:popupBoxFixedRows]
+	lines = lines[:modalFixedRows]
 
-	bs := lipgloss.NewStyle().Foreground(appTheme.popupBorder.GetForeground())
+	bs := lipgloss.NewStyle().Foreground(appTheme.modalBorder.GetForeground())
 	topLine := bs.Render("╭" + strings.Repeat("─", innerWidth) + "╮")
 	bottomLine := bs.Render("╰" + strings.Repeat("─", innerWidth) + "╯")
 

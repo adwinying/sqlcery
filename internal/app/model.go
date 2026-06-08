@@ -212,7 +212,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "ctrl+c":
-			// If a popup/overlay is open, close it instead of quitting
+			// If a modal is open, close it instead of quitting
 			if m.state.Interaction.SlashWizard != nil {
 				m.pendingQuit = false
 				return m, func() tea.Msg { return slashWizardCloseIntentMsg{} }
@@ -670,16 +670,16 @@ func (m Model) readyStateView(totalHeight int) string {
 		baseH = strings.Count(base, "\n") + 1
 	}
 
-	// Overlay popup window for history search and slash wizard.
-	popupContent := renderHistorySearch(interaction)
-	if popupContent == "" {
-		popupContent = renderSlashWizard(interaction)
+	// Render modal for history search and slash wizard.
+	modalContent := renderHistorySearch(interaction)
+	if modalContent == "" {
+		modalContent = renderSlashWizard(interaction)
 	}
-	if popupContent != "" {
-		maxW := min(popupBoxMaxWidth, w-4)
-		if maxW >= popupBoxMinWidth {
-			popupBox := renderPopupBox(popupContent, maxW)
-			base = overlayCenter(base, popupBox, w, baseH)
+	if modalContent != "" {
+		maxW := min(modalMaxWidth, w-4)
+		if maxW >= modalMinWidth {
+			modal := renderModal(modalContent, maxW)
+			base = overlayCenter(base, modal, w, baseH)
 		}
 	}
 
@@ -747,7 +747,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	switch {
 	case msg.String() == "enter":
-		// Enter always submits when a slash wizard popup is open.
+		// Enter always submits when a slash wizard modal is open.
 		if m.state.Interaction.SlashWizard != nil {
 			return func() tea.Msg { return submitIntentMsg{} }
 		}
