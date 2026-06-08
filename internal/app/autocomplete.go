@@ -56,7 +56,7 @@ type autocompleteCatalog struct {
 }
 
 type autocompleteTable struct {
-	Schema      string
+	Namespace   string
 	Name        string
 	Columns     []string
 	ColumnTypes map[string]string // column name (lowercase) -> type
@@ -661,9 +661,9 @@ func buildAutocompleteCatalog(interaction InteractionState) autocompleteCatalog 
 
 	if interaction.AutocompleteSchema != nil {
 		for _, table := range interaction.AutocompleteSchema.Tables {
-			entry := autocompleteTable{
-				Schema:      table.Schema,
-				Name:        table.Name,
+		entry := autocompleteTable{
+			Namespace:   table.Namespace,
+			Name:        table.Name,
 				Columns:     append([]string(nil), table.Columns...),
 				ColumnTypes: table.ColumnTypes,
 			}
@@ -679,9 +679,9 @@ func buildAutocompleteCatalog(interaction InteractionState) autocompleteCatalog 
 		}
 
 		if latest.PreservedResult.Source != nil && strings.TrimSpace(latest.PreservedResult.Source.Name) != "" {
-			table := autocompleteTable{
-				Schema: latest.PreservedResult.Source.Schema,
-				Name:   latest.PreservedResult.Source.Name,
+		table := autocompleteTable{
+			Namespace: latest.PreservedResult.Source.Namespace,
+			Name:      latest.PreservedResult.Source.Name,
 			}
 			for _, column := range latest.PreservedResult.Columns {
 				if strings.TrimSpace(column.Name) != "" {
@@ -710,15 +710,15 @@ func (c *autocompleteCatalog) mergeTable(table autocompleteTable) {
 }
 
 func sameAutocompleteTable(left, right autocompleteTable) bool {
-	return strings.EqualFold(left.Schema, right.Schema) && strings.EqualFold(left.Name, right.Name)
+	return strings.EqualFold(left.Namespace, right.Namespace) && strings.EqualFold(left.Name, right.Name)
 }
 
 func (t autocompleteTable) displayName() string {
-	if strings.TrimSpace(t.Schema) == "" {
+	if strings.TrimSpace(t.Namespace) == "" {
 		return t.Name
 	}
 
-	return t.Schema + "." + t.Name
+	return t.Namespace + "." + t.Name
 }
 
 func (c autocompleteCatalog) columnsForQualifier(qualifier string) []string {

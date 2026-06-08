@@ -286,7 +286,7 @@ func handleSlashColumns(_ context.Context, command slashCommandContext, parsed s
 
 func slashColumnsSQL(dialect db.Dialect, table db.TableRef) string {
 	tableName := table.Name
-	schemaName := table.Schema
+	schemaName := table.Namespace
 	switch slashDialectOrFallback(dialect).Name() {
 	case "postgres":
 		if strings.TrimSpace(schemaName) != "" {
@@ -317,7 +317,7 @@ func handleSlashIndices(_ context.Context, command slashCommandContext, parsed s
 
 func slashIndicesSQL(dialect db.Dialect, table db.TableRef) string {
 	tableName := table.Name
-	schemaName := table.Schema
+	schemaName := table.Namespace
 	switch slashDialectOrFallback(dialect).Name() {
 	case "postgres":
 		if strings.TrimSpace(schemaName) != "" {
@@ -540,14 +540,14 @@ func buildSlashWizardTargets(ctx context.Context, command slashCommandContext) (
 	}
 
 	sort.SliceStable(tables, func(i, j int) bool {
-		left := strings.ToLower(strings.TrimSpace(tables[i].Schema) + "." + strings.TrimSpace(tables[i].Name))
-		right := strings.ToLower(strings.TrimSpace(tables[j].Schema) + "." + strings.TrimSpace(tables[j].Name))
+		left := strings.ToLower(strings.TrimSpace(tables[i].Namespace) + "." + strings.TrimSpace(tables[i].Name))
+		right := strings.ToLower(strings.TrimSpace(tables[j].Namespace) + "." + strings.TrimSpace(tables[j].Name))
 		return left < right
 	})
 
 	targets := make([]SlashCommandWizardTarget, 0, len(tables))
 	for _, table := range tables {
-		ref := db.TableRef{Catalog: table.Catalog, Schema: table.Schema, Name: table.Name}
+		ref := db.TableRef{Catalog: table.Catalog, Namespace: table.Namespace, Name: table.Name}
 		display := displaySlashTableRef(ref)
 		if strings.TrimSpace(display) == "" {
 			continue
@@ -591,7 +591,7 @@ func slashWizardTargetsFromSchema(schema *AutocompleteSchemaContext) []SlashComm
 
 	targets := make([]SlashCommandWizardTarget, 0, len(schema.Tables))
 	for _, table := range schema.Tables {
-		ref := db.TableRef{Schema: table.Schema, Name: table.Name}
+		ref := db.TableRef{Namespace: table.Namespace, Name: table.Name}
 		display := displaySlashTableRef(ref)
 		if strings.TrimSpace(display) == "" {
 			continue
@@ -722,11 +722,11 @@ func parseSlashTableRef(value string) db.TableRef {
 	case 1:
 		ref.Name = clean[0]
 	case 2:
-		ref.Schema = clean[0]
+		ref.Namespace = clean[0]
 		ref.Name = clean[1]
 	default:
 		ref.Catalog = clean[len(clean)-3]
-		ref.Schema = clean[len(clean)-2]
+		ref.Namespace = clean[len(clean)-2]
 		ref.Name = clean[len(clean)-1]
 	}
 
@@ -754,8 +754,8 @@ func displaySlashTableRef(table db.TableRef) string {
 	if strings.TrimSpace(table.Catalog) != "" {
 		parts = append(parts, table.Catalog)
 	}
-	if strings.TrimSpace(table.Schema) != "" {
-		parts = append(parts, table.Schema)
+	if strings.TrimSpace(table.Namespace) != "" {
+		parts = append(parts, table.Namespace)
 	}
 	if strings.TrimSpace(table.Name) != "" {
 		parts = append(parts, table.Name)
@@ -768,8 +768,8 @@ func quoteSlashTableRef(dialect db.Dialect, table db.TableRef) string {
 	if strings.TrimSpace(table.Catalog) != "" {
 		parts = append(parts, table.Catalog)
 	}
-	if strings.TrimSpace(table.Schema) != "" {
-		parts = append(parts, table.Schema)
+	if strings.TrimSpace(table.Namespace) != "" {
+		parts = append(parts, table.Namespace)
 	}
 	if strings.TrimSpace(table.Name) != "" {
 		parts = append(parts, table.Name)

@@ -106,7 +106,7 @@ type mysqlMetadata struct {
 }
 
 func (m mysqlMetadata) Tables(ctx context.Context, filter TableFilter) ([]Table, error) {
-	schema := strings.TrimSpace(filter.Schema)
+	schema := strings.TrimSpace(filter.Namespace)
 	if schema == "" {
 		schema = strings.TrimSpace(m.database)
 	}
@@ -123,7 +123,7 @@ func (m mysqlMetadata) Tables(ctx context.Context, filter TableFilter) ([]Table,
 	for rows.Next() {
 		var table Table
 		var tableType string
-		if err := rows.Scan(&table.Schema, &table.Name, &tableType); err != nil {
+		if err := rows.Scan(&table.Namespace, &table.Name, &tableType); err != nil {
 			return nil, fmt.Errorf("scan mysql table metadata: %w", err)
 		}
 
@@ -139,7 +139,7 @@ func (m mysqlMetadata) Tables(ctx context.Context, filter TableFilter) ([]Table,
 }
 
 func (m mysqlMetadata) Columns(ctx context.Context, table TableRef) ([]Column, error) {
-	schema := strings.TrimSpace(table.Schema)
+	schema := strings.TrimSpace(table.Namespace)
 	if schema == "" {
 		schema = strings.TrimSpace(m.database)
 	}
@@ -174,7 +174,7 @@ func (m mysqlMetadata) Columns(ctx context.Context, table TableRef) ([]Column, e
 }
 
 func (m mysqlMetadata) PrimaryKeys(ctx context.Context, table TableRef) ([]PrimaryKey, error) {
-	schema := strings.TrimSpace(table.Schema)
+	schema := strings.TrimSpace(table.Namespace)
 	if schema == "" {
 		schema = strings.TrimSpace(m.database)
 	}

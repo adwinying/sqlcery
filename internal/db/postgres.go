@@ -113,7 +113,7 @@ func (m postgresMetadata) Tables(ctx context.Context, filter TableFilter) ([]Tab
 	query.WriteString("SELECT table_catalog, table_schema, table_name, table_type FROM information_schema.tables WHERE table_type IN ('BASE TABLE', 'VIEW')")
 
 	args := make([]any, 0, 2)
-	if schema := strings.TrimSpace(filter.Schema); schema != "" {
+	if schema := strings.TrimSpace(filter.Namespace); schema != "" {
 		args = append(args, schema)
 		query.WriteString(" AND table_schema = $")
 		query.WriteString(strconv.Itoa(len(args)))
@@ -139,7 +139,7 @@ func (m postgresMetadata) Tables(ctx context.Context, filter TableFilter) ([]Tab
 	for rows.Next() {
 		var table Table
 		var tableType string
-		if err := rows.Scan(&table.Catalog, &table.Schema, &table.Name, &tableType); err != nil {
+		if err := rows.Scan(&table.Catalog, &table.Namespace, &table.Name, &tableType); err != nil {
 			return nil, fmt.Errorf("scan postgres table metadata: %w", err)
 		}
 
@@ -155,7 +155,7 @@ func (m postgresMetadata) Tables(ctx context.Context, filter TableFilter) ([]Tab
 }
 
 func (m postgresMetadata) Columns(ctx context.Context, table TableRef) ([]Column, error) {
-	schema := strings.TrimSpace(table.Schema)
+	schema := strings.TrimSpace(table.Namespace)
 	if schema == "" {
 		schema = "public"
 	}
@@ -188,7 +188,7 @@ func (m postgresMetadata) Columns(ctx context.Context, table TableRef) ([]Column
 }
 
 func (m postgresMetadata) PrimaryKeys(ctx context.Context, table TableRef) ([]PrimaryKey, error) {
-	schema := strings.TrimSpace(table.Schema)
+	schema := strings.TrimSpace(table.Namespace)
 	if schema == "" {
 		schema = "public"
 	}
@@ -223,20 +223,20 @@ func (postgresMetadata) Types(context.Context) ([]TypeInfo, error) {
 }
 
 var postgresTypeInfo = []TypeInfo{
-	{Schema: "pg_catalog", Name: "bigint"},
-	{Schema: "pg_catalog", Name: "boolean"},
-	{Schema: "pg_catalog", Name: "bytea"},
-	{Schema: "pg_catalog", Name: "date"},
-	{Schema: "pg_catalog", Name: "double precision"},
-	{Schema: "pg_catalog", Name: "integer"},
-	{Schema: "pg_catalog", Name: "jsonb"},
-	{Schema: "pg_catalog", Name: "numeric"},
-	{Schema: "pg_catalog", Name: "real"},
-	{Schema: "pg_catalog", Name: "smallint"},
-	{Schema: "pg_catalog", Name: "text"},
-	{Schema: "pg_catalog", Name: "time"},
-	{Schema: "pg_catalog", Name: "timestamp"},
-	{Schema: "pg_catalog", Name: "timestamptz"},
-	{Schema: "pg_catalog", Name: "uuid"},
-	{Schema: "pg_catalog", Name: "varchar"},
+	{Namespace: "pg_catalog", Name: "bigint"},
+	{Namespace: "pg_catalog", Name: "boolean"},
+	{Namespace: "pg_catalog", Name: "bytea"},
+	{Namespace: "pg_catalog", Name: "date"},
+	{Namespace: "pg_catalog", Name: "double precision"},
+	{Namespace: "pg_catalog", Name: "integer"},
+	{Namespace: "pg_catalog", Name: "jsonb"},
+	{Namespace: "pg_catalog", Name: "numeric"},
+	{Namespace: "pg_catalog", Name: "real"},
+	{Namespace: "pg_catalog", Name: "smallint"},
+	{Namespace: "pg_catalog", Name: "text"},
+	{Namespace: "pg_catalog", Name: "time"},
+	{Namespace: "pg_catalog", Name: "timestamp"},
+	{Namespace: "pg_catalog", Name: "timestamptz"},
+	{Namespace: "pg_catalog", Name: "uuid"},
+	{Namespace: "pg_catalog", Name: "varchar"},
 }

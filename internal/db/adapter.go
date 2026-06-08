@@ -64,21 +64,21 @@ type StatementResult struct {
 }
 
 type TableFilter struct {
-	Catalog string
-	Schema  string
+	Catalog   string
+	Namespace string
 }
 
 type Table struct {
-	Catalog string
-	Schema  string
-	Name    string
-	Type    string
+	Catalog   string
+	Namespace string
+	Name      string
+	Type      string
 }
 
 type TableRef struct {
-	Catalog string
-	Schema  string
-	Name    string
+	Catalog   string
+	Namespace string
+	Name      string
 }
 
 func (t TableRef) Validate() error {
@@ -104,8 +104,8 @@ type PrimaryKey struct {
 }
 
 type TypeInfo struct {
-	Schema string
-	Name   string
+	Namespace string
+	Name      string
 }
 
 type SQLAdapter struct {

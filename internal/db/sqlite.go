@@ -13,7 +13,7 @@ type sqliteMetadata struct {
 }
 
 func (m sqliteMetadata) Tables(ctx context.Context, filter TableFilter) ([]Table, error) {
-	schemas, err := m.schemas(ctx, filter.Schema)
+	schemas, err := m.schemas(ctx, filter.Namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +38,7 @@ func (m sqliteMetadata) Tables(ctx context.Context, filter TableFilter) ([]Table
 				return nil, fmt.Errorf("scan sqlite table metadata: %w", err)
 			}
 
-			tables = append(tables, Table{Schema: schema, Name: name, Type: kind})
+			tables = append(tables, Table{Namespace: schema, Name: name, Type: kind})
 		}
 
 		if err := rows.Err(); err != nil {
@@ -104,7 +104,7 @@ func (sqliteMetadata) Types(context.Context) ([]TypeInfo, error) {
 }
 
 func (m sqliteMetadata) tableInfo(ctx context.Context, table TableRef) ([]sqliteColumnInfo, string, error) {
-	schema := strings.TrimSpace(table.Schema)
+	schema := strings.TrimSpace(table.Namespace)
 	if schema == "" {
 		schema = "main"
 	}

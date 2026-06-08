@@ -513,11 +513,11 @@ func parseQuerySourceTableReference(tokens []sqlToken, start int) (db.TableRef, 
 	case 1:
 		ref.Name = parts[0]
 	case 2:
-		ref.Schema = parts[0]
+		ref.Namespace = parts[0]
 		ref.Name = parts[1]
 	default:
 		ref.Catalog = parts[len(parts)-3]
-		ref.Schema = parts[len(parts)-2]
+		ref.Namespace = parts[len(parts)-2]
 		ref.Name = parts[len(parts)-1]
 	}
 	return ref, i, true

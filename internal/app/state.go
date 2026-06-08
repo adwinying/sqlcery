@@ -126,7 +126,7 @@ type AutocompleteSchemaContext struct {
 }
 
 type AutocompleteTableContext struct {
-	Schema      string
+	Namespace   string
 	Name        string
 	Columns     []string
 	ColumnTypes map[string]string // column name (lowercase) -> type
@@ -364,8 +364,8 @@ func cloneAutocompleteSchemaContext(schema *AutocompleteSchemaContext) *Autocomp
 	clone := &AutocompleteSchemaContext{Tables: make([]AutocompleteTableContext, len(schema.Tables))}
 	for i, table := range schema.Tables {
 		entry := AutocompleteTableContext{
-			Schema:  table.Schema,
-			Name:    table.Name,
+			Namespace: table.Namespace,
+			Name:      table.Name,
 			Columns: append([]string(nil), table.Columns...),
 		}
 		if table.ColumnTypes != nil {
