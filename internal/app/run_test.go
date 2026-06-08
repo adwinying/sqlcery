@@ -29,7 +29,7 @@ func TestRunStartsProgram(t *testing.T) {
 	started := false
 	var captured tea.Model
 
-	err := Run(context.Background(), ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter, RunOptions{
+	err := Run(context.Background(), Session{ConnectionName: "local", ConnectionType: "sqlite", Adapter: adapter}, RunOptions{
 		NewProgram: func(model tea.Model, _ ...tea.ProgramOption) Program {
 			captured = model
 			return fakeProgram{run: func() (tea.Model, error) {
@@ -62,7 +62,7 @@ func TestRunUsesProvidedHistorySession(t *testing.T) {
 	historyPath := filepath.Join(t.TempDir(), apphistory.DirName, apphistory.FileName)
 	history := apphistory.NewFileBackedHistory(historyPath)
 
-	err := Run(context.Background(), ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter, RunOptions{
+	err := Run(context.Background(), Session{ConnectionName: "local", ConnectionType: "sqlite", Adapter: adapter}, RunOptions{
 		History: history,
 		NewProgram: func(model tea.Model, _ ...tea.ProgramOption) Program {
 			return fakeProgram{run: func() (tea.Model, error) {
@@ -114,7 +114,7 @@ func TestRunUsesProvidedHistorySession(t *testing.T) {
 }
 
 func TestModelViewIncludesSessionDetails(t *testing.T) {
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"})
 	model.state.SetReady("")
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
@@ -147,7 +147,7 @@ func TestModelUpdateSubmitWarnsWhenHistoryPersistenceFails(t *testing.T) {
 	}
 
 	history := apphistory.NewFileBackedHistory(filepath.Join(blockerPath, apphistory.FileName))
-	model := newModelWithDependencies(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter, modelDependencies{history: history})
+	model := newModelWithDependencies(Session{ConnectionName: "local", ConnectionType: "sqlite", Adapter: adapter}, modelDependencies{history: history})
 	model.state.SetReady("")
 	model.command.editor.SetValue("select 1;")
 	model.syncCurrentSQL()
@@ -230,7 +230,7 @@ func TestModelAutocompleteUsesCachedSchemaWhileTyping(t *testing.T) {
 	}()
 
 	loadCalls := 0
-	model := newModelWithDependencies(ConnectionInfo{}, adapter, modelDependencies{
+	model := newModelWithDependencies(Session{Adapter: adapter}, modelDependencies{
 		cache: newAutocompleteSchemaCache(),
 		loader: func(context.Context, *db.SQLAdapter) (*AutocompleteSchemaContext, error) {
 			loadCalls++
@@ -280,7 +280,7 @@ func TestModelAutocompleteUsesCachedSchemaWhileTyping(t *testing.T) {
 }
 
 func TestModelViewIncludesSharedInteractionStatePlaceholders(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1", ConnectionName: "local"}})
 	model.state.SetLatestResultContext(&LatestResultContext{Statement: "select 1", OriginMode: ModeCommand})
@@ -302,7 +302,7 @@ func TestModelViewIncludesSharedInteractionStatePlaceholders(t *testing.T) {
 }
 
 func TestModelInitTransitionsStartupToReady(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 
 	if got, want := model.state.App.Current, StateStartup; got != want {
 		t.Fatalf("initial state = %q, want %q", got, want)
@@ -327,7 +327,7 @@ func TestModelInitTransitionsStartupToReady(t *testing.T) {
 }
 
 func TestModelViewRendersStartupState(t *testing.T) {
-	view := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, nil).View().Content
+	view := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"}).View().Content
 
 	for _, want := range []string{
 		"[ startup ]",
@@ -346,7 +346,7 @@ func TestModelViewRendersStartupState(t *testing.T) {
 }
 
 func TestModelViewRendersReconnectState(t *testing.T) {
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"})
 	next, _ := model.Update(reconnectStateMsg{
 		Context: ReconnectContext{Attempt: 3, Reason: "connection dropped", LastError: "network timeout"},
 		Status:  "Reconnecting to local database.",
@@ -369,7 +369,7 @@ func TestModelViewRendersReconnectState(t *testing.T) {
 }
 
 func TestModelViewRendersErrorState(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	next, _ := model.Update(appErrorMsg{Err: errors.New("dial tcp 127.0.0.1:5432: connect: connection refused"), Status: "Query failed."})
 	model = next.(Model)
 
@@ -387,7 +387,7 @@ func TestModelViewRendersErrorState(t *testing.T) {
 }
 
 func TestStatementExecutionFailureUsesFriendlyStatus(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 
 	next, _ := model.Update(statementExecutedMsg{
@@ -407,7 +407,7 @@ func TestStatementExecutionFailureUsesFriendlyStatus(t *testing.T) {
 }
 
 func TestModelUpdateQuitsOnCtrlC(t *testing.T) {
-	next, cmd := NewModel(ConnectionInfo{}, nil).Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	next, cmd := NewModel(Session{}).Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if _, ok := next.(Model); !ok {
 		t.Fatalf("Update() model type = %T, want %T", next, Model{})
 	}
@@ -422,7 +422,7 @@ func TestModelUpdateQuitsOnCtrlC(t *testing.T) {
 }
 
 func TestModelUpdateTypesIntoCommandMode(t *testing.T) {
-	initial := NewModel(ConnectionInfo{}, nil)
+	initial := NewModel(Session{})
 	initial.state.SetReady("")
 
 	next, cmd := initial.Update(tea.KeyPressMsg{Text: "select"})
@@ -450,7 +450,7 @@ func TestModelUpdateTypesIntoCommandMode(t *testing.T) {
 }
 
 func TestModelUpdateQTypesWhenEditorFocused(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	next, cmd := model.Update(tea.KeyPressMsg{Text: "q"})
 	if cmd == nil {
@@ -468,7 +468,7 @@ func TestModelUpdateQTypesWhenEditorFocused(t *testing.T) {
 }
 
 func TestModelUpdateSubmitSetsPendingIntent(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
@@ -520,7 +520,7 @@ func TestModelUpdateSubmitSetsPendingIntent(t *testing.T) {
 }
 
 func TestModelUpdateSubmitWhileRunningShowsCancelGuidance(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL"})
 
@@ -536,7 +536,7 @@ func TestModelUpdateSubmitWhileRunningShowsCancelGuidance(t *testing.T) {
 }
 
 func TestModelUpdateSubmitRejectsIncompleteSQL(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.command.editor.SetValue("select\n1")
 	model.syncCurrentSQL()
@@ -575,7 +575,7 @@ func TestModelUpdateSubmitRejectsIncompleteSQL(t *testing.T) {
 }
 
 func TestModelUpdateRunningTickUpdatesElapsedAndFooter(t *testing.T) {
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"})
 	model.state.SetReady("")
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
@@ -621,7 +621,7 @@ func TestModelUpdateSubmitExecutesSelectAndLimitsInlineRows(t *testing.T) {
 		}
 	}
 
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite", Adapter: adapter})
 	model.state.SetReady("")
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
@@ -695,7 +695,7 @@ func TestModelUpdateSubmitExecutesNonSelectStatement(t *testing.T) {
 		t.Fatalf("ExecContext(create table) error = %v", err)
 	}
 
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite", Adapter: adapter})
 	model.state.SetReady("")
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
@@ -733,7 +733,7 @@ func TestModelUpdateSubmitExecutesNonSelectStatement(t *testing.T) {
 }
 
 func TestModelUpdateCancelDoesNotClearInput(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	next, _ := model.Update(tea.KeyPressMsg{Text: "select"})
 	model = next.(Model)
@@ -759,7 +759,7 @@ func TestModelUpdateCancelDoesNotClearInput(t *testing.T) {
 }
 
 func TestModelUpdateCancelDismissesAutocompleteWithoutClearingInput(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 
 	// Type enough of a keyword to open the autocomplete dropdown.
@@ -807,7 +807,7 @@ func TestModelUpdateCancelDismissesAutocompleteWithoutClearingInput(t *testing.T
 }
 
 func TestModelUpdateCancelAfterDismissTypingReopensAutocomplete(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 
 	next, _ := model.Update(tea.KeyPressMsg{Text: "sel"})
@@ -831,7 +831,7 @@ func TestModelUpdateCancelAfterDismissTypingReopensAutocomplete(t *testing.T) {
 }
 
 func TestAutocompleteMenuOpensAfterTypingOneCharacter(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 
 	if model.command.AutocompleteVisible(model.state.Interaction) {
@@ -847,7 +847,7 @@ func TestAutocompleteMenuOpensAfterTypingOneCharacter(t *testing.T) {
 }
 
 func TestAutocompleteMenuStaysClosedOnCursorMovement(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 
 	// Type enough to open the menu.
@@ -889,7 +889,7 @@ func TestAutocompleteMenuStaysClosedOnCursorMovement(t *testing.T) {
 }
 
 func TestAutocompleteMenuStaysClosedOnHistoryRecall(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetSessionHistory([]HistoryEntryContext{{SQL: "select * from users"}})
 
@@ -928,7 +928,7 @@ func TestAutocompleteMenuStaysClosedAfterSubmitAndRefocus(t *testing.T) {
 		}
 	}()
 
-	model := newModelWithDependencies(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter, modelDependencies{})
+	model := newModelWithDependencies(Session{ConnectionName: "local", ConnectionType: "sqlite", Adapter: adapter}, modelDependencies{})
 	model.state.SetReady("")
 
 	// Simulate typing a query and submitting it.
@@ -965,7 +965,7 @@ func TestAutocompleteMenuStaysClosedAfterSubmitAndRefocus(t *testing.T) {
 }
 
 func TestModelUpdateCancelWhileRunningRequestsCancellation(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL"})
 
@@ -991,7 +991,7 @@ func TestModelUpdateCancelWhileRunningRequestsCancellation(t *testing.T) {
 }
 
 func TestStatementExecutionCancellationUsesFriendlyStatus(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	startedAt := time.Now().Add(-2500 * time.Millisecond)
 	model.state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL", StartedAt: startedAt, Elapsed: 2500 * time.Millisecond})
@@ -1012,7 +1012,7 @@ func TestStatementExecutionCancellationUsesFriendlyStatus(t *testing.T) {
 }
 
 func TestStatementExecutionTimeoutUsesFriendlyStatus(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL", Elapsed: 30 * time.Second})
 
@@ -1029,7 +1029,7 @@ func TestStatementExecutionTimeoutUsesFriendlyStatus(t *testing.T) {
 }
 
 func TestModelUpdateHistorySetsPendingIntent(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1"}, {SQL: "/tables"}})
 	next, cmd := model.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
@@ -1067,7 +1067,7 @@ func TestModelUpdateHistorySetsPendingIntent(t *testing.T) {
 }
 
 func TestModelUpdateHistoryHandlesEmptySessionHistory(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 
 	next, _ := model.Update(historyIntentMsg{})
@@ -1085,7 +1085,7 @@ func TestModelUpdateHistoryHandlesEmptySessionHistory(t *testing.T) {
 }
 
 func TestModelUpdateHistorySearchFiltersAndCyclesEntries(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetSessionHistory([]HistoryEntryContext{{SQL: "select * from users"}, {SQL: "delete from users"}, {SQL: "select * from user_sessions"}})
 
@@ -1117,7 +1117,7 @@ func TestModelUpdateHistorySearchFiltersAndCyclesEntries(t *testing.T) {
 }
 
 func TestModelUpdateHistorySearchCancelReturnsToCommandMode(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1"}})
 
@@ -1142,7 +1142,7 @@ func TestModelUpdateHistorySearchCancelReturnsToCommandMode(t *testing.T) {
 }
 
 func TestModelUpdateHistorySearchRestoreLoadsEditorAndClosesSearch(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetSessionHistory([]HistoryEntryContext{{SQL: "select * from users"}, {SQL: "select * from user_sessions"}})
 	model.command.editor.SetValue("partial")
@@ -1188,7 +1188,7 @@ func TestModelUpdateHistorySearchRestoreLoadsEditorAndClosesSearch(t *testing.T)
 }
 
 func TestModelUpdateModeSwitchSetsPendingIntent(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	next, cmd := model.Update(tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl})
 	if cmd == nil {
@@ -1236,7 +1236,7 @@ func TestModelUpdateModeSwitchPreservesLatestResultContext(t *testing.T) {
 		}
 	}
 
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite", Adapter: adapter})
 	model.state.SetReady("")
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
@@ -1313,7 +1313,7 @@ func TestModelUpdateNewResultResetsViewerPage(t *testing.T) {
 		}
 	}
 
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite", Adapter: adapter})
 	model.state.SetReady("")
 	model.state.SetViewerPage(4)
 	model.command.editor.SetValue("select id, name from widgets order by id;")
@@ -1334,7 +1334,7 @@ func TestModelUpdateNewResultResetsViewerPage(t *testing.T) {
 }
 
 func TestModelViewResultsPaneShowsPaginatedRows(t *testing.T) {
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutResultsPaneOnly)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -1369,7 +1369,7 @@ func TestModelViewResultsPaneShowsPaginatedRows(t *testing.T) {
 }
 
 func TestModelUpdateCtrlDScrollsWithinPageInResultsPaneOnlyLayout(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutResultsPaneOnly)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -1407,7 +1407,7 @@ func TestModelUpdateCtrlDScrollsWithinPageInResultsPaneOnlyLayout(t *testing.T) 
 }
 
 func TestModelUpdateCtrlUScrollsWithinPageInResultsPaneOnlyLayout(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutResultsPaneOnly)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -1442,7 +1442,7 @@ func TestModelUpdateCtrlUScrollsWithinPageInResultsPaneOnlyLayout(t *testing.T) 
 }
 
 func TestModelUpdateCtrlDScrollsOnlyWhenViewerFocusedInSplitLayout(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetLatestResultContext(&LatestResultContext{
@@ -1474,7 +1474,7 @@ func TestModelUpdateCtrlDScrollsOnlyWhenViewerFocusedInSplitLayout(t *testing.T)
 }
 
 func TestModelUpdateCtrlDDoesNotPageDuringHistorySearch(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetActiveModal(ModalHistorySearch)
@@ -1506,7 +1506,7 @@ func TestModelUpdateCtrlDDoesNotPageDuringHistorySearch(t *testing.T) {
 }
 
 func TestModelUpdateArrowKeysNavigateResultsPaneSelectionAcrossPages(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutResultsPaneOnly)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -1551,7 +1551,7 @@ func TestModelUpdateArrowKeysNavigateResultsPaneSelectionAcrossPages(t *testing.
 }
 
 func TestModelUpdateSpaceTogglesSelectedRowsInResultsPane(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutResultsPaneOnly)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -1608,7 +1608,7 @@ func TestModelUpdateSpaceTogglesSelectedRowsInResultsPane(t *testing.T) {
 }
 
 func TestModelUpdateSpaceIgnoredOutsideResultsPane(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetActiveMode(ModeCommand)
@@ -1634,7 +1634,7 @@ func TestModelUpdateSpaceIgnoredOutsideResultsPane(t *testing.T) {
 }
 
 func TestModelUpdateNavigationIgnoredOutsideResultsPane(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetActiveMode(ModeCommand)
@@ -1663,7 +1663,7 @@ func TestModelUpdateNavigationIgnoredOutsideResultsPane(t *testing.T) {
 }
 
 func TestModelUpdateModeSwitchReturnsFromResultsPaneToCommandMode(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutResultsPaneOnly)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -1709,7 +1709,7 @@ func TestModelUpdateModeSwitchReturnsFromResultsPaneToCommandMode(t *testing.T) 
 }
 
 func TestModelUpdateQQuitsWhenResultsPaneFocusedInSplitLayout(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetLatestResultContext(&LatestResultContext{
@@ -1748,7 +1748,7 @@ func TestModelUpdateQQuitsWhenResultsPaneFocusedInSplitLayout(t *testing.T) {
 }
 
 func TestModelUpdateFocusResultsPaneFromHistorySearchClosesHistorySearch(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1"}})
 	next, _ := model.Update(historyIntentMsg{})
@@ -1773,7 +1773,7 @@ func TestModelUpdateFocusResultsPaneFromHistorySearchClosesHistorySearch(t *test
 }
 
 func TestModelUpdateLayoutSwitchesToResultsPaneOnlyAndClosesHistorySearch(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1"}})
 	next, _ := model.Update(historyIntentMsg{})
@@ -1801,7 +1801,7 @@ func TestModelUpdateLayoutSwitchesToResultsPaneOnlyAndClosesHistorySearch(t *tes
 }
 
 func TestModelUpdateLayoutSwitchesToCommandOnlyFromSplitViewerFocus(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -1829,7 +1829,7 @@ func TestModelUpdateLayoutSwitchesToCommandOnlyFromSplitViewerFocus(t *testing.T
 }
 
 func TestModelUpdateCtrlXUsesSplitFocusWhenAlreadyInSplitLayout(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetLatestResultContext(&LatestResultContext{
@@ -1878,7 +1878,7 @@ func TestBuildLatestResultContextInfersSingleTableSource(t *testing.T) {
 }
 
 func TestModelUpdateCCComposesUpdateAndReturnsToCommandMode(t *testing.T) {
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutResultsPaneOnly)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -1927,7 +1927,7 @@ func TestModelUpdateCCComposesUpdateAndReturnsToCommandMode(t *testing.T) {
 }
 
 func TestModelUpdateCCRejectsUpdateWhenNoPrimaryKeys(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -1954,7 +1954,7 @@ func TestModelUpdateCCRejectsUpdateWhenNoPrimaryKeys(t *testing.T) {
 }
 
 func TestModelUpdateCCReportsUnknownSource(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutResultsPaneOnly)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -1980,7 +1980,7 @@ func TestModelUpdateCCReportsUnknownSource(t *testing.T) {
 }
 
 func TestModelUpdateYYComposesInsertAndReturnsToCommandMode(t *testing.T) {
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutResultsPaneOnly)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -2039,7 +2039,7 @@ func TestModelUpdateYYComposesInsertAndReturnsToCommandMode(t *testing.T) {
 }
 
 func TestModelUpdateYYReportsUnknownSource(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutResultsPaneOnly)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -2065,7 +2065,7 @@ func TestModelUpdateYYReportsUnknownSource(t *testing.T) {
 }
 
 func TestModelUpdateDDComposesDeleteAndReturnsToCommandMode(t *testing.T) {
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutResultsPaneOnly)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -2124,7 +2124,7 @@ func TestModelUpdateDDComposesDeleteAndReturnsToCommandMode(t *testing.T) {
 }
 
 func TestModelUpdateDDKeepsSplitLayoutWhenComposingDelete(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -2162,7 +2162,7 @@ func TestModelUpdateDDKeepsSplitLayoutWhenComposingDelete(t *testing.T) {
 }
 
 func TestModelUpdateDDReportsUnknownSource(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutResultsPaneOnly)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -2193,7 +2193,7 @@ func TestModelUpdateResultsPaneWriteExportsSelectedRowsToCSV(t *testing.T) {
 		t.Fatalf("Mkdir() error = %v", err)
 	}
 
-	model := NewModel(ConnectionInfo{WorkingDir: workingDir}, nil)
+	model := NewModel(Session{WorkingDir: workingDir})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutResultsPaneOnly)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -2238,7 +2238,7 @@ func TestModelUpdateResultsPaneWriteFallsBackToAllRowsAndSupportsJSONMarkdownTSV
 		t.Fatalf("Mkdir() error = %v", err)
 	}
 
-	base := NewModel(ConnectionInfo{WorkingDir: workingDir}, nil)
+	base := NewModel(Session{WorkingDir: workingDir})
 	base.state.SetReady("")
 	base.state.SetLayout(LayoutResultsPaneOnly)
 	base.state.SetActiveMode(ModeResultsPane)
@@ -2299,7 +2299,7 @@ func TestModelUpdateResultsPaneWriteFallsBackToAllRowsAndSupportsJSONMarkdownTSV
 
 func TestModelUpdateResultsPaneWriteValidatesCommandAndPathScope(t *testing.T) {
 	workingDir := t.TempDir()
-	model := NewModel(ConnectionInfo{WorkingDir: workingDir}, nil)
+	model := NewModel(Session{WorkingDir: workingDir})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutResultsPaneOnly)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -2335,7 +2335,7 @@ func TestModelUpdateResultsPaneWriteValidatesCommandAndPathScope(t *testing.T) {
 }
 
 func TestModelViewResultsPaneShowsWritePrompt(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutResultsPaneOnly)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -2363,7 +2363,7 @@ func TestModelViewResultsPaneShowsWritePrompt(t *testing.T) {
 }
 
 func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 
 	next, cmd := model.Update(tea.KeyPressMsg{Code: 'h', Mod: tea.ModAlt})
@@ -2414,7 +2414,7 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 }
 
 func TestModelToggleHelpShowsSplitAndWizardSpecificGuidance(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetActiveMode(ModeResultsPane)
@@ -2448,7 +2448,7 @@ func TestModelToggleHelpShowsSplitAndWizardSpecificGuidance(t *testing.T) {
 }
 
 func TestModelToggleHelpShowsHistorySearchGuidance(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1"}})
 	next, _ := model.Update(historyIntentMsg{})

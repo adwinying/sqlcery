@@ -17,8 +17,7 @@ import (
 )
 
 type Model struct {
-	session         ConnectionInfo
-	adapter         *db.SQLAdapter
+	session         Session
 	history         *apphistory.History
 	executionCancel context.CancelFunc
 	command         commandModeModel
@@ -120,11 +119,11 @@ type runningTickMsg struct {
 
 const defaultInteractiveExecutionTimeout = 30 * time.Second
 
-func NewModel(session ConnectionInfo, adapter *db.SQLAdapter) Model {
-	return newModelWithDependencies(session, adapter, modelDependencies{})
+func NewModel(session Session) Model {
+	return newModelWithDependencies(session, modelDependencies{})
 }
 
-func newModelWithDependencies(session ConnectionInfo, adapter *db.SQLAdapter, deps modelDependencies) Model {
+func newModelWithDependencies(session Session, deps modelDependencies) Model {
 	cache := deps.cache
 	if cache == nil {
 		cache = newAutocompleteSchemaCache()
@@ -142,7 +141,6 @@ func newModelWithDependencies(session ConnectionInfo, adapter *db.SQLAdapter, de
 
 	model := Model{
 		session:    session,
-		adapter:    adapter,
 		history:    sessionHistory,
 		command:    newCommandModeModel(),
 		resultsPane: newResultsPaneModeModel(),
@@ -271,7 +269,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, m.startExecution(parsedSlash.DisplayName, fmt.Sprintf("Dispatching %s.", parsedSlash.DisplayName), executeSlashCommandCmd(slashCommandContext{
 				Session: m.session,
-				Adapter: m.adapter,
 				Dialect: m.adapterDialect(),
 				Query:   m.state.Interaction.snapshot(),
 			}, *parsedSlash))
@@ -284,7 +281,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.state.SetLastSubmittedSQL(submittedSQL)
-		return m, m.startExecution("SQL", fmt.Sprintf("Executing %d characters of SQL.", len(submittedSQL)), executeStatementCmd(m.adapter, submittedSQL))
+		return m, m.startExecution("SQL", fmt.Sprintf("Executing %d characters of SQL.", len(submittedSQL)), executeStatementCmd(m.session.Adapter, submittedSQL))
 	case cancelRunningIntentMsg:
 		if running := m.state.Interaction.Running; running != nil {
 			if m.executionCancel != nil {
@@ -1120,15 +1117,15 @@ func latestHistoryEntry(entries []HistoryEntryContext) *HistoryEntryContext {
 }
 
 func (m Model) dialectName() string {
-	if m.adapter != nil && m.adapter.Dialect() != nil {
-		return m.adapter.Dialect().Name()
+	if m.session.Adapter != nil && m.session.Adapter.Dialect() != nil {
+		return m.session.Adapter.Dialect().Name()
 	}
 
 	return strings.TrimSpace(m.session.ConnectionType)
 }
 
 func (m Model) refreshAutocompleteSchemaCmd() tea.Cmd {
-	return loadAutocompleteSchemaCmd(m.adapter, m.loader)
+	return loadAutocompleteSchemaCmd(m.session.Adapter, m.loader)
 }
 
 func (m *Model) syncAutocompleteSchemaSnapshot() {
@@ -1242,7 +1239,6 @@ func summarizeSlashCommandResult(command slashCommand, result slashCommandResult
 func (m *Model) openTableSelectionForCommand(parsed *slashCommand) (Model, tea.Cmd) {
 	commandCtx := slashCommandContext{
 		Session: m.session,
-		Adapter: m.adapter,
 		Dialect: m.adapterDialect(),
 		Query:   m.state.Interaction.snapshot(),
 	}
@@ -1304,12 +1300,11 @@ func (m *Model) submitSlashWizard(wizard *SlashCommandWizardContext) (Model, tea
 
 	if selectedCommand.NeedsTarget {
 		if wizard.Step != SlashCommandWizardStepTarget {
-			nextWizard, err := buildSlashWizardFromCommand(context.Background(), slashCommandContext{
-				Session: m.session,
-				Adapter: m.adapter,
-				Dialect: m.adapterDialect(),
-				Query:   m.state.Interaction.snapshot(),
-			}, wizard.Commands, selectedCommand, wizard.SelectedCommand)
+		nextWizard, err := buildSlashWizardFromCommand(context.Background(), slashCommandContext{
+			Session: m.session,
+			Dialect: m.adapterDialect(),
+			Query:   m.state.Interaction.snapshot(),
+		}, wizard.Commands, selectedCommand, wizard.SelectedCommand)
 			if err != nil {
 				m.state.SetReady(fmt.Sprintf("/commands failed: %v", err))
 				m.state.SetSlashWizardContext(nil)
@@ -1335,7 +1330,6 @@ func (m *Model) submitSlashWizard(wizard *SlashCommandWizardContext) (Model, tea
 		parsed := buildSlashWizardCommand(selectedCommand, &selectedTarget)
 		return *m, m.startExecution(parsed.DisplayName, fmt.Sprintf("Dispatching %s from wizard.", parsed.DisplayName), executeSlashCommandCmd(slashCommandContext{
 			Session: m.session,
-			Adapter: m.adapter,
 			Dialect: m.adapterDialect(),
 			Query:   m.state.Interaction.snapshot(),
 		}, parsed))
@@ -1344,7 +1338,6 @@ func (m *Model) submitSlashWizard(wizard *SlashCommandWizardContext) (Model, tea
 	parsed := buildSlashWizardCommand(selectedCommand, nil)
 	return *m, m.startExecution(parsed.DisplayName, fmt.Sprintf("Dispatching %s from wizard.", parsed.DisplayName), executeSlashCommandCmd(slashCommandContext{
 		Session: m.session,
-		Adapter: m.adapter,
 		Dialect: m.adapterDialect(),
 		Query:   m.state.Interaction.snapshot(),
 	}, parsed))
@@ -1507,11 +1500,11 @@ func summarizeStatementResult(result *db.StatementResult, err error) string {
 }
 
 func (m Model) adapterDialect() db.Dialect {
-	if m.adapter == nil {
+	if m.session.Adapter == nil {
 		return nil
 	}
 
-	return m.adapter.Dialect()
+	return m.session.Adapter.Dialect()
 }
 
 func (m Model) resultOriginMode() AppMode {

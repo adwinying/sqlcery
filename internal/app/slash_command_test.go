@@ -74,7 +74,7 @@ func TestDispatchSlashCommandSelectBuildsTemplate(t *testing.T) {
 		t.Fatalf("ExecContext(create table) error = %v", err)
 	}
 
-	result, err := dispatchSlashCommand(context.Background(), slashCommandContext{Adapter: adapter, Dialect: adapter.Dialect()}, slashCommand{Name: "select", DisplayName: "/select", RawInput: "/select users", Args: []string{"users"}})
+	result, err := dispatchSlashCommand(context.Background(), slashCommandContext{Session: Session{Adapter: adapter}, Dialect: adapter.Dialect()}, slashCommand{Name: "select", DisplayName: "/select", RawInput: "/select users", Args: []string{"users"}})
 	if err != nil {
 		t.Fatalf("dispatchSlashCommand() error = %v", err)
 	}
@@ -325,7 +325,7 @@ func TestModelSubmitDispatchesSlashTablesExpandsToSQL(t *testing.T) {
 		t.Fatalf("ExecContext(create table) error = %v", err)
 	}
 
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite", Adapter: adapter})
 	model.state.SetReady("")
 	{
 		m, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -397,7 +397,7 @@ func TestModelSubmitSlashCommandExpandToEditorDoesNotPersistHistory(t *testing.T
 
 	historyPath := filepath.Join(t.TempDir(), apphistory.DirName, apphistory.FileName)
 	history := apphistory.NewFileBackedHistory(historyPath)
-	model := newModelWithDependencies(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter, modelDependencies{history: history})
+	model := newModelWithDependencies(Session{ConnectionName: "local", ConnectionType: "sqlite", Adapter: adapter}, modelDependencies{history: history})
 	model.state.SetReady("")
 	model.command.editor.SetValue("/tables")
 	model.syncCurrentSQL()
@@ -432,7 +432,7 @@ func TestModelSubmitDispatchesSlashSelectIntoEditor(t *testing.T) {
 		t.Fatalf("ExecContext(create table) error = %v", err)
 	}
 
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite", Adapter: adapter})
 	model.state.SetReady("")
 	model.command.editor.SetValue("/select widgets")
 	model.syncCurrentSQL()
@@ -472,7 +472,7 @@ func TestModelSubmitDispatchesSlashSelectIntoEditor(t *testing.T) {
 }
 
 func TestModelSubmitCommandsOpensWizard(t *testing.T) {
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"})
 	model.state.SetReady("")
 	{
 		m, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -514,7 +514,7 @@ func TestModelSubmitCommandsWizardDispatchesResultCommand(t *testing.T) {
 		t.Fatalf("ExecContext(create table) error = %v", err)
 	}
 
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite", Adapter: adapter})
 	model.state.SetReady("")
 	model.state.SetSlashWizardContext(&SlashCommandWizardContext{
 		Step: SlashCommandWizardStepCommand,
@@ -555,7 +555,7 @@ func TestModelSubmitCommandsWizardDispatchesResultCommand(t *testing.T) {
 }
 
 func TestModelSubmitCommandsWizardLoadsTargetedTemplate(t *testing.T) {
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"})
 	model.state.SetReady("")
 	model.state.SetSlashWizardContext(&SlashCommandWizardContext{
 		Step: SlashCommandWizardStepTarget,
@@ -609,7 +609,7 @@ func TestModelSubmitCommandsWizardAdvancesToTargetSelection(t *testing.T) {
 		t.Fatalf("ExecContext(create table) error = %v", err)
 	}
 
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite", Adapter: adapter})
 	model.state.SetReady("")
 	{
 		m, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -646,7 +646,7 @@ func TestModelSubmitCommandsWizardAdvancesToTargetSelection(t *testing.T) {
 }
 
 func TestModelSlashWizardNavigationKeysMoveBackAndClose(t *testing.T) {
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"})
 	model.state.SetReady("")
 	model.state.SetSlashWizardContext(&SlashCommandWizardContext{
 		Step: SlashCommandWizardStepTarget,
@@ -705,7 +705,7 @@ func TestModelSubmitUnknownSlashCommandShowsErrorAndSkipsSQLExecution(t *testing
 		}
 	}()
 
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite", Adapter: adapter})
 	model.state.SetReady("")
 	model.command.editor.SetValue("/wat")
 	model.syncCurrentSQL()
@@ -736,7 +736,7 @@ func TestModelSubmitUnknownSlashCommandShowsErrorAndSkipsSQLExecution(t *testing
 }
 
 func TestSlashCommandCancellationUsesFriendlyStatus(t *testing.T) {
-	model := NewModel(ConnectionInfo{}, nil)
+	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetRunningStatementContext(&RunningStatementContext{Label: "/tables", Elapsed: 1200 * time.Millisecond})
 
@@ -768,7 +768,7 @@ func TestModelSubmitNeedsTargetCommandWithoutArgOpensTableSelection(t *testing.T
 		t.Fatalf("ExecContext(create table) error = %v", err)
 	}
 
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite", Adapter: adapter})
 	model.state.SetReady("")
 	{
 		m, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -833,7 +833,7 @@ func TestModelSubmitNeedsTargetCommandWithoutArgConfirmDispatchesCommand(t *test
 		t.Fatalf("ExecContext(create table) error = %v", err)
 	}
 
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, adapter)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite", Adapter: adapter})
 	model.state.SetReady("")
 	model.command.editor.SetValue("/select")
 	model.syncCurrentSQL()
@@ -870,7 +870,7 @@ func TestModelSubmitNeedsTargetCommandWithoutArgConfirmDispatchesCommand(t *test
 }
 
 func TestModelSubmitNeedsTargetCommandWithoutArgEscClosesWizard(t *testing.T) {
-	model := NewModel(ConnectionInfo{ConnectionName: "local", ConnectionType: "sqlite"}, nil)
+	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite"})
 	model.state.SetReady("")
 	model.state.SetSlashWizardContext(&SlashCommandWizardContext{
 		Step: SlashCommandWizardStepTarget,

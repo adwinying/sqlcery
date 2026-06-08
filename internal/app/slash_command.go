@@ -20,8 +20,7 @@ type slashCommand struct {
 }
 
 type slashCommandContext struct {
-	Session ConnectionInfo
-	Adapter *db.SQLAdapter
+	Session Session
 	Dialect db.Dialect
 	Query   InteractionState
 }
@@ -337,7 +336,7 @@ func handleSlashSelect(ctx context.Context, command slashCommandContext, parsed 
 		return slashCommandResult{}, err
 	}
 
-	columns, _ := loadSlashColumns(ctx, command.Adapter, table)
+	columns, _ := loadSlashColumns(ctx, command.Session.Adapter, table)
 	quotedTable := quoteSlashTableRef(command.Dialect, table)
 
 	var selectList string
@@ -364,7 +363,7 @@ func handleSlashInsert(ctx context.Context, command slashCommandContext, parsed 
 		return slashCommandResult{}, err
 	}
 
-	columns, _ := loadSlashColumns(ctx, command.Adapter, table)
+	columns, _ := loadSlashColumns(ctx, command.Session.Adapter, table)
 	quotedTable := quoteSlashTableRef(command.Dialect, table)
 	placeholderDialect := slashDialectOrFallback(command.Dialect)
 
@@ -396,8 +395,8 @@ func handleSlashUpdate(ctx context.Context, command slashCommandContext, parsed 
 		return slashCommandResult{}, err
 	}
 
-	columns, _ := loadSlashColumns(ctx, command.Adapter, table)
-	primaryKeys, _ := loadSlashPrimaryKeys(ctx, command.Adapter, table)
+	columns, _ := loadSlashColumns(ctx, command.Session.Adapter, table)
+	primaryKeys, _ := loadSlashPrimaryKeys(ctx, command.Session.Adapter, table)
 	quotedTable := quoteSlashTableRef(command.Dialect, table)
 	placeholderDialect := slashDialectOrFallback(command.Dialect)
 
@@ -665,11 +664,11 @@ func buildSlashWizardCommand(command SlashCommandWizardCommand, target *SlashCom
 }
 
 func ensureSlashAdapter(command slashCommandContext) (*db.SQLAdapter, error) {
-	if command.Adapter == nil {
+	if command.Session.Adapter == nil {
 		return nil, fmt.Errorf("adapter is required")
 	}
 
-	return command.Adapter, nil
+	return command.Session.Adapter, nil
 }
 
 func loadSlashColumns(ctx context.Context, adapter *db.SQLAdapter, table db.TableRef) ([]db.Column, error) {

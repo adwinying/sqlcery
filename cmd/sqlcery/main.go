@@ -22,19 +22,19 @@ func main() {
 func run(args []string, getwd func() (string, error)) error {
 	return runWithDependencies(args, getwd, runDependencies{
 		open: db.Open,
-		start: func(ctx context.Context, session app.ConnectionInfo, adapter *db.SQLAdapter) error {
+		start: func(ctx context.Context, session app.Session) error {
 			history, err := apphistory.NewPersistentHistory(session.ConnectionName)
 			if err != nil {
 				return err
 			}
-			return app.Run(ctx, session, adapter, app.RunOptions{History: history})
+			return app.Run(ctx, session, app.RunOptions{History: history})
 		},
 	})
 }
 
 type runDependencies struct {
 	open  func(context.Context, config.Connection) (*db.SQLAdapter, error)
-	start func(context.Context, app.ConnectionInfo, *db.SQLAdapter) error
+	start func(context.Context, app.Session) error
 }
 
 func runWithDependencies(args []string, getwd func() (string, error), deps runDependencies) (err error) {
@@ -63,10 +63,11 @@ func runWithDependencies(args []string, getwd func() (string, error), deps runDe
 		}
 	}()
 
-	return deps.start(context.Background(), app.ConnectionInfo{
+	return deps.start(context.Background(), app.Session{
 		ConnectionName:  resolved.Name,
 		ConnectionType:  resolved.Connection.Type,
 		ConnectionColor: resolved.Connection.Color,
 		WorkingDir:      cwd,
-	}, adapter)
+		Adapter:         adapter,
+	})
 }

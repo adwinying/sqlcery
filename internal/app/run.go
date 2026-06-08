@@ -10,11 +10,12 @@ import (
 	apphistory "github.com/adwinying/sqlcery/internal/history"
 )
 
-type ConnectionInfo struct {
+type Session struct {
 	ConnectionName  string
 	ConnectionType  string
 	ConnectionColor string
 	WorkingDir      string
+	Adapter         *db.SQLAdapter
 }
 
 type Program interface {
@@ -29,8 +30,8 @@ type RunOptions struct {
 	History        *apphistory.History
 }
 
-func Run(ctx context.Context, session ConnectionInfo, adapter *db.SQLAdapter, options RunOptions) error {
-	if adapter == nil {
+func Run(ctx context.Context, session Session, options RunOptions) error {
+	if session.Adapter == nil {
 		return fmt.Errorf("adapter is required")
 	}
 
@@ -49,7 +50,7 @@ func Run(ctx context.Context, session ConnectionInfo, adapter *db.SQLAdapter, op
 	programOptions = append(programOptions, tea.WithContext(ctx))
 	programOptions = append(programOptions, options.ProgramOptions...)
 
-	model := newModelWithDependencies(session, adapter, modelDependencies{history: options.History})
+	model := newModelWithDependencies(session, modelDependencies{history: options.History})
 	_, err := newProgram(model, programOptions...).Run()
 	return err
 }
