@@ -172,7 +172,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.state.Interaction.ActiveMode == ModeHistorySearch {
+		if m.state.Interaction.ActiveModal == ModalHistorySearch {
 			if msg.String() != "ctrl+c" {
 				m.pendingQuit = false
 			}
@@ -1515,7 +1515,7 @@ func (m Model) adapterDialect() db.Dialect {
 }
 
 func (m Model) resultOriginMode() AppMode {
-	if m.state.Interaction.ActiveMode == ModeHistorySearch {
+	if m.state.Interaction.ActiveModal == ModalHistorySearch {
 		return ModeCommand
 	}
 	if layoutShowsCommand(m.state.Interaction.Layout) {
@@ -1672,7 +1672,7 @@ func (m *Model) applyLayoutSwitch(layout AppLayout) {
 
 	switch layout {
 	case LayoutResultsPaneOnly:
-		if m.state.Interaction.ActiveMode == ModeHistorySearch {
+		if m.state.Interaction.ActiveModal == ModalHistorySearch {
 			m.closeHistorySearch()
 		}
 		m.command.Blur()
@@ -1688,7 +1688,7 @@ func (m *Model) applyLayoutSwitch(layout AppLayout) {
 		} else {
 			m.command.Focus()
 		}
-		if m.state.Interaction.ActiveMode == ModeHistorySearch {
+		if m.state.Interaction.ActiveModal == ModalHistorySearch {
 			m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s. History search stays open in the command line.", layoutLabel(layout)))
 			return
 		}
@@ -1792,7 +1792,7 @@ func renderHelpSurface(st InteractionState) string {
 		"ctrl+y accept suggestion; ctrl+n/ctrl+p move suggestion",
 		"ctrl+x switch focus; ctrl+z zoom; ctrl+1 focus results; ctrl+2 focus command; ctrl+3 command layout",
 	}
-	if st.ActiveMode == ModeHistorySearch {
+	if st.ActiveModal == ModalHistorySearch {
 		commandLines = append(commandLines, "history search: enter restore; ctrl+r older; ctrl+n newer; esc close")
 	}
 	sections = append(sections, helpSection{Title: "Command mode", Lines: commandLines})
@@ -1818,7 +1818,7 @@ func renderHelpSurface(st InteractionState) string {
 		sections = append(sections, helpSection{Title: "Layout", Lines: layoutLines})
 	}
 
-	if st.ActiveMode == ModeHistorySearch {
+	if st.ActiveModal == ModalHistorySearch {
 		sections = append(sections, helpSection{Title: "History search", Lines: []string{
 			"type to filter recent commands; enter restore selected entry",
 			"ctrl+r or up select older match; ctrl+n or down select newer match",

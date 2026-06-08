@@ -20,17 +20,17 @@ func (m *Model) openHistorySearch() {
 	if !layoutShowsCommand(m.state.Interaction.Layout) {
 		m.state.SetLayout(LayoutSplit)
 	}
-	m.state.SetActiveMode(ModeHistorySearch)
+	m.state.SetActiveModal(ModalHistorySearch)
 	m.state.SetHistorySearchContext(&HistorySearchContext{})
 	m.syncHistorySearchSelection()
 	m.state.SetPendingIntent(IntentHistory, "history", historySearchStatus(m.state.Interaction))
 }
 
 func (m *Model) closeHistorySearch() {
-	if m.state.Interaction.ActiveMode != ModeHistorySearch && m.state.Interaction.HistorySearch == nil && m.state.Interaction.SelectedHistoryEntry == nil {
+	if m.state.Interaction.ActiveModal != ModalHistorySearch && m.state.Interaction.HistorySearch == nil && m.state.Interaction.SelectedHistoryEntry == nil {
 		return
 	}
-	m.state.SetActiveMode(ModeCommand)
+	m.state.SetActiveModal(ModalNone)
 	m.state.SetHistorySearchContext(nil)
 	m.state.SetSelectedHistoryEntry(nil)
 	m.state.SetPendingIntent(IntentNone, "history", "Exited history search.")
@@ -153,7 +153,7 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 func renderHistorySearch(interaction InteractionState) string {
-	if interaction.ActiveMode != ModeHistorySearch || interaction.HistorySearch == nil {
+	if interaction.ActiveModal != ModalHistorySearch || interaction.HistorySearch == nil {
 		return ""
 	}
 

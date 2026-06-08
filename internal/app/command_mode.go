@@ -272,7 +272,7 @@ func (m commandModeModel) FooterHints(interaction InteractionState) string {
 
 func (m commandModeModel) Footer(connectionName, dialect string, interaction InteractionState) string {
 	modeLabel := "Command mode"
-	if interaction.ActiveMode == ModeHistorySearch {
+	if interaction.ActiveModal == ModalHistorySearch {
 		modeLabel = "History search"
 	} else if interaction.ActiveMode == ModeResultsPane && interaction.Layout == LayoutSplit {
 		modeLabel = "Command line hidden focus"
@@ -298,7 +298,7 @@ func (m commandModeModel) Footer(connectionName, dialect string, interaction Int
 	if interaction.ActiveMode == ModeResultsPane {
 		parts = append(parts, "ctrl+u scroll up", "ctrl+d scroll down")
 	}
-	if interaction.ActiveMode == ModeHistorySearch {
+	if interaction.ActiveModal == ModalHistorySearch {
 		parts = append(parts, bindingSummary(m.keys.RestoreHistory), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
 	}
 	if interaction.SlashWizard != nil {

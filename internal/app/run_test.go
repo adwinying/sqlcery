@@ -1048,8 +1048,8 @@ func TestModelUpdateHistorySetsPendingIntent(t *testing.T) {
 	if got, want := model.state.Interaction.PendingIntent, IntentHistory; got != want {
 		t.Fatalf("state.PendingIntent = %q, want %q", got, want)
 	}
-	if got, want := model.state.Interaction.ActiveMode, ModeHistorySearch; got != want {
-		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
+	if got, want := model.state.Interaction.ActiveModal, ModalHistorySearch; got != want {
+		t.Fatalf("state.Interaction.ActiveModal = %q, want %q", got, want)
 	}
 	if model.state.Interaction.HistorySearch == nil {
 		t.Fatal("state.Interaction.HistorySearch = nil, want search context")
@@ -1076,8 +1076,8 @@ func TestModelUpdateHistoryHandlesEmptySessionHistory(t *testing.T) {
 	if got, want := model.state.Status, "History search opened; session history is empty."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
-	if got, want := model.state.Interaction.ActiveMode, ModeHistorySearch; got != want {
-		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
+	if got, want := model.state.Interaction.ActiveModal, ModalHistorySearch; got != want {
+		t.Fatalf("state.Interaction.ActiveModal = %q, want %q", got, want)
 	}
 	if model.state.Interaction.SelectedHistoryEntry != nil {
 		t.Fatalf("state.Interaction.SelectedHistoryEntry = %#v, want nil", model.state.Interaction.SelectedHistoryEntry)
@@ -1477,7 +1477,7 @@ func TestModelUpdateCtrlDDoesNotPageDuringHistorySearch(t *testing.T) {
 	model := NewModel(ConnectionInfo{}, nil)
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
-	model.state.SetActiveMode(ModeHistorySearch)
+	model.state.SetActiveModal(ModalHistorySearch)
 	model.state.SetHistorySearchContext(&HistorySearchContext{Filter: "sel"})
 	model.state.SetLatestResultContext(&LatestResultContext{
 		Statement: "select id from widgets order by id",
@@ -1497,8 +1497,8 @@ func TestModelUpdateCtrlDDoesNotPageDuringHistorySearch(t *testing.T) {
 	if got, want := model.state.Interaction.ViewerPage, 1; got != want {
 		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
 	}
-	if got, want := model.state.Interaction.ActiveMode, ModeHistorySearch; got != want {
-		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
+	if got, want := model.state.Interaction.ActiveModal, ModalHistorySearch; got != want {
+		t.Fatalf("state.Interaction.ActiveModal = %q, want %q", got, want)
 	}
 	if model.state.Interaction.HistorySearch == nil || model.state.Interaction.HistorySearch.Filter != "sel" {
 		t.Fatalf("state.Interaction.HistorySearch = %#v, want query preserved", model.state.Interaction.HistorySearch)
@@ -1869,7 +1869,7 @@ func TestBuildLatestResultContextInfersSingleTableSource(t *testing.T) {
 	if context == nil || context.PreservedResult == nil || context.PreservedResult.Source == nil {
 		t.Fatalf("buildLatestResultContext() = %#v, want inferred source", context)
 	}
-	if got, want := *context.PreservedResult.Source, (db.TableRef{Schema: "main", Name: "widgets"}); got != want {
+	if got, want := *context.PreservedResult.Source, (db.TableRef{Namespace: "main", Name: "widgets"}); got != want {
 		t.Fatalf("context.PreservedResult.Source = %#v, want %#v", got, want)
 	}
 	if context.InlineResult == nil || context.InlineResult.Source == nil {
@@ -1886,7 +1886,7 @@ func TestModelUpdateCCComposesUpdateAndReturnsToCommandMode(t *testing.T) {
 	model.state.SetLatestResultContext(&LatestResultContext{
 		Statement: "select id, name from widgets order by id;",
 		PreservedResult: &db.ResultSet{
-			Source:  &db.TableRef{Schema: "main", Name: "widgets"},
+			Source:  &db.TableRef{Namespace: "main", Name: "widgets"},
 			Columns: []db.ResultColumn{{Name: "id", PrimaryKey: &db.PrimaryKey{Column: "id", Position: 1}}, {Name: "name"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}, {Kind: db.ValueKindString, Value: "one"}}}},
 		},
@@ -1988,7 +1988,7 @@ func TestModelUpdateYYComposesInsertAndReturnsToCommandMode(t *testing.T) {
 	model.state.SetLatestResultContext(&LatestResultContext{
 		Statement: "select id, name from widgets order by id;",
 		PreservedResult: &db.ResultSet{
-			Source:  &db.TableRef{Schema: "main", Name: "widgets"},
+			Source:  &db.TableRef{Namespace: "main", Name: "widgets"},
 			Columns: []db.ResultColumn{{Name: "id", PrimaryKey: &db.PrimaryKey{Column: "id", Position: 1}}, {Name: "name"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}, {Kind: db.ValueKindString, Value: "one"}}}},
 		},
@@ -2073,7 +2073,7 @@ func TestModelUpdateDDComposesDeleteAndReturnsToCommandMode(t *testing.T) {
 	model.state.SetLatestResultContext(&LatestResultContext{
 		Statement: "select id, name from widgets order by id;",
 		PreservedResult: &db.ResultSet{
-			Source:  &db.TableRef{Schema: "main", Name: "widgets"},
+			Source:  &db.TableRef{Namespace: "main", Name: "widgets"},
 			Columns: []db.ResultColumn{{Name: "id", PrimaryKey: &db.PrimaryKey{Column: "id", Position: 1}}, {Name: "name"}},
 			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}, {Kind: db.ValueKindString, Value: "one"}}}},
 		},

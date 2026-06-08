@@ -172,7 +172,7 @@ func TestBuildAutocompleteItemsRanksActiveTableColumnsBeforeFallbackColumns(t *t
 
 func TestBuildAutocompleteItemsRanksUnqualifiedTablesBeforeSchemaQualifiedMatches(t *testing.T) {
 	items := buildAutocompleteItems("SELECT * FROM us", len([]rune("SELECT * FROM us")), InteractionState{
-		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}, {Schema: "public", Name: "users"}}},
+		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}, {Namespace: "public", Name: "users"}}},
 	})
 
 	assertAutocompleteLabelsPrefix(t, items, []string{"users", "public.users"})
@@ -181,8 +181,8 @@ func TestBuildAutocompleteItemsRanksUnqualifiedTablesBeforeSchemaQualifiedMatche
 func TestBuildAutocompleteItemsUsesSchemaQualifiedActiveTableColumns(t *testing.T) {
 	items := buildAutocompleteItems("SELECT * FROM warehouse.users WHERE ", len([]rune("SELECT * FROM warehouse.users WHERE ")), InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{
-			{Schema: "warehouse", Name: "users", Columns: []string{"id", "name"}},
-			{Schema: "public", Name: "users", Columns: []string{"id", "public_name"}},
+			{Namespace: "warehouse", Name: "users", Columns: []string{"id", "name"}},
+			{Namespace: "public", Name: "users", Columns: []string{"id", "public_name"}},
 		}},
 	})
 
@@ -286,7 +286,7 @@ func TestCommandModeViewRendersSlashWizard(t *testing.T) {
 
 func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 	query := InteractionState{
-		ActiveMode: ModeHistorySearch,
+		ActiveModal: ModalHistorySearch,
 		HistorySearch: &HistorySearchContext{
 			Filter:        "su",
 			SelectedIndex: 0,

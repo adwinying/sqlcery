@@ -10,9 +10,17 @@ import (
 type AppMode string
 
 const (
-	ModeCommand       AppMode = "command"
-	ModeHistorySearch AppMode = "history-search"
-	ModeResultsPane  AppMode = "results-pane"
+	ModeCommand     AppMode = "command"
+	ModeResultsPane AppMode = "results-pane"
+)
+
+// AppModal tracks which overlay modal is currently open. Orthogonal to
+// ActiveMode: a modal can be open while either pane has focus.
+type AppModal string
+
+const (
+	ModalNone          AppModal = ""
+	ModalHistorySearch AppModal = "history-search"
 )
 
 type AppLayout string
@@ -69,6 +77,7 @@ type InteractionState struct {
 	Running              *RunningStatementContext
 	Layout               AppLayout
 	ActiveMode           AppMode
+	ActiveModal          AppModal
 	ViewerPage           int
 	SessionHistory       []HistoryEntryContext
 	HistorySearch        *HistorySearchContext
@@ -227,6 +236,10 @@ func (s *SharedAppState) SetActiveMode(mode AppMode) {
 	}
 
 	s.Interaction.ActiveMode = mode
+}
+
+func (s *SharedAppState) SetActiveModal(modal AppModal) {
+	s.Interaction.ActiveModal = modal
 }
 
 func (s *SharedAppState) SetLayout(layout AppLayout) {
