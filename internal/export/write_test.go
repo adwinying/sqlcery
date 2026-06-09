@@ -75,23 +75,23 @@ func TestMarshalSupportsCSVTSVJSONAndMarkdown(t *testing.T) {
 	}
 }
 
-func TestResolveWritePathKeepsWritesWithinWorkingDirectory(t *testing.T) {
+func TestResolveExportPathKeepsWritesWithinWorkingDirectory(t *testing.T) {
 	cwd := t.TempDir()
 	if err := os.Mkdir(filepath.Join(cwd, "exports"), 0o755); err != nil {
 		t.Fatalf("Mkdir() error = %v", err)
 	}
 
-	path, err := ResolveWritePath(cwd, "exports/result.csv")
+	path, err := ResolveExportPath(cwd, "exports/result.csv")
 	if err != nil {
-		t.Fatalf("ResolveWritePath() error = %v", err)
+		t.Fatalf("ResolveExportPath() error = %v", err)
 	}
 	if got, want := path, filepath.Join(cwd, "exports", "result.csv"); got != want {
-		t.Fatalf("ResolveWritePath() = %q, want %q", got, want)
+		t.Fatalf("ResolveExportPath() = %q, want %q", got, want)
 	}
 
 	for _, name := range []string{"../result.csv", filepath.Join(filepath.Dir(cwd), "outside.csv")} {
-		if _, err := ResolveWritePath(cwd, name); err == nil {
-			t.Fatalf("ResolveWritePath(%q) error = nil, want scope error", name)
+		if _, err := ResolveExportPath(cwd, name); err == nil {
+			t.Fatalf("ResolveExportPath(%q) error = nil, want scope error", name)
 		}
 	}
 }
@@ -103,13 +103,13 @@ func TestWriteRejectsMissingDirectoryAndPersistsExport(t *testing.T) {
 		Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(7)}}}},
 	}
 
-	if _, err := Write(WriteOptions{CWD: cwd, Filename: "missing/result.csv", Result: result}); err == nil {
-		t.Fatal("Write() error = nil, want missing directory error")
+	if _, err := Export(ExportOptions{CWD: cwd, Filename: "missing/result.csv", Result: result}); err == nil {
+		t.Fatal("Export() error = nil, want missing directory error")
 	}
 
-	written, err := Write(WriteOptions{CWD: cwd, Filename: "result.json", Result: result})
+	written, err := Export(ExportOptions{CWD: cwd, Filename: "result.json", Result: result})
 	if err != nil {
-		t.Fatalf("Write() error = %v", err)
+		t.Fatalf("Export() error = %v", err)
 	}
 	if got, want := written.Format, FormatJSON; got != want {
 		t.Fatalf("written.Format = %q, want %q", got, want)

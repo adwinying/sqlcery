@@ -7,11 +7,11 @@ import (
 	"github.com/adwinying/sqlcery/internal/db"
 )
 
-type AppMode string
+type Pane string
 
 const (
-	ModeCommand     AppMode = "command"
-	ModeResultsPane AppMode = "results-pane"
+	PaneCommand     Pane = "command"
+	PaneResultsPane Pane = "results-pane"
 )
 
 // AppModal tracks which overlay modal is currently open. Orthogonal to
@@ -46,7 +46,7 @@ const (
 	IntentNone       PendingIntent = ""
 	IntentSubmit     PendingIntent = "submit"
 	IntentHistory    PendingIntent = "history"
-	IntentSwitchMode PendingIntent = "switch-mode"
+	IntentSwitchPane PendingIntent = "switch-pane"
 	IntentClearCommandPane PendingIntent = "clear-command-pane"
 )
 
@@ -76,7 +76,7 @@ type InteractionState struct {
 	HelpVisible          bool
 	Running              *RunningStatementContext
 	Layout               AppLayout
-	ActiveMode           AppMode
+	ActivePane           Pane
 	ActiveModal          AppModal
 	ViewerPage           int
 	SessionHistory       []HistoryEntryContext
@@ -84,7 +84,7 @@ type InteractionState struct {
 	AutocompleteSchema   *AutocompleteSchemaContext
 	LatestResult         *LatestResultContext
 	SlashWizard          *SlashCommandWizardContext
-	PendingModeSwitch    *ModeSwitchContext
+	PendingPaneSwitch    *PaneSwitchContext
 	SelectedHistoryEntry *HistoryEntryContext
 }
 
@@ -143,7 +143,7 @@ type AutocompleteTableContext struct {
 
 type LatestResultContext struct {
 	Statement           string
-	OriginMode          AppMode
+	OriginPane          Pane
 	PreservedResult     *db.ResultSet
 	InlineResult        *db.ResultSet
 	SelectedRows        []int
@@ -153,16 +153,16 @@ type LatestResultContext struct {
 	InlineRowsTruncated bool
 }
 
-type ModeSwitchContext struct {
+type PaneSwitchContext struct {
 	FromLayout    AppLayout
 	ToLayout      AppLayout
-	FromMode      AppMode
-	ToMode        AppMode
+	FromPane      Pane
+	ToPane        Pane
 	ResultContext *LatestResultContext
 }
 
 type HistoryEntryContext struct {
-	SQL            string
+	Statement      string
 	ConnectionName string
 	ExecutedAt     time.Time
 }
@@ -174,7 +174,7 @@ func NewSharedAppState() SharedAppState {
 		},
 		Interaction: InteractionState{
 			Layout:     LayoutSplit,
-			ActiveMode: ModeCommand,
+			ActivePane: PaneCommand,
 			ViewerPage: 0,
 		},
 		Status: "Starting SQLcery.",
@@ -230,12 +230,12 @@ func (s *SharedAppState) SetPendingIntent(intent PendingIntent, action, status s
 	s.Status = strings.TrimSpace(status)
 }
 
-func (s *SharedAppState) SetActiveMode(mode AppMode) {
-	if strings.TrimSpace(string(mode)) == "" {
-		mode = ModeCommand
+func (s *SharedAppState) SetActivePane(pane Pane) {
+	if strings.TrimSpace(string(pane)) == "" {
+		pane = PaneCommand
 	}
 
-	s.Interaction.ActiveMode = mode
+	s.Interaction.ActivePane = pane
 }
 
 func (s *SharedAppState) SetActiveModal(modal AppModal) {
@@ -282,8 +282,8 @@ func (s *SharedAppState) SetSlashWizardContext(context *SlashCommandWizardContex
 	s.Interaction.SlashWizard = cloneSlashCommandWizardContext(context)
 }
 
-func (s *SharedAppState) SetPendingModeSwitch(context *ModeSwitchContext) {
-	s.Interaction.PendingModeSwitch = cloneModeSwitchContext(context)
+func (s *SharedAppState) SetPendingPaneSwitch(context *PaneSwitchContext) {
+	s.Interaction.PendingPaneSwitch = clonePaneSwitchContext(context)
 }
 
 func (s *SharedAppState) SetHelpVisible(visible bool) {
@@ -306,7 +306,7 @@ func (q InteractionState) snapshot() InteractionState {
 	clone.AutocompleteSchema = cloneAutocompleteSchemaContext(q.AutocompleteSchema)
 	clone.LatestResult = cloneLatestResultContext(q.LatestResult)
 	clone.SlashWizard = cloneSlashCommandWizardContext(q.SlashWizard)
-	clone.PendingModeSwitch = cloneModeSwitchContext(q.PendingModeSwitch)
+	clone.PendingPaneSwitch = clonePaneSwitchContext(q.PendingPaneSwitch)
 	clone.SelectedHistoryEntry = cloneHistoryEntryContext(q.SelectedHistoryEntry)
 	return clone
 }
@@ -340,7 +340,7 @@ func cloneLatestResultContext(context *LatestResultContext) *LatestResultContext
 	return &clone
 }
 
-func cloneModeSwitchContext(context *ModeSwitchContext) *ModeSwitchContext {
+func clonePaneSwitchContext(context *PaneSwitchContext) *PaneSwitchContext {
 	if context == nil {
 		return nil
 	}

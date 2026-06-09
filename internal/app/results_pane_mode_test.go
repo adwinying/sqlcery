@@ -32,7 +32,7 @@ func TestResultsPaneModeViewRendersFullResultSet(t *testing.T) {
 	plainView := ansi.Strip(view)
 
 	for _, want := range []string{
-		"Record viewer",
+		"Results Pane",
 		"Rows: 3  Columns: 3",
 		"Page: 1/1  Showing rows 1-3",
 		"id | name  | created_at",
@@ -127,7 +127,7 @@ func TestResultsPaneModeFooterIncludesModeDetails(t *testing.T) {
 		Running:      &RunningStatementContext{Label: "/tables", Elapsed: 2*time.Second + 300*time.Millisecond},
 	})
 
-	for _, want := range []string{"Record viewer", "layout viewer only", "connection local", "sqlite", "2 rows", "page 1/1", "1 selected", "- /tables 2.3s", "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit"} {
+	for _, want := range []string{"Results Pane", "layout viewer only", "connection local", "sqlite", "2 rows", "page 1/1", "1 selected", "- /tables 2.3s", "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
 		}

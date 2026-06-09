@@ -113,8 +113,8 @@ func (m postgresMetadata) Tables(ctx context.Context, filter TableFilter) ([]Tab
 	query.WriteString("SELECT table_catalog, table_schema, table_name, table_type FROM information_schema.tables WHERE table_type IN ('BASE TABLE', 'VIEW')")
 
 	args := make([]any, 0, 2)
-	if schema := strings.TrimSpace(filter.Namespace); schema != "" {
-		args = append(args, schema)
+	if namespace := strings.TrimSpace(filter.Namespace); namespace != "" {
+		args = append(args, namespace)
 		query.WriteString(" AND table_schema = $")
 		query.WriteString(strconv.Itoa(len(args)))
 	} else {
@@ -155,16 +155,16 @@ func (m postgresMetadata) Tables(ctx context.Context, filter TableFilter) ([]Tab
 }
 
 func (m postgresMetadata) Columns(ctx context.Context, table TableRef) ([]Column, error) {
-	schema := strings.TrimSpace(table.Namespace)
-	if schema == "" {
-		schema = "public"
+	namespace := strings.TrimSpace(table.Namespace)
+	if namespace == "" {
+		namespace = "public"
 	}
 
 	const query = "SELECT a.attname, a.attnum, pg_catalog.format_type(a.atttypid, a.atttypmod), NOT a.attnotnull, pg_catalog.pg_get_expr(ad.adbin, ad.adrelid) FROM pg_catalog.pg_attribute AS a JOIN pg_catalog.pg_class AS c ON c.oid = a.attrelid JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace LEFT JOIN pg_catalog.pg_attrdef AS ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum"
 
-	rows, err := m.runner.QueryContext(ctx, query, schema, table.Name)
+	rows, err := m.runner.QueryContext(ctx, query, namespace, table.Name)
 	if err != nil {
-		return nil, fmt.Errorf("list postgres columns for %s: %w", PostgresDialect().QuoteIdentifier(schema, table.Name), err)
+		return nil, fmt.Errorf("list postgres columns for %s: %w", PostgresDialect().QuoteIdentifier(namespace, table.Name), err)
 	}
 	defer rows.Close()
 
@@ -181,23 +181,23 @@ func (m postgresMetadata) Columns(ctx context.Context, table TableRef) ([]Column
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate postgres columns for %s: %w", PostgresDialect().QuoteIdentifier(schema, table.Name), err)
+		return nil, fmt.Errorf("iterate postgres columns for %s: %w", PostgresDialect().QuoteIdentifier(namespace, table.Name), err)
 	}
 
 	return columns, nil
 }
 
 func (m postgresMetadata) PrimaryKeys(ctx context.Context, table TableRef) ([]PrimaryKey, error) {
-	schema := strings.TrimSpace(table.Namespace)
-	if schema == "" {
-		schema = "public"
+	namespace := strings.TrimSpace(table.Namespace)
+	if namespace == "" {
+		namespace = "public"
 	}
 
 	const query = "SELECT tc.constraint_name, kcu.column_name, kcu.ordinal_position FROM information_schema.table_constraints AS tc JOIN information_schema.key_column_usage AS kcu ON tc.constraint_catalog = kcu.constraint_catalog AND tc.constraint_schema = kcu.constraint_schema AND tc.constraint_name = kcu.constraint_name WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = $1 AND tc.table_name = $2 ORDER BY kcu.ordinal_position"
 
-	rows, err := m.runner.QueryContext(ctx, query, schema, table.Name)
+	rows, err := m.runner.QueryContext(ctx, query, namespace, table.Name)
 	if err != nil {
-		return nil, fmt.Errorf("list postgres primary keys for %s: %w", PostgresDialect().QuoteIdentifier(schema, table.Name), err)
+		return nil, fmt.Errorf("list postgres primary keys for %s: %w", PostgresDialect().QuoteIdentifier(namespace, table.Name), err)
 	}
 	defer rows.Close()
 
@@ -212,7 +212,7 @@ func (m postgresMetadata) PrimaryKeys(ctx context.Context, table TableRef) ([]Pr
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate postgres primary keys for %s: %w", PostgresDialect().QuoteIdentifier(schema, table.Name), err)
+		return nil, fmt.Errorf("iterate postgres primary keys for %s: %w", PostgresDialect().QuoteIdentifier(namespace, table.Name), err)
 	}
 
 	return primaryKeys, nil

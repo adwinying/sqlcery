@@ -22,48 +22,48 @@ const (
 	FormatMarkdown Format = "Markdown"
 )
 
-type WriteOptions struct {
+type ExportOptions struct {
 	CWD        string
 	Filename   string
 	Result     *db.ResultSet
 	RowIndices []int
 }
 
-type WriteResult struct {
+type ExportResult struct {
 	Path    string
 	Format  Format
 	Rows    int
 	Columns int
 }
 
-func Write(options WriteOptions) (WriteResult, error) {
+func Export(options ExportOptions) (ExportResult, error) {
 	if options.Result == nil {
-		return WriteResult{}, fmt.Errorf("result is required")
+		return ExportResult{}, fmt.Errorf("result is required")
 	}
 	if len(options.Result.Columns) == 0 {
-		return WriteResult{}, fmt.Errorf("result has no columns to export")
+		return ExportResult{}, fmt.Errorf("result has no columns to export")
 	}
 
-	path, err := ResolveWritePath(options.CWD, options.Filename)
+	path, err := ResolveExportPath(options.CWD, options.Filename)
 	if err != nil {
-		return WriteResult{}, err
+		return ExportResult{}, err
 	}
 
 	format, err := DetectFormat(path)
 	if err != nil {
-		return WriteResult{}, err
+		return ExportResult{}, err
 	}
 
 	data, rowCount, err := Marshal(options.Result, options.RowIndices, format)
 	if err != nil {
-		return WriteResult{}, err
+		return ExportResult{}, err
 	}
 
 	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return WriteResult{}, fmt.Errorf("write export file: %w", err)
+		return ExportResult{}, fmt.Errorf("write export file: %w", err)
 	}
 
-	return WriteResult{
+	return ExportResult{
 		Path:    path,
 		Format:  format,
 		Rows:    rowCount,
@@ -71,7 +71,7 @@ func Write(options WriteOptions) (WriteResult, error) {
 	}, nil
 }
 
-func ResolveWritePath(cwd, name string) (string, error) {
+func ResolveExportPath(cwd, name string) (string, error) {
 	cwd = strings.TrimSpace(cwd)
 	if cwd == "" {
 		return "", fmt.Errorf("working directory is required")

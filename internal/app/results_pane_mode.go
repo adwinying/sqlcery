@@ -79,7 +79,7 @@ type resultsPaneModeModel struct {
 	colScrollOffset  int
 	selectionActive  bool
 	pendingAction    resultsPanePendingAction
-	writeBuffer      string
+	exportBuffer     string
 	cachedPage       *resultsPanePreparedPage
 }
 
@@ -164,13 +164,13 @@ func (m *resultsPaneModeModel) View(interaction InteractionState) string {
 
 	page := resultsPanePageContextFor(interaction.ViewerPage, len(result.Rows))
 	header := []string{
-		appTheme.viewerTitle.Render("Record viewer"),
+		appTheme.viewerTitle.Render("Results Pane"),
 		appTheme.viewerMeta.Render(fmt.Sprintf("Query: %s", summarizeResultsPaneStatement(latest.Statement, m.width))),
 		appTheme.viewerMeta.Render(fmt.Sprintf("Rows: %d  Columns: %d", len(result.Rows), len(result.Columns))),
 		appTheme.viewerMeta.Render(fmt.Sprintf("Page: %d/%d  Showing rows %s", page.Number, page.TotalPages, formatResultsPaneRowRange(page))),
 	}
-	if m.pendingAction == resultsPanePendingActionWrite {
-		header = append(header, appTheme.warningNotice.Render(fmt.Sprintf("Command: %s", m.writeBuffer)))
+	if m.pendingAction == resultsPanePendingActionExport {
+		header = append(header, appTheme.warningNotice.Render(fmt.Sprintf("Command: %s", m.exportBuffer)))
 	}
 	if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
 		header = append(header, appTheme.viewerSelection.Render(fmt.Sprintf("Selected: %d", selectedCount)))
@@ -190,7 +190,7 @@ func (m *resultsPaneModeModel) View(interaction InteractionState) string {
 }
 
 func (m resultsPaneModeModel) FooterHints(interaction InteractionState) string {
-	parts := []string{"Record viewer"}
+	parts := []string{"Results Pane"}
 	if latest := interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
 		page := resultsPanePageContextFor(interaction.ViewerPage, len(latest.PreservedResult.Rows))
 		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
@@ -201,7 +201,7 @@ func (m resultsPaneModeModel) FooterHints(interaction InteractionState) string {
 	if running := formatRunningIndicator(interaction.Running); running != "" {
 		parts = append(parts, running)
 	}
-	if m.pendingAction == resultsPanePendingActionWrite {
+	if m.pendingAction == resultsPanePendingActionExport {
 		parts = append(parts, ":w [file] export", "enter save", "esc cancel")
 	}
 	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit")
@@ -209,7 +209,7 @@ func (m resultsPaneModeModel) FooterHints(interaction InteractionState) string {
 }
 
 func (m resultsPaneModeModel) Footer(connectionName, dialect string, interaction InteractionState) string {
-	parts := []string{"Record viewer", fmt.Sprintf("layout %s", layoutLabel(interaction.Layout))}
+	parts := []string{"Results Pane", fmt.Sprintf("layout %s", layoutLabel(interaction.Layout))}
 	if label := strings.TrimSpace(connectionName); label != "" {
 		parts = append(parts, fmt.Sprintf("connection %s", label))
 	}
@@ -226,7 +226,7 @@ func (m resultsPaneModeModel) Footer(connectionName, dialect string, interaction
 	if running := formatRunningIndicator(interaction.Running); running != "" {
 		parts = append(parts, running)
 	}
-	if m.pendingAction == resultsPanePendingActionWrite {
+	if m.pendingAction == resultsPanePendingActionExport {
 		parts = append(parts, ":w [file] export", "enter save", "esc cancel")
 	}
 	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit")

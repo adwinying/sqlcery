@@ -291,7 +291,7 @@ func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 			Filter:        "su",
 			SelectedIndex: 0,
 		},
-		SessionHistory: []HistoryEntryContext{{SQL: "select * from user_sessions"}, {SQL: "select * from users"}},
+		SessionHistory: []HistoryEntryContext{{	Statement: "select * from user_sessions"}, {	Statement: "select * from users"}},
 	}
 	popup := renderHistorySearch(query)
 
@@ -305,7 +305,7 @@ func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 func TestCommandModeViewRendersInlineSelectResult(t *testing.T) {
 	query := InteractionState{
 		LatestResult: &LatestResultContext{
-			OriginMode:    ModeCommand,
+			OriginPane:    PaneCommand,
 			StatementKind: db.StatementResultKindQuery,
 			InlineResult: &db.ResultSet{
 				Columns: []db.ResultColumn{{Name: "id"}, {Name: "name"}, {Name: "created_at"}},
@@ -332,7 +332,7 @@ func TestCommandModeViewRendersInlineExecResult(t *testing.T) {
 	lastInsertID := int64(9)
 	query := InteractionState{
 		LatestResult: &LatestResultContext{
-			OriginMode:    ModeCommand,
+			OriginPane:    PaneCommand,
 			StatementKind: db.StatementResultKindExec,
 			RowsAffected:  &rowsAffected,
 			LastInsertID:  &lastInsertID,
@@ -374,7 +374,7 @@ func TestCommandModeFooterShowsViewerPagingWhenViewerFocusedInSplit(t *testing.T
 	mode.SetSize(80, 20)
 	footer := mode.Footer("local", "sqlite", InteractionState{
 		Layout:     LayoutSplit,
-		ActiveMode: ModeResultsPane,
+		ActivePane: PaneResultsPane,
 	})
 
 	for _, want := range []string{"Command line hidden focus", "layout split", "alt+h help", "ctrl+u scroll up", "ctrl+d scroll down"} {
@@ -389,7 +389,7 @@ func TestCommandModeFooterShowsSelectionCountFromViewerResult(t *testing.T) {
 	mode.SetSize(80, 20)
 	footer := mode.Footer("local", "sqlite", InteractionState{
 		Layout:       LayoutSplit,
-		ActiveMode:   ModeCommand,
+		ActivePane:   PaneCommand,
 		LatestResult: &LatestResultContext{SelectedRows: []int{0, 2}},
 	})
 

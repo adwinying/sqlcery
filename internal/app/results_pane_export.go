@@ -9,20 +9,20 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-func (m *Model) handleResultsPaneWriteKey(msg tea.KeyPressMsg) bool {
-	if m.state.Interaction.ActiveMode != ModeResultsPane {
+func (m *Model) handleResultsPaneExportKey(msg tea.KeyPressMsg) bool {
+	if m.state.Interaction.ActivePane != PaneResultsPane {
 		m.resultsPane.pendingAction = resultsPanePendingActionNone
-		m.resultsPane.writeBuffer = ""
+		m.resultsPane.exportBuffer = ""
 		return false
 	}
 
-	if m.resultsPane.pendingAction == resultsPanePendingActionWrite {
-		return m.updateResultsPaneWritePrompt(msg)
+	if m.resultsPane.pendingAction == resultsPanePendingActionExport {
+		return m.updateResultsPaneExportPrompt(msg)
 	}
 
 	if msg.String() == ":" {
-		m.resultsPane.pendingAction = resultsPanePendingActionWrite
-		m.resultsPane.writeBuffer = ":"
+		m.resultsPane.pendingAction = resultsPanePendingActionExport
+		m.resultsPane.exportBuffer = ":"
 		m.state.SetPendingIntent(IntentNone, "viewer-export", "Type :w [filename] to export selected rows or the current result rows.")
 		return true
 	}
@@ -30,17 +30,17 @@ func (m *Model) handleResultsPaneWriteKey(msg tea.KeyPressMsg) bool {
 	return false
 }
 
-func (m *Model) updateResultsPaneWritePrompt(msg tea.KeyPressMsg) bool {
+func (m *Model) updateResultsPaneExportPrompt(msg tea.KeyPressMsg) bool {
 	switch msg.String() {
 	case "enter":
-		command := strings.TrimSpace(m.resultsPane.writeBuffer)
+		command := strings.TrimSpace(m.resultsPane.exportBuffer)
 		m.resultsPane.pendingAction = resultsPanePendingActionNone
-		m.resultsPane.writeBuffer = ""
-		return m.writeResultsPaneExport(command)
+		m.resultsPane.exportBuffer = ""
+		return m.exportResultsPane(command)
 	case "backspace", "delete":
-		if len(m.resultsPane.writeBuffer) > 0 {
-			runes := []rune(m.resultsPane.writeBuffer)
-			m.resultsPane.writeBuffer = string(runes[:len(runes)-1])
+		if len(m.resultsPane.exportBuffer) > 0 {
+			runes := []rune(m.resultsPane.exportBuffer)
+			m.resultsPane.exportBuffer = string(runes[:len(runes)-1])
 		}
 		return true
 	default:
@@ -48,16 +48,16 @@ func (m *Model) updateResultsPaneWritePrompt(msg tea.KeyPressMsg) bool {
 			if msg.Mod.Contains(tea.ModAlt) {
 				return false
 			}
-			m.resultsPane.writeBuffer += msg.Text
+			m.resultsPane.exportBuffer += msg.Text
 		}
 		return true
 	}
 }
 
-func (m *Model) writeResultsPaneExport(command string) bool {
-	filename, ok := parseResultsPaneWriteCommand(command)
+func (m *Model) exportResultsPane(command string) bool {
+	filename, ok := parseResultsPaneExportCommand(command)
 	if !ok {
-		m.state.SetPendingIntent(IntentNone, "viewer-export", "Use :w [filename] with .csv, .tsv, .json, or .md while record viewer is focused.")
+		m.state.SetPendingIntent(IntentNone, "viewer-export", "Use :w [filename] with .csv, .tsv, .json, or .md while Results Pane is focused.")
 		return true
 	}
 
@@ -73,7 +73,7 @@ func (m *Model) writeResultsPaneExport(command string) bool {
 
 	rowIndices := selectedRowsForExport(latest)
 	usedSelectedRows := len(latest.SelectedRows) > 0
-	written, err := export.Write(export.WriteOptions{
+	written, err := export.Export(export.ExportOptions{
 		CWD:        m.session.WorkingDir,
 		Filename:   filename,
 		Result:     latest.PreservedResult,
@@ -97,7 +97,7 @@ func (m *Model) writeResultsPaneExport(command string) bool {
 	return true
 }
 
-func parseResultsPaneWriteCommand(input string) (string, bool) {
+func parseResultsPaneExportCommand(input string) (string, bool) {
 	trimmed := strings.TrimSpace(input)
 	if !strings.HasPrefix(trimmed, ":") {
 		return "", false

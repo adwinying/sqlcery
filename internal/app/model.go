@@ -62,21 +62,15 @@ type toggleHelpIntentMsg struct{}
 
 type toggleZoomIntentMsg struct{}
 
-type switchModeIntentMsg struct{}
+type switchPaneIntentMsg struct{}
 
 type switchLayoutIntentMsg struct {
 	Layout AppLayout
 }
 
-type PaneTarget string
-
-const (
-	PaneResults PaneTarget = "results"
-	PaneCommand PaneTarget = "command"
-)
 
 type focusPaneIntentMsg struct {
-	Pane PaneTarget
+	Pane Pane
 }
 
 type clearInputIntentMsg struct{}
@@ -188,7 +182,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.handleResultsPaneWriteKey(msg) {
+		if m.handleResultsPaneExportKey(msg) {
 			return m, nil
 		}
 
@@ -257,7 +251,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state.SetReady("")
 			m.state.SetPendingIntent(IntentNone, "submit", fmt.Sprintf("Slash command parse failed: %v", err))
 			m.state.SetLatestResultContext(nil)
-			m.state.SetPendingModeSwitch(nil)
+			m.state.SetPendingPaneSwitch(nil)
 			return m, nil
 		}
 		if parsedSlash != nil {
@@ -297,7 +291,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.SetRunningStatementContext(nil)
 		m.state.Interaction.PendingIntent = IntentNone
 		m.state.Interaction.LastAction = "submit"
-		m.state.SetPendingModeSwitch(nil)
+		m.state.SetPendingPaneSwitch(nil)
 		if msg.Err != nil {
 			if status, ok := executionInterruptedStatus(running, msg.Err); ok {
 			m.command.AppendReplEntry("> ", msg.Statement, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
@@ -316,7 +310,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.command.AppendReplEntry("> ", msg.Statement, "OK: "+formatReplStatementOutput(msg.Result, nil))
 	m.command.Clear()
 	m.state.SetReady(withHistoryWarning(describeStatementStatus(msg.Result), historyErr))
-	m.state.SetLatestResultContext(buildLatestResultContext(msg.Statement, m.resultOriginMode(), msg.Result))
+	m.state.SetLatestResultContext(buildLatestResultContext(msg.Statement, m.resultOriginPane(), msg.Result))
 		return m, nil
 	case slashCommandExecutedMsg:
 		running := m.state.Interaction.Running
@@ -330,7 +324,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.SetRunningStatementContext(nil)
 		m.state.Interaction.PendingIntent = IntentNone
 		m.state.Interaction.LastAction = "slash:" + msg.Command.DisplayName
-		m.state.SetPendingModeSwitch(nil)
+		m.state.SetPendingPaneSwitch(nil)
 		if msg.Err != nil {
 			m.state.SetSlashWizardContext(nil)
 			m.command.AppendReplEntry("> ", msg.Command.RawInput, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
@@ -358,7 +352,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if msg.Result.Statement != nil {
-			m.state.SetLatestResultContext(buildLatestResultContext(msg.Command.RawInput, m.resultOriginMode(), msg.Result.Statement))
+			m.state.SetLatestResultContext(buildLatestResultContext(msg.Command.RawInput, m.resultOriginPane(), msg.Result.Statement))
 		} else if !msg.Result.PreserveResult && !msg.Result.ShouldReplace {
 			m.state.SetLatestResultContext(nil)
 		}
@@ -398,9 +392,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.SetReady("")
 		m.openHistorySearch()
 		return m, nil
-	case switchModeIntentMsg:
+	case switchPaneIntentMsg:
 		m.syncCurrentSQL()
-		switchContext := buildModeSwitchContext(m.state.Interaction.Layout, nextLayoutForModeIntent(m.state.Interaction.Layout, m.state.Interaction.ActiveMode), m.state.Interaction.ActiveMode, nextModeForIntent(m.state.Interaction.ActiveMode), m.state.Interaction.LatestResult)
+		switchContext := buildPaneSwitchContext(m.state.Interaction.Layout, nextLayoutForModeIntent(m.state.Interaction.Layout, m.state.Interaction.ActivePane), m.state.Interaction.ActivePane, nextModeForIntent(m.state.Interaction.ActivePane), m.state.Interaction.LatestResult)
 		m.applyModeSwitch(switchContext)
 		m.syncPaneSizes()
 		return m, nil
@@ -459,7 +453,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncPaneSizes()
 	}
 
-	if m.state.Interaction.ActiveMode == ModeResultsPane && !layoutShowsCommand(m.state.Interaction.Layout) {
+	if m.state.Interaction.ActivePane == PaneResultsPane && !layoutShowsCommand(m.state.Interaction.Layout) {
 		return m, nil
 	}
 
@@ -649,7 +643,7 @@ func (m Model) readyStateView(totalHeight int) string {
 		}
 		resultsPaneContent := m.resultsPane.View(interaction)
 		commandContent := m.command.View(interaction)
-		resultsPaneActive := interaction.ActiveMode == ModeResultsPane
+		resultsPaneActive := interaction.ActivePane == PaneResultsPane
 		resultsPanePane := m.renderBorderedPane(resultsPaneContent, "[1] Results", resultsPaneActive, w, resultsPaneOuterH-2)
 		commandPane := m.renderBorderedPane(commandContent, "[2] Commands", !resultsPaneActive, w, commandOuterH-2)
 		base = resultsPanePane + "\n" + commandPane
@@ -798,9 +792,9 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, keys.Help):
 		return func() tea.Msg { return toggleHelpIntentMsg{} }
 	case key.Matches(msg, keys.SwitchMode):
-		return func() tea.Msg { return switchModeIntentMsg{} }
+		return func() tea.Msg { return switchPaneIntentMsg{} }
 	case msg.String() == "ctrl+q":
-		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneResults} }
+		return func() tea.Msg { return focusPaneIntentMsg{	Pane: PaneResultsPane} }
 	case msg.String() == "ctrl+w":
 		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneCommand} }
 	case msg.String() == "ctrl+3", msg.String() == "alt+3":
@@ -834,7 +828,7 @@ func (m Model) handleLayoutKey(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, keys.LayoutCommandOnly), msg.String() == "ctrl+3", msg.String() == "alt+3":
 		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
 	case msg.String() == "ctrl+q":
-		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneResults} }
+		return func() tea.Msg { return focusPaneIntentMsg{	Pane: PaneResultsPane} }
 	case msg.String() == "ctrl+w":
 		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneCommand} }
 	case msg.String() == "ctrl+z":
@@ -851,7 +845,7 @@ func (m *Model) handleResultsPanePagingKey(msg tea.KeyPressMsg) bool {
 	if !isScroll && !isPaging {
 		return false
 	}
-	if m.state.Interaction.ActiveMode != ModeResultsPane {
+	if m.state.Interaction.ActivePane != PaneResultsPane {
 		m.resultsPane.pendingAction = resultsPanePendingActionNone
 		return false
 	}
@@ -909,7 +903,7 @@ func (m *Model) handleResultsPanePagingKey(msg tea.KeyPressMsg) bool {
 }
 
 func (m *Model) handleResultsPaneNavigationKey(msg tea.KeyPressMsg) bool {
-	if m.state.Interaction.ActiveMode != ModeResultsPane {
+	if m.state.Interaction.ActivePane != PaneResultsPane {
 		m.resultsPane.pendingAction = resultsPanePendingActionNone
 		return false
 	}
@@ -928,7 +922,7 @@ func (m *Model) handleResultsPaneSelectionKey(msg tea.KeyPressMsg) bool {
 	if msg.String() != "space" && msg.String() != " " {
 		return false
 	}
-	if m.state.Interaction.ActiveMode != ModeResultsPane {
+	if m.state.Interaction.ActivePane != PaneResultsPane {
 		m.resultsPane.pendingAction = resultsPanePendingActionNone
 		return false
 	}
@@ -950,7 +944,7 @@ func (m *Model) handleResultsPaneSelectionKey(msg tea.KeyPressMsg) bool {
 }
 
 func (m *Model) handleResultsPaneComposeKey(msg tea.KeyPressMsg) bool {
-	if m.state.Interaction.ActiveMode != ModeResultsPane {
+	if m.state.Interaction.ActivePane != PaneResultsPane {
 		m.resultsPane.pendingAction = resultsPanePendingActionNone
 		return false
 	}
@@ -1006,9 +1000,9 @@ func (m *Model) composeResultsPaneInsert() bool {
 	m.syncCurrentSQL()
 	m.closeHistorySearch()
 	m.command.Focus()
-	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, ModeResultsPane))
-	m.state.SetActiveMode(ModeCommand)
-	m.state.SetPendingModeSwitch(nil)
+	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, PaneResultsPane))
+	m.state.SetActivePane(PaneCommand)
+	m.state.SetPendingPaneSwitch(nil)
 	m.state.SetPendingIntent(IntentNone, "viewer-compose", resultsPaneComposeStatus(result))
 	m.syncPaneSizes()
 	return true
@@ -1030,9 +1024,9 @@ func (m *Model) composeResultsPaneUpdate() bool {
 	m.syncCurrentSQL()
 	m.closeHistorySearch()
 	m.command.Focus()
-	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, ModeResultsPane))
-	m.state.SetActiveMode(ModeCommand)
-	m.state.SetPendingModeSwitch(nil)
+	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, PaneResultsPane))
+	m.state.SetActivePane(PaneCommand)
+	m.state.SetPendingPaneSwitch(nil)
 	m.state.SetPendingIntent(IntentNone, "viewer-compose", resultsPaneComposeStatus(result))
 	m.syncPaneSizes()
 	return true
@@ -1054,9 +1048,9 @@ func (m *Model) composeResultsPaneDelete() bool {
 	m.syncCurrentSQL()
 	m.closeHistorySearch()
 	m.command.Focus()
-	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, ModeResultsPane))
-	m.state.SetActiveMode(ModeCommand)
-	m.state.SetPendingModeSwitch(nil)
+	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, PaneResultsPane))
+	m.state.SetActivePane(PaneCommand)
+	m.state.SetPendingPaneSwitch(nil)
 	m.state.SetPendingIntent(IntentNone, "viewer-compose", resultsPaneComposeStatus(result))
 	m.syncPaneSizes()
 	return true
@@ -1076,7 +1070,7 @@ func (m *Model) syncSessionHistorySnapshot() {
 	contexts := make([]HistoryEntryContext, 0, len(entries))
 	for _, entry := range entries {
 		contexts = append(contexts, HistoryEntryContext{
-			SQL:            entry.SQL,
+			Statement:      entry.Statement,
 			ConnectionName: entry.ConnectionName,
 			ExecutedAt:     entry.ExecutedAt,
 		})
@@ -1090,7 +1084,7 @@ func (m *Model) appendSessionHistory(statement, resultSummary string) error {
 	}
 
 	err := m.history.Append(apphistory.Entry{
-		SQL:            statement,
+		Statement:      statement,
 		ConnectionName: m.session.ConnectionName,
 		ExecutedAt:     time.Now().UTC(),
 		ResultSummary:  resultSummary,
@@ -1507,24 +1501,24 @@ func (m Model) adapterDialect() db.Dialect {
 	return m.session.Adapter.Dialect()
 }
 
-func (m Model) resultOriginMode() AppMode {
+func (m Model) resultOriginPane() Pane {
 	if m.state.Interaction.ActiveModal == ModalHistorySearch {
-		return ModeCommand
+		return PaneCommand
 	}
 	if layoutShowsCommand(m.state.Interaction.Layout) {
-		return ModeCommand
+		return PaneCommand
 	}
-	return m.state.Interaction.ActiveMode
+	return m.state.Interaction.ActivePane
 }
 
-func buildLatestResultContext(query string, originMode AppMode, result *db.StatementResult) *LatestResultContext {
+func buildLatestResultContext(query string, originMode Pane, result *db.StatementResult) *LatestResultContext {
 	if result == nil {
 		return nil
 	}
 
 	context := &LatestResultContext{
 		Statement:     query,
-		OriginMode:    originMode,
+		OriginPane:    originMode,
 		StatementKind: result.Kind,
 		RowsAffected:  cloneInt64Pointer(result.RowsAffected),
 		LastInsertID:  cloneInt64Pointer(result.LastInsertID),
@@ -1549,45 +1543,45 @@ func buildLatestResultContext(query string, originMode AppMode, result *db.State
 	return context
 }
 
-func buildModeSwitchContext(fromLayout, toLayout AppLayout, fromMode, toMode AppMode, latest *LatestResultContext) *ModeSwitchContext {
-	return &ModeSwitchContext{
+func buildPaneSwitchContext(fromLayout, toLayout AppLayout, fromMode, toMode Pane, latest *LatestResultContext) *PaneSwitchContext {
+	return &PaneSwitchContext{
 		FromLayout:    fromLayout,
 		ToLayout:      toLayout,
-		FromMode:      fromMode,
-		ToMode:        toMode,
+		FromPane:      fromMode,
+		ToPane:        toMode,
 		ResultContext: cloneLatestResultContext(latest),
 	}
 }
 
-func nextModeForIntent(current AppMode) AppMode {
+func nextModeForIntent(current Pane) Pane {
 	switch current {
-	case ModeResultsPane:
-		return ModeCommand
+	case PaneResultsPane:
+		return PaneCommand
 	default:
-		return ModeResultsPane
+		return PaneResultsPane
 	}
 }
 
-func nextLayoutForModeIntent(currentLayout AppLayout, currentMode AppMode) AppLayout {
+func nextLayoutForModeIntent(currentLayout AppLayout, currentMode Pane) AppLayout {
 	switch currentLayout {
 	case LayoutSplit:
 		return LayoutSplit
 	case LayoutResultsPaneOnly:
 		return LayoutCommandOnly
 	default:
-		if currentMode == ModeResultsPane {
+		if currentMode == PaneResultsPane {
 			return LayoutCommandOnly
 		}
 		return LayoutResultsPaneOnly
 	}
 }
 
-func describeModeSwitchStatus(context *ModeSwitchContext) string {
+func describeModeSwitchStatus(context *PaneSwitchContext) string {
 	if context == nil {
 		return "Mode switch requested."
 	}
 
-	if context.ToMode == ModeCommand {
+	if context.ToPane == PaneCommand {
 		if context.ToLayout == LayoutSplit {
 			return "Focused the command line in split layout."
 		}
@@ -1596,33 +1590,33 @@ func describeModeSwitchStatus(context *ModeSwitchContext) string {
 
 	if context.ResultContext == nil || context.ResultContext.PreservedResult == nil {
 		if context.ToLayout == LayoutSplit {
-			return "Focused the record viewer in split layout. Run a query that returns rows to populate it."
+			return "Focused the Results Pane in split layout. Run a query that returns rows to populate it."
 		}
-		return "Record viewer is available after running a query that returns tabular results."
+		return "Results Pane is available after running a query that returns tabular results."
 	}
 
 	result := context.ResultContext.PreservedResult
 	if context.ToLayout == LayoutSplit {
-		return fmt.Sprintf("Focused the record viewer in split layout for %d row(s) across %d column(s).", len(result.Rows), len(result.Columns))
+		return fmt.Sprintf("Focused the Results Pane in split layout for %d row(s) across %d column(s).", len(result.Rows), len(result.Columns))
 	}
 	return fmt.Sprintf("Opened Results Pane for %d row(s) across %d column(s).", len(result.Rows), len(result.Columns))
 }
 
-func (m *Model) applyModeSwitch(context *ModeSwitchContext) {
+func (m *Model) applyModeSwitch(context *PaneSwitchContext) {
 	m.state.SetReady("")
-	m.state.SetPendingModeSwitch(context)
+	m.state.SetPendingPaneSwitch(context)
 
 	if context == nil {
-		m.state.SetPendingIntent(IntentSwitchMode, "switch-mode", describeModeSwitchStatus(nil))
+		m.state.SetPendingIntent(IntentSwitchPane, "switch-mode", describeModeSwitchStatus(nil))
 		return
 	}
 
-	if context.ToMode == ModeCommand {
+	if context.ToPane == PaneCommand {
 		m.closeHistorySearch()
 		m.command.Focus()
 		m.state.SetLayout(context.ToLayout)
-		m.state.SetActiveMode(ModeCommand)
-		m.state.SetPendingModeSwitch(nil)
+		m.state.SetActivePane(PaneCommand)
+		m.state.SetPendingPaneSwitch(nil)
 		m.state.SetPendingIntent(IntentNone, "switch-mode", describeModeSwitchStatus(context))
 		return
 	}
@@ -1632,19 +1626,19 @@ func (m *Model) applyModeSwitch(context *ModeSwitchContext) {
 			m.closeHistorySearch()
 			m.command.Blur()
 			m.state.SetLayout(context.ToLayout)
-			m.state.SetActiveMode(context.ToMode)
-			m.state.SetPendingModeSwitch(nil)
+			m.state.SetActivePane(context.ToPane)
+			m.state.SetPendingPaneSwitch(nil)
 			m.state.SetPendingIntent(IntentNone, "switch-mode", describeModeSwitchStatus(context))
 			return
 		}
-		m.state.SetPendingIntent(IntentSwitchMode, "switch-mode", describeModeSwitchStatus(context))
+		m.state.SetPendingIntent(IntentSwitchPane, "switch-mode", describeModeSwitchStatus(context))
 		return
 	}
 	m.closeHistorySearch()
 	m.command.Blur()
 	m.state.SetLayout(context.ToLayout)
-	m.state.SetActiveMode(context.ToMode)
-	m.state.SetPendingModeSwitch(nil)
+	m.state.SetActivePane(context.ToPane)
+	m.state.SetPendingPaneSwitch(nil)
 	m.state.SetPendingIntent(IntentNone, "switch-mode", describeModeSwitchStatus(context))
 }
 
@@ -1653,7 +1647,7 @@ func (m *Model) applyLayoutSwitch(layout AppLayout) {
 	if layout == "" {
 		layout = LayoutCommandOnly
 	}
-	m.state.SetPendingModeSwitch(nil)
+	m.state.SetPendingPaneSwitch(nil)
 
 	if layout == current {
 		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Layout already set to %s.", layoutLabel(layout)))
@@ -1669,14 +1663,14 @@ func (m *Model) applyLayoutSwitch(layout AppLayout) {
 			m.closeHistorySearch()
 		}
 		m.command.Blur()
-		m.state.SetActiveMode(ModeResultsPane)
+		m.state.SetActivePane(PaneResultsPane)
 		if latest := m.state.Interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
 			m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s with %d row(s) visible.", layoutLabel(layout), len(latest.PreservedResult.Rows)))
 			return
 		}
 		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s. Run a query that returns rows to populate the viewer.", layoutLabel(layout)))
 	case LayoutSplit:
-		if m.state.Interaction.ActiveMode == ModeResultsPane {
+		if m.state.Interaction.ActivePane == PaneResultsPane {
 			m.command.Blur()
 		} else {
 			m.command.Focus()
@@ -1687,8 +1681,8 @@ func (m *Model) applyLayoutSwitch(layout AppLayout) {
 		}
 		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s.", layoutLabel(layout)))
 	case LayoutCommandOnly:
-		if m.state.Interaction.ActiveMode == ModeResultsPane {
-			m.state.SetActiveMode(ModeCommand)
+		if m.state.Interaction.ActivePane == PaneResultsPane {
+			m.state.SetActivePane(PaneCommand)
 		}
 		m.command.Focus()
 		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s.", layoutLabel(layout)))
@@ -1698,24 +1692,24 @@ func (m *Model) applyLayoutSwitch(layout AppLayout) {
 	}
 }
 
-func (m *Model) handleFocusPane(pane PaneTarget) {
+func (m *Model) handleFocusPane(pane Pane) {
 	m.state.SetReady("")
-	m.state.SetPendingModeSwitch(nil)
+	m.state.SetPendingPaneSwitch(nil)
 	switch pane {
-	case PaneResults:
+	case PaneResultsPane:
 		m.closeHistorySearch()
 		switch m.state.Interaction.Layout {
 		case LayoutCommandOnly:
 			m.command.Blur()
 			m.state.SetLayout(LayoutSplit)
-			m.state.SetActiveMode(ModeResultsPane)
+			m.state.SetActivePane(PaneResultsPane)
 			m.state.SetPendingIntent(IntentNone, "focus-pane", "Switched to split layout with results pane focused.")
 		case LayoutResultsPaneOnly:
-			m.state.SetActiveMode(ModeResultsPane)
+			m.state.SetActivePane(PaneResultsPane)
 			m.state.SetPendingIntent(IntentNone, "focus-pane", "Results pane is already focused.")
 		default: // LayoutSplit
 			m.command.Blur()
-			m.state.SetActiveMode(ModeResultsPane)
+			m.state.SetActivePane(PaneResultsPane)
 			m.state.SetPendingIntent(IntentNone, "focus-pane", "Focused results pane.")
 		}
 	case PaneCommand:
@@ -1724,15 +1718,15 @@ func (m *Model) handleFocusPane(pane PaneTarget) {
 		case LayoutResultsPaneOnly:
 			m.command.Focus()
 			m.state.SetLayout(LayoutSplit)
-			m.state.SetActiveMode(ModeCommand)
+			m.state.SetActivePane(PaneCommand)
 			m.state.SetPendingIntent(IntentNone, "focus-pane", "Switched to split layout with command pane focused.")
 		case LayoutCommandOnly:
 			m.command.Focus()
-			m.state.SetActiveMode(ModeCommand)
+			m.state.SetActivePane(PaneCommand)
 			m.state.SetPendingIntent(IntentNone, "focus-pane", "Command pane is already focused.")
 		default: // LayoutSplit
 			m.command.Focus()
-			m.state.SetActiveMode(ModeCommand)
+			m.state.SetActivePane(PaneCommand)
 			m.state.SetPendingIntent(IntentNone, "focus-pane", "Focused command pane.")
 		}
 	}
@@ -1741,26 +1735,26 @@ func (m *Model) handleFocusPane(pane PaneTarget) {
 func (m *Model) handleToggleZoom() {
 	switch m.state.Interaction.Layout {
 	case LayoutSplit:
-		if m.state.Interaction.ActiveMode == ModeResultsPane {
+		if m.state.Interaction.ActivePane == PaneResultsPane {
 			m.command.Blur()
 			m.state.SetLayout(LayoutResultsPaneOnly)
-			m.state.SetActiveMode(ModeResultsPane)
+			m.state.SetActivePane(PaneResultsPane)
 			m.state.SetPendingIntent(IntentNone, "zoom", "Zoomed results pane.")
 		} else {
 			m.command.Focus()
 			m.state.SetLayout(LayoutCommandOnly)
-			m.state.SetActiveMode(ModeCommand)
+			m.state.SetActivePane(PaneCommand)
 			m.state.SetPendingIntent(IntentNone, "zoom", "Zoomed command pane.")
 		}
 	case LayoutCommandOnly:
 		m.command.Blur()
 		m.state.SetLayout(LayoutSplit)
-		m.state.SetActiveMode(ModeCommand)
+		m.state.SetActivePane(PaneCommand)
 		m.command.Focus()
 		m.state.SetPendingIntent(IntentNone, "zoom", "Returned to split layout.")
 	case LayoutResultsPaneOnly:
 		m.state.SetLayout(LayoutSplit)
-		m.state.SetActiveMode(ModeResultsPane)
+		m.state.SetActivePane(PaneResultsPane)
 		m.command.Blur()
 		m.state.SetPendingIntent(IntentNone, "zoom", "Returned to split layout.")
 	}
@@ -1799,14 +1793,14 @@ func renderHelpSurface(st InteractionState) string {
 	if st.SlashWizard != nil {
 		viewerLines = append(viewerLines, "slash wizard: enter confirm; ctrl+n/ctrl+p move; esc back or close")
 	}
-	sections = append(sections, helpSection{Title: "Record viewer", Lines: viewerLines})
+	sections = append(sections, helpSection{Title: "Results Pane", Lines: viewerLines})
 
 	if st.Layout == LayoutSplit {
 		var layoutLines []string
-		if st.ActiveMode == ModeResultsPane {
-			layoutLines = []string{"Record viewer [active]", "Command line"}
+		if st.ActivePane == PaneResultsPane {
+			layoutLines = []string{"Results Pane [active]", "Command line"}
 		} else {
-			layoutLines = []string{"Record viewer", "Command line [active]"}
+			layoutLines = []string{"Results Pane", "Command line [active]"}
 		}
 		sections = append(sections, helpSection{Title: "Layout", Lines: layoutLines})
 	}

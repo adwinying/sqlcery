@@ -17,7 +17,7 @@ const (
 	resultsPanePendingActionComposeInsert resultsPanePendingAction = "compose-insert"
 	resultsPanePendingActionComposeUpdate resultsPanePendingAction = "compose-update"
 	resultsPanePendingActionComposeDelete resultsPanePendingAction = "compose-delete"
-	resultsPanePendingActionWrite         resultsPanePendingAction = "write"
+	resultsPanePendingActionExport        resultsPanePendingAction = "export"
 )
 
 type resultsPaneComposeAction string

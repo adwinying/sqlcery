@@ -106,16 +106,16 @@ type mysqlMetadata struct {
 }
 
 func (m mysqlMetadata) Tables(ctx context.Context, filter TableFilter) ([]Table, error) {
-	schema := strings.TrimSpace(filter.Namespace)
-	if schema == "" {
-		schema = strings.TrimSpace(m.database)
+	namespace := strings.TrimSpace(filter.Namespace)
+	if namespace == "" {
+		namespace = strings.TrimSpace(m.database)
 	}
 
 	const query = "SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema = ? AND table_type IN ('BASE TABLE', 'VIEW') ORDER BY table_name"
 
-	rows, err := m.runner.QueryContext(ctx, query, schema)
+	rows, err := m.runner.QueryContext(ctx, query, namespace)
 	if err != nil {
-		return nil, fmt.Errorf("list mysql tables for schema %q: %w", schema, err)
+		return nil, fmt.Errorf("list mysql tables for namespace %q: %w", namespace, err)
 	}
 	defer rows.Close()
 
@@ -132,23 +132,23 @@ func (m mysqlMetadata) Tables(ctx context.Context, filter TableFilter) ([]Table,
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate mysql tables for schema %q: %w", schema, err)
+		return nil, fmt.Errorf("iterate mysql tables for namespace %q: %w", namespace, err)
 	}
 
 	return tables, nil
 }
 
 func (m mysqlMetadata) Columns(ctx context.Context, table TableRef) ([]Column, error) {
-	schema := strings.TrimSpace(table.Namespace)
-	if schema == "" {
-		schema = strings.TrimSpace(m.database)
+	namespace := strings.TrimSpace(table.Namespace)
+	if namespace == "" {
+		namespace = strings.TrimSpace(m.database)
 	}
 
 	const query = "SELECT column_name, ordinal_position, column_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position"
 
-	rows, err := m.runner.QueryContext(ctx, query, schema, table.Name)
+	rows, err := m.runner.QueryContext(ctx, query, namespace, table.Name)
 	if err != nil {
-		return nil, fmt.Errorf("list mysql columns for %s: %w", MySQLDialect().QuoteIdentifier(schema, table.Name), err)
+		return nil, fmt.Errorf("list mysql columns for %s: %w", MySQLDialect().QuoteIdentifier(namespace, table.Name), err)
 	}
 	defer rows.Close()
 
@@ -167,23 +167,23 @@ func (m mysqlMetadata) Columns(ctx context.Context, table TableRef) ([]Column, e
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate mysql columns for %s: %w", MySQLDialect().QuoteIdentifier(schema, table.Name), err)
+		return nil, fmt.Errorf("iterate mysql columns for %s: %w", MySQLDialect().QuoteIdentifier(namespace, table.Name), err)
 	}
 
 	return columns, nil
 }
 
 func (m mysqlMetadata) PrimaryKeys(ctx context.Context, table TableRef) ([]PrimaryKey, error) {
-	schema := strings.TrimSpace(table.Namespace)
-	if schema == "" {
-		schema = strings.TrimSpace(m.database)
+	namespace := strings.TrimSpace(table.Namespace)
+	if namespace == "" {
+		namespace = strings.TrimSpace(m.database)
 	}
 
 	const query = "SELECT constraint_name, column_name, ordinal_position FROM information_schema.key_column_usage WHERE table_schema = ? AND table_name = ? AND constraint_name = 'PRIMARY' ORDER BY ordinal_position"
 
-	rows, err := m.runner.QueryContext(ctx, query, schema, table.Name)
+	rows, err := m.runner.QueryContext(ctx, query, namespace, table.Name)
 	if err != nil {
-		return nil, fmt.Errorf("list mysql primary keys for %s: %w", MySQLDialect().QuoteIdentifier(schema, table.Name), err)
+		return nil, fmt.Errorf("list mysql primary keys for %s: %w", MySQLDialect().QuoteIdentifier(namespace, table.Name), err)
 	}
 	defer rows.Close()
 
@@ -198,7 +198,7 @@ func (m mysqlMetadata) PrimaryKeys(ctx context.Context, table TableRef) ([]Prima
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate mysql primary keys for %s: %w", MySQLDialect().QuoteIdentifier(schema, table.Name), err)
+		return nil, fmt.Errorf("iterate mysql primary keys for %s: %w", MySQLDialect().QuoteIdentifier(namespace, table.Name), err)
 	}
 
 	return primaryKeys, nil

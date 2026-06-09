@@ -18,8 +18,8 @@ func TestNewSharedAppStateDefaultsToCommandMode(t *testing.T) {
 		t.Fatalf("state.Interaction.Layout = %q, want %q", got, want)
 	}
 
-	if got, want := state.Interaction.ActiveMode, ModeCommand; got != want {
-		t.Fatalf("state.Interaction.ActiveMode = %q, want %q", got, want)
+	if got, want := state.Interaction.ActivePane, PaneCommand; got != want {
+		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
 
 	if got, want := state.Status, "Starting SQLcery."; got != want {
@@ -40,15 +40,15 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 	state.SetPendingIntent(IntentSubmit, "submit", "ready")
 	state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL", StartedAt: stamp, Elapsed: 1500 * time.Millisecond, SpinnerFrame: 2})
 	state.SetLayout(LayoutSplit)
-	state.SetActiveMode(ModeResultsPane)
-	state.SetSessionHistory([]HistoryEntryContext{{SQL: "select 1", ConnectionName: "local", ExecutedAt: stamp}})
+	state.SetActivePane(PaneResultsPane)
+	state.SetSessionHistory([]HistoryEntryContext{{Statement: "select 1", ConnectionName: "local", ExecutedAt: stamp}})
 	state.SetHistorySearchContext(&HistorySearchContext{Filter: "sel", SelectedIndex: 1})
 	state.SetAutocompleteSchema(&AutocompleteSchemaContext{
 		Tables: []AutocompleteTableContext{{Namespace: "main", Name: "widgets", Columns: []string{"id", "payload"}}},
 	})
 	state.SetLatestResultContext(&LatestResultContext{
 		Statement:           "select * from widgets",
-		OriginMode:          ModeCommand,
+		OriginPane:          PaneCommand,
 		SelectedRows:        []int{1, 301},
 		StatementKind:       db.StatementResultKindQuery,
 		RowsAffected:        cloneInt64Pointer(int64PointerForTest(3)),
@@ -81,15 +81,15 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 		}},
 		Targets: []SlashCommandWizardTarget{{Value: "widgets", Display: "widgets"}},
 	})
-	state.SetPendingModeSwitch(&ModeSwitchContext{
+	state.SetPendingPaneSwitch(&PaneSwitchContext{
 		FromLayout:    LayoutSplit,
 		ToLayout:      LayoutResultsPaneOnly,
-		FromMode:      ModeCommand,
-		ToMode:        ModeResultsPane,
+		FromPane:      PaneCommand,
+		ToPane:        PaneResultsPane,
 		ResultContext: state.Interaction.LatestResult,
 	})
 	state.SetSelectedHistoryEntry(&HistoryEntryContext{
-		SQL:            "select * from widgets",
+		Statement:            "select * from widgets",
 		ConnectionName: "local",
 		ExecutedAt:     stamp,
 	})
@@ -103,7 +103,7 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 	state.Interaction.Layout = LayoutResultsPaneOnly
 	state.Interaction.Running.Elapsed = 9 * time.Second
 	state.Interaction.Running.SpinnerFrame = 1
-	state.Interaction.SessionHistory[0].SQL = "mutated history"
+	state.Interaction.SessionHistory[0].Statement = "mutated history"
 	state.Interaction.HistorySearch.Filter = "mutated search"
 	state.App.Current = StateError
 	state.App.Reconnect.Attempt = 99
@@ -114,15 +114,15 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 	state.Interaction.LatestResult.SelectedRows[0] = 999
 	state.Interaction.SlashWizard.Commands[0].DisplayName = "/mutated"
 	state.Interaction.SlashWizard.Targets[0].Display = "changed"
-	state.Interaction.PendingModeSwitch.ToMode = ModeCommand
-	state.Interaction.PendingModeSwitch.ResultContext.Statement = "mutated switch"
+	state.Interaction.PendingPaneSwitch.ToPane = PaneCommand
+	state.Interaction.PendingPaneSwitch.ResultContext.Statement = "mutated switch"
 	*state.Interaction.LatestResult.RowsAffected = 99
 	*state.Interaction.LatestResult.LastInsertID = 42
 	state.Interaction.LatestResult.InlineRowsTruncated = false
 	state.Interaction.LatestResult.PreservedResult.Columns[0].Name = "changed"
 	state.Interaction.LatestResult.PreservedResult.Rows[0].Values[0].Value.([]byte)[0] = 'z'
 	state.Interaction.LatestResult.InlineResult.Rows[0].Values[0].Value.([]byte)[0] = 'q'
-	state.Interaction.SelectedHistoryEntry.SQL = "changed"
+	state.Interaction.SelectedHistoryEntry.Statement = "changed"
 
 	if got, want := snapshot.App.Current, StateReconnect; got != want {
 		t.Fatalf("snapshot.App.Current = %q, want %q", got, want)
@@ -172,8 +172,8 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 		t.Fatalf("snapshot.Interaction.Running.SpinnerFrame = %d, want %d", got, want)
 	}
 
-	if got, want := snapshot.Interaction.SessionHistory[0].SQL, "select 1"; got != want {
-		t.Fatalf("snapshot.Interaction.SessionHistory[0].SQL = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.SessionHistory[0].Statement, "select 1"; got != want {
+		t.Fatalf("snapshot.Interaction.SessionHistory[0].Statement = %q, want %q", got, want)
 	}
 
 	if got, want := snapshot.Interaction.HistorySearch.Filter, "sel"; got != want {
@@ -228,20 +228,20 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 		t.Fatalf("snapshot.Interaction.LatestResult.InlineResult.Rows[0].Values[0] = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Interaction.PendingModeSwitch.ToMode, ModeResultsPane; got != want {
-		t.Fatalf("snapshot.Interaction.PendingModeSwitch.ToMode = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.PendingPaneSwitch.ToPane, PaneResultsPane; got != want {
+		t.Fatalf("snapshot.Interaction.PendingPaneSwitch.ToPane = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Interaction.PendingModeSwitch.ResultContext.Statement, "select * from widgets"; got != want {
-		t.Fatalf("snapshot.Interaction.PendingModeSwitch.ResultContext.Statement = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.PendingPaneSwitch.ResultContext.Statement, "select * from widgets"; got != want {
+		t.Fatalf("snapshot.Interaction.PendingPaneSwitch.ResultContext.Statement = %q, want %q", got, want)
 	}
 
-	if got, want := string(snapshot.Interaction.PendingModeSwitch.ResultContext.PreservedResult.Rows[0].Values[0].Value.([]byte)), "abc"; got != want {
-		t.Fatalf("snapshot.Interaction.PendingModeSwitch.ResultContext.PreservedResult.Rows[0].Values[0] = %q, want %q", got, want)
+	if got, want := string(snapshot.Interaction.PendingPaneSwitch.ResultContext.PreservedResult.Rows[0].Values[0].Value.([]byte)), "abc"; got != want {
+		t.Fatalf("snapshot.Interaction.PendingPaneSwitch.ResultContext.PreservedResult.Rows[0].Values[0] = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Interaction.SelectedHistoryEntry.SQL, "select * from widgets"; got != want {
-		t.Fatalf("snapshot.Interaction.SelectedHistoryEntry.SQL = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.SelectedHistoryEntry.Statement, "select * from widgets"; got != want {
+		t.Fatalf("snapshot.Interaction.SelectedHistoryEntry.Statement = %q, want %q", got, want)
 	}
 }
 

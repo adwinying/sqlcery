@@ -43,7 +43,7 @@ func (m *Model) restoreSelectedHistoryEntry() {
 		return
 	}
 
-	m.command.SetEditorValue(selected.SQL)
+	m.command.SetEditorValue(selected.Statement)
 	m.syncCurrentSQL()
 	m.closeHistorySearch()
 	m.state.SetPendingIntent(IntentNone, "history", "Restored selected history entry into the editor.")
@@ -181,7 +181,7 @@ func renderHistorySearch(interaction InteractionState) string {
 	scrollOffset := max(0, selected-historySearchPreviewRows+1)
 	viewEnd := min(len(matches), scrollOffset+historySearchPreviewRows)
 	for i := scrollOffset; i < viewEnd; i++ {
-		display := historySearchDisplaySQL(matches[i].SQL)
+		display := historySearchDisplaySQL(matches[i].Statement)
 		var line string
 		if i == selected {
 			line = appTheme.panelSelected.Render("> " + display)
@@ -210,7 +210,7 @@ func historySearchStatus(interaction InteractionState) string {
 	}
 
 	selected := matches[wrapHistorySearchIndex(search.SelectedIndex, len(matches))]
-	return fmt.Sprintf("History search matched %d entries; selected %q.", len(matches), historySearchDisplaySQL(selected.SQL))
+	return fmt.Sprintf("History search matched %d entries; selected %q.", len(matches), historySearchDisplaySQL(selected.Statement))
 }
 
 func filterHistorySearchEntries(entries []HistoryEntryContext, filter string) []HistoryEntryContext {
@@ -231,7 +231,7 @@ func rankHistorySearchEntries(entries []HistoryEntryContext, filter string) []hi
 		// Collapse whitespace so entries that render identically in the popup
 		// dedupe to a single row; the original SQL is preserved on the entry
 		// and restored verbatim when the user picks it.
-		key := historySearchDisplaySQL(entry.SQL)
+		key := historySearchDisplaySQL(entry.Statement)
 		if _, ok := seen[key]; ok {
 			continue
 		}
@@ -242,7 +242,7 @@ func rankHistorySearchEntries(entries []HistoryEntryContext, filter string) []hi
 			continue
 		}
 
-		score, ok := fuzzyHistoryMatch(trimmed, entry.SQL)
+		score, ok := fuzzyHistoryMatch(trimmed, entry.Statement)
 		if !ok {
 			continue
 		}

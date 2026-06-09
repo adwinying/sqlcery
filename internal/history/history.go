@@ -20,7 +20,7 @@ const (
 )
 
 type Entry struct {
-	SQL            string
+	Statement      string
 	ConnectionName string
 	ExecutedAt     time.Time
 	ResultSummary  string
@@ -94,11 +94,11 @@ func LoadFromFile(path string, connectionName string) ([]Entry, error) {
 	seen := make(map[string]struct{}, len(filtered))
 	deduped := make([]Entry, 0, len(filtered))
 	for i := len(filtered) - 1; i >= 0; i-- {
-		cmd := filtered[i].SQL
-		if _, ok := seen[cmd]; ok {
+		statement := filtered[i].Statement
+		if _, ok := seen[statement]; ok {
 			continue
 		}
-		seen[cmd] = struct{}{}
+		seen[statement] = struct{}{}
 		deduped = append(deduped, filtered[i])
 	}
 
@@ -134,7 +134,7 @@ func readAuditLogFile(path string) ([]Entry, error) {
 			continue // skip malformed lines
 		}
 		entries = append(entries, Entry{
-			SQL:            pe.Statement,
+			Statement:      pe.Statement,
 			ConnectionName: pe.Connection,
 			ExecutedAt:     pe.Time,
 			ResultSummary:  pe.Result,
@@ -153,7 +153,7 @@ func DefaultPath() (string, error) {
 }
 
 func (s *History) Append(entry Entry) error {
-	if s == nil || strings.TrimSpace(entry.SQL) == "" {
+	if s == nil || strings.TrimSpace(entry.Statement) == "" {
 		return nil
 	}
 
@@ -216,7 +216,7 @@ type persistedEntry struct {
 
 func newPersistedEntry(entry Entry) persistedEntry {
 	return persistedEntry{
-		Statement:  strings.TrimRight(entry.SQL, "\n"),
+		Statement:  strings.TrimRight(entry.Statement, "\n"),
 		Connection: entry.ConnectionName,
 		Time:       entry.ExecutedAt,
 		Result:     boundResultSummary(entry.ResultSummary),
@@ -244,7 +244,7 @@ func boundResultSummary(value string) string {
 }
 
 func (s auditLogStore) Append(entry Entry) error {
-	if strings.TrimSpace(entry.SQL) == "" {
+	if strings.TrimSpace(entry.Statement) == "" {
 		return nil
 	}
 

@@ -13,21 +13,21 @@ type sqliteMetadata struct {
 }
 
 func (m sqliteMetadata) Tables(ctx context.Context, filter TableFilter) ([]Table, error) {
-	schemas, err := m.schemas(ctx, filter.Namespace)
+	namespaces, err := m.namespaces(ctx, filter.Namespace)
 	if err != nil {
 		return nil, err
 	}
 
 	tables := make([]Table, 0)
-	for _, schema := range schemas {
+	for _, namespace := range namespaces {
 		query := fmt.Sprintf(
 			"SELECT name, type FROM %s WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%%' ORDER BY name",
-			SQLiteDialect().QuoteIdentifier(schema, "sqlite_schema"),
+			SQLiteDialect().QuoteIdentifier(namespace, "sqlite_schema"),
 		)
 
 		rows, err := m.runner.QueryContext(ctx, query)
 		if err != nil {
-			return nil, fmt.Errorf("list sqlite tables for schema %q: %w", schema, err)
+			return nil, fmt.Errorf("list sqlite tables for namespace %q: %w", namespace, err)
 		}
 
 		for rows.Next() {
@@ -38,12 +38,12 @@ func (m sqliteMetadata) Tables(ctx context.Context, filter TableFilter) ([]Table
 				return nil, fmt.Errorf("scan sqlite table metadata: %w", err)
 			}
 
-			tables = append(tables, Table{Namespace: schema, Name: name, Type: kind})
+			tables = append(tables, Table{Namespace: namespace, Name: name, Type: kind})
 		}
 
 		if err := rows.Err(); err != nil {
 			_ = rows.Close()
-			return nil, fmt.Errorf("iterate sqlite tables for schema %q: %w", schema, err)
+			return nil, fmt.Errorf("iterate sqlite tables for namespace %q: %w", namespace, err)
 		}
 
 		if err := rows.Close(); err != nil {
@@ -104,15 +104,15 @@ func (sqliteMetadata) Types(context.Context) ([]TypeInfo, error) {
 }
 
 func (m sqliteMetadata) tableInfo(ctx context.Context, table TableRef) ([]sqliteColumnInfo, string, error) {
-	schema := strings.TrimSpace(table.Namespace)
-	if schema == "" {
-		schema = "main"
+	namespace := strings.TrimSpace(table.Namespace)
+	if namespace == "" {
+		namespace = "main"
 	}
 
-	query := fmt.Sprintf("PRAGMA %s.table_info(%s)", SQLiteDialect().QuoteIdentifier(schema), sqliteStringLiteral(table.Name))
+	query := fmt.Sprintf("PRAGMA %s.table_info(%s)", SQLiteDialect().QuoteIdentifier(namespace), sqliteStringLiteral(table.Name))
 	rows, err := m.runner.QueryContext(ctx, query)
 	if err != nil {
-		return nil, schema, fmt.Errorf("list sqlite columns for %s: %w", SQLiteDialect().QuoteIdentifier(schema, table.Name), err)
+		return nil, namespace, fmt.Errorf("list sqlite columns for %s: %w", SQLiteDialect().QuoteIdentifier(namespace, table.Name), err)
 	}
 	defer rows.Close()
 
@@ -126,7 +126,7 @@ func (m sqliteMetadata) tableInfo(ctx context.Context, table TableRef) ([]sqlite
 		var primaryKey int
 
 		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			return nil, schema, fmt.Errorf("scan sqlite column metadata: %w", err)
+			return nil, namespace, fmt.Errorf("scan sqlite column metadata: %w", err)
 		}
 
 		columns = append(columns, sqliteColumnInfo{
@@ -140,13 +140,13 @@ func (m sqliteMetadata) tableInfo(ctx context.Context, table TableRef) ([]sqlite
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, schema, fmt.Errorf("iterate sqlite columns for %s: %w", SQLiteDialect().QuoteIdentifier(schema, table.Name), err)
+		return nil, namespace, fmt.Errorf("iterate sqlite columns for %s: %w", SQLiteDialect().QuoteIdentifier(namespace, table.Name), err)
 	}
 
-	return columns, schema, nil
+	return columns, namespace, nil
 }
 
-func (m sqliteMetadata) schemas(ctx context.Context, explicit string) ([]string, error) {
+func (m sqliteMetadata) namespaces(ctx context.Context, explicit string) ([]string, error) {
 	if explicit = strings.TrimSpace(explicit); explicit != "" {
 		return []string{explicit}, nil
 	}
@@ -157,7 +157,7 @@ func (m sqliteMetadata) schemas(ctx context.Context, explicit string) ([]string,
 	}
 	defer rows.Close()
 
-	schemas := make([]string, 0)
+	namespaces := make([]string, 0)
 	for rows.Next() {
 		var seq int
 		var name string
@@ -166,14 +166,14 @@ func (m sqliteMetadata) schemas(ctx context.Context, explicit string) ([]string,
 			return nil, fmt.Errorf("scan sqlite database metadata: %w", err)
 		}
 
-		schemas = append(schemas, name)
+		namespaces = append(namespaces, name)
 	}
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate sqlite databases: %w", err)
 	}
 
-	return schemas, nil
+	return namespaces, nil
 }
 
 func nullStringPointer(value sql.NullString) *string {
