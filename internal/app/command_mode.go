@@ -43,7 +43,7 @@ type commandModeModel struct {
 	// dropdown: the menu is only allowed to appear when the most recent key
 	// event modified the editor buffer (printable characters, backspace,
 	// delete). Focus changes, pane switches, cursor movement, history recall,
-	// slash-command expansion, record-viewer compose and submit/clear flows
+	// slash-command expansion, Results Pane compose and submit/clear flows
 	// all reset it to false. The flag lifts the moment the user types the
 	// next character.
 	autocompleteOpenedByTyping bool
@@ -223,7 +223,7 @@ func (m *commandModeModel) Blur() {
 }
 
 // SetEditorValue replaces the editor buffer programmatically (history recall,
-// slash-command expansion, record-viewer compose) without marking the change
+// slash-command expansion, Results Pane compose) without marking the change
 // as a typing event, so the autocomplete menu stays closed until the user
 // types the next character.
 func (m *commandModeModel) SetEditorValue(value string) {
@@ -1030,7 +1030,7 @@ func renderInlineQueryResult(latest *LatestResultContext) string {
 	}
 
 	if len(result.Rows) == 0 {
-		lines = append(lines, appTheme.viewerEmpty.Render("(no rows)"))
+		lines = append(lines, appTheme.resultsPaneEmpty.Render("(no rows)"))
 	}
 
 	rowCount := len(result.Rows)

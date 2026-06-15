@@ -69,7 +69,7 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 			}},
 		},
 	})
-	state.SetViewerPage(1)
+	state.SetResultsPanePage(1)
 	state.SetSlashWizardContext(&SlashCommandWizardContext{
 		Step: SlashCommandWizardStepTarget,
 		Commands: []SlashCommandWizardCommand{{
@@ -156,8 +156,8 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 		t.Fatalf("snapshot.Interaction.Layout = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Interaction.ViewerPage, 1; got != want {
-		t.Fatalf("snapshot.Interaction.ViewerPage = %d, want %d", got, want)
+	if got, want := snapshot.Interaction.ResultsPanePage, 1; got != want {
+		t.Fatalf("snapshot.Interaction.ResultsPanePage = %d, want %d", got, want)
 	}
 
 	if got, want := snapshot.Interaction.Running.Label, "SQL"; got != want {
@@ -298,47 +298,47 @@ func TestSharedAppStateTransitions(t *testing.T) {
 	}
 }
 
-func TestSharedAppStateSetLatestResultContextResetsViewerPage(t *testing.T) {
+func TestSharedAppStateSetLatestResultContextResetsResultsPanePage(t *testing.T) {
 	state := NewSharedAppState()
-	state.SetViewerPage(3)
+	state.SetResultsPanePage(3)
 	state.SetLatestResultContext(&LatestResultContext{PreservedResult: &db.ResultSet{Rows: []db.ResultRow{{}}}})
 
-	if got, want := state.Interaction.ViewerPage, 0; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
+	if got, want := state.Interaction.ResultsPanePage, 0; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d", got, want)
 	}
 }
 
-func TestSharedAppStateSetViewerPageClampsToAvailableRows(t *testing.T) {
+func TestSharedAppStateSetResultsPanePageClampsToAvailableRows(t *testing.T) {
 	state := NewSharedAppState()
 	state.SetLatestResultContext(&LatestResultContext{PreservedResult: &db.ResultSet{Rows: make([]db.ResultRow, 305)}})
-	state.SetViewerPage(9)
+	state.SetResultsPanePage(9)
 
-	if got, want := state.Interaction.ViewerPage, 1; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
+	if got, want := state.Interaction.ResultsPanePage, 1; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d", got, want)
 	}
 
-	state.SetViewerPage(-2)
-	if got, want := state.Interaction.ViewerPage, 0; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
+	state.SetResultsPanePage(-2)
+	if got, want := state.Interaction.ResultsPanePage, 0; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d", got, want)
 	}
 }
 
-func TestSharedAppStateChangeViewerPageClampsToAvailableRows(t *testing.T) {
+func TestSharedAppStateChangeResultsPanePageClampsToAvailableRows(t *testing.T) {
 	state := NewSharedAppState()
 	state.SetLatestResultContext(&LatestResultContext{PreservedResult: &db.ResultSet{Rows: make([]db.ResultRow, 605)}})
 
-	state.ChangeViewerPage(1)
-	if got, want := state.Interaction.ViewerPage, 1; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
+	state.ChangeResultsPanePage(1)
+	if got, want := state.Interaction.ResultsPanePage, 1; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d", got, want)
 	}
 
-	state.ChangeViewerPage(10)
-	if got, want := state.Interaction.ViewerPage, 2; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
+	state.ChangeResultsPanePage(10)
+	if got, want := state.Interaction.ResultsPanePage, 2; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d", got, want)
 	}
 
-	state.ChangeViewerPage(-10)
-	if got, want := state.Interaction.ViewerPage, 0; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
+	state.ChangeResultsPanePage(-10)
+	if got, want := state.Interaction.ResultsPanePage, 0; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d", got, want)
 	}
 }

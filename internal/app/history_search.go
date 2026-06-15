@@ -228,7 +228,7 @@ func rankHistorySearchEntries(entries []HistoryEntryContext, filter string) []hi
 	seen := make(map[string]struct{}, len(entries))
 	for i := len(entries) - 1; i >= 0; i-- {
 		entry := entries[i]
-		// Collapse whitespace so entries that render identically in the popup
+		// Collapse whitespace so entries that render identically in the modal
 		// dedupe to a single row; the original SQL is preserved on the entry
 		// and restored verbatim when the user picks it.
 		key := historySearchDisplaySQL(entry.Statement)
@@ -332,7 +332,7 @@ func defaultHistorySearchQuery(value string) string {
 
 // historySearchDisplaySQL collapses runs of whitespace (including newlines) in
 // sql into single spaces so that every history entry renders as exactly one
-// visual row in the popup list. The original SQL is preserved separately and
+// visual row in the modal list. The original SQL is preserved separately and
 // restored into the editor unchanged when the entry is selected.
 func historySearchDisplaySQL(sql string) string {
 	return strings.Join(strings.Fields(sql), " ")

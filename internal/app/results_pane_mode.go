@@ -106,7 +106,7 @@ func (m *resultsPaneModeModel) renderEmptyState(subtitle string) string {
 	}
 	padStr := strings.Repeat(" ", leftPad)
 	for _, line := range logoLines {
-		centeredLogoLines = append(centeredLogoLines, padStr+appTheme.viewerEmptyLogo.Render(line))
+		centeredLogoLines = append(centeredLogoLines, padStr+appTheme.resultsPaneEmptyLogo.Render(line))
 	}
 
 	// Center the subtitle horizontally
@@ -115,7 +115,7 @@ func (m *resultsPaneModeModel) renderEmptyState(subtitle string) string {
 	if subLeftPad < 0 {
 		subLeftPad = 0
 	}
-	styledSubtitle := strings.Repeat(" ", subLeftPad) + appTheme.viewerEmptySubtitle.Render(subtitle)
+	styledSubtitle := strings.Repeat(" ", subLeftPad) + appTheme.resultsPaneEmptySubtitle.Render(subtitle)
 
 	// Build content block: logo + blank line + subtitle
 	contentLines := append(centeredLogoLines, "", styledSubtitle)
@@ -150,40 +150,40 @@ func (m *resultsPaneModeModel) View(interaction InteractionState) string {
 
 	// In split layout, show just the table with no metadata header
 	if interaction.Layout == LayoutSplit {
-		preparedPage := m.preparePage(result, interaction.ViewerPage, len(latest.SelectedRows) > 0)
+		preparedPage := m.preparePage(result, interaction.ResultsPanePage, len(latest.SelectedRows) > 0)
 		body := renderPreparedResultsPanePage(preparedPage, m.width, m.height, resultsPaneRenderState{
 			Active:          resultsPaneSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
 			SelectedRows:    selectedRowSet(latest.SelectedRows),
 			ColScrollOffset: m.colScrollOffset,
 		})
 		if body == "" {
-			body = appTheme.viewerEmpty.Render("(no visible rows)")
+			body = appTheme.resultsPaneEmpty.Render("(no visible rows)")
 		}
 		return body
 	}
 
-	page := resultsPanePageContextFor(interaction.ViewerPage, len(result.Rows))
+	page := resultsPanePageContextFor(interaction.ResultsPanePage, len(result.Rows))
 	header := []string{
-		appTheme.viewerTitle.Render("Results Pane"),
-		appTheme.viewerMeta.Render(fmt.Sprintf("Query: %s", summarizeResultsPaneStatement(latest.Statement, m.width))),
-		appTheme.viewerMeta.Render(fmt.Sprintf("Rows: %d  Columns: %d", len(result.Rows), len(result.Columns))),
-		appTheme.viewerMeta.Render(fmt.Sprintf("Page: %d/%d  Showing rows %s", page.Number, page.TotalPages, formatResultsPaneRowRange(page))),
+		appTheme.resultsPaneTitle.Render("Results Pane"),
+		appTheme.resultsPaneMeta.Render(fmt.Sprintf("Query: %s", summarizeResultsPaneStatement(latest.Statement, m.width))),
+		appTheme.resultsPaneMeta.Render(fmt.Sprintf("Rows: %d  Columns: %d", len(result.Rows), len(result.Columns))),
+		appTheme.resultsPaneMeta.Render(fmt.Sprintf("Page: %d/%d  Showing rows %s", page.Number, page.TotalPages, formatResultsPaneRowRange(page))),
 	}
 	if m.pendingAction == resultsPanePendingActionExport {
 		header = append(header, appTheme.warningNotice.Render(fmt.Sprintf("Command: %s", m.exportBuffer)))
 	}
 	if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
-		header = append(header, appTheme.viewerSelection.Render(fmt.Sprintf("Selected: %d", selectedCount)))
+		header = append(header, appTheme.resultsPaneSelection.Render(fmt.Sprintf("Selected: %d", selectedCount)))
 	}
 
-	preparedPage := m.preparePage(result, interaction.ViewerPage, len(latest.SelectedRows) > 0)
+	preparedPage := m.preparePage(result, interaction.ResultsPanePage, len(latest.SelectedRows) > 0)
 	body := renderPreparedResultsPanePage(preparedPage, m.width, m.height-len(header)-2, resultsPaneRenderState{
 		Active:          resultsPaneSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
 		SelectedRows:    selectedRowSet(latest.SelectedRows),
 		ColScrollOffset: m.colScrollOffset,
 	})
 	if body == "" {
-		body = appTheme.viewerEmpty.Render("(no visible rows)")
+		body = appTheme.resultsPaneEmpty.Render("(no visible rows)")
 	}
 
 	return strings.Join(append(header, "", body), "\n")
@@ -192,7 +192,7 @@ func (m *resultsPaneModeModel) View(interaction InteractionState) string {
 func (m resultsPaneModeModel) FooterHints(interaction InteractionState) string {
 	parts := []string{"Results Pane"}
 	if latest := interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
-		page := resultsPanePageContextFor(interaction.ViewerPage, len(latest.PreservedResult.Rows))
+		page := resultsPanePageContextFor(interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
 		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
 		if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
 			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
@@ -217,7 +217,7 @@ func (m resultsPaneModeModel) Footer(connectionName, dialect string, interaction
 		parts = append(parts, label)
 	}
 	if latest := interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
-		page := resultsPanePageContextFor(interaction.ViewerPage, len(latest.PreservedResult.Rows))
+		page := resultsPanePageContextFor(interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
 		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
 		if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
 			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
@@ -251,7 +251,7 @@ func (m *resultsPaneModeModel) syncSelection(interaction InteractionState) {
 		return
 	}
 
-	page := resultsPanePageContextFor(interaction.ViewerPage, len(result.Rows))
+	page := resultsPanePageContextFor(interaction.ResultsPanePage, len(result.Rows))
 	if m.selectedRow < page.StartRow-1 || m.selectedRow >= page.EndRow {
 		m.selectedRow = max(0, page.StartRow-1)
 	}
@@ -280,7 +280,7 @@ func (m *resultsPaneModeModel) preparePage(result *db.ResultSet, page int, showS
 func (m *resultsPaneModeModel) Navigate(msg tea.KeyPressMsg, interaction InteractionState) (int, bool) {
 	deltaRow, deltaColumn, ok := resultsPaneNavigationDelta(msg)
 	if !ok {
-		return interaction.ViewerPage, false
+		return interaction.ResultsPanePage, false
 	}
 
 	latest := interaction.LatestResult
@@ -288,7 +288,7 @@ func (m *resultsPaneModeModel) Navigate(msg tea.KeyPressMsg, interaction Interac
 		m.selectedRow = 0
 		m.selectedColumn = 0
 		m.selectionActive = false
-		return interaction.ViewerPage, true
+		return interaction.ResultsPanePage, true
 	}
 
 	m.syncSelection(interaction)
@@ -299,7 +299,7 @@ func (m *resultsPaneModeModel) Navigate(msg tea.KeyPressMsg, interaction Interac
 
 	// Update horizontal scroll offset to keep the selected column visible.
 	if deltaColumn != 0 {
-		preparedPage := m.preparePage(result, interaction.ViewerPage, false)
+		preparedPage := m.preparePage(result, interaction.ResultsPanePage, false)
 		m.colScrollOffset = resultsPaneColumnScrollOffset(m.colScrollOffset, m.selectedColumn, preparedPage.Widths, m.width)
 	}
 
@@ -356,7 +356,7 @@ func renderPreparedResultsPanePage(prepared *resultsPanePreparedPage, width, hei
 	}
 
 	if len(prepared.Rows) == 0 {
-		lines = append(lines, appTheme.viewerEmpty.Render("(no rows)"))
+		lines = append(lines, appTheme.resultsPaneEmpty.Render("(no rows)"))
 		return trimRenderedWidth(strings.Join(lines, "\n"), width)
 	}
 
@@ -388,7 +388,7 @@ func prepareResultsPanePage(result *db.ResultSet, page int, showSelectionMarker 
 		return &resultsPanePreparedPage{}
 	}
 
-	columns := viewerColumns(result.Columns)
+	columns := resultsPaneColumns(result.Columns)
 	pageRows, context := resultsPaneRowsForPage(result.Rows, page)
 	prepared := &resultsPanePreparedPage{
 		Key:     resultsPanePreparedPageKey{Result: result, Page: page, ShowSelectionMarker: showSelectionMarker},
@@ -530,7 +530,7 @@ func rowIndexSelectedSet(rows map[int]struct{}, row int) bool {
 	return ok
 }
 
-func viewerColumns(columns []db.ResultColumn) []resultsPaneColumn {
+func resultsPaneColumns(columns []db.ResultColumn) []resultsPaneColumn {
 	names := make([]resultsPaneColumn, 0, len(columns))
 	for i, column := range columns {
 		name := strings.TrimSpace(column.Name)

@@ -1296,7 +1296,7 @@ func TestModelUpdateModeSwitchPreservesLatestResultContext(t *testing.T) {
 	}
 }
 
-func TestModelUpdateNewResultResetsViewerPage(t *testing.T) {
+func TestModelUpdateNewResultResetsResultsPanePage(t *testing.T) {
 	adapter := openTestAdapter(t)
 	defer func() {
 		if err := adapter.Close(); err != nil {
@@ -1315,7 +1315,7 @@ func TestModelUpdateNewResultResetsViewerPage(t *testing.T) {
 
 	model := NewModel(Session{ConnectionName: "local", ConnectionType: "sqlite", Adapter: adapter})
 	model.state.SetReady("")
-	model.state.SetViewerPage(4)
+	model.state.SetResultsPanePage(4)
 	model.command.editor.SetValue("select id, name from widgets order by id;")
 	model.syncCurrentSQL()
 
@@ -1328,8 +1328,8 @@ func TestModelUpdateNewResultResetsViewerPage(t *testing.T) {
 	next, _ = model.Update(firstCommandMessageForTest[statementExecutedMsg](t, cmd))
 	model = next.(Model)
 
-	if got, want := model.state.Interaction.ViewerPage, 0; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
+	if got, want := model.state.Interaction.ResultsPanePage, 0; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d", got, want)
 	}
 }
 
@@ -1353,12 +1353,12 @@ func TestModelViewResultsPaneShowsPaginatedRows(t *testing.T) {
 			Rows:    rows,
 		},
 	})
-	model.state.SetViewerPage(1)
+	model.state.SetResultsPanePage(1)
 
 	// In REPL mode, Results Pane is not rendered in View();
 	// verify state instead.
-	if got, want := model.state.Interaction.ViewerPage, 1; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
+	if got, want := model.state.Interaction.ResultsPanePage, 1; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d", got, want)
 	}
 	if got, want := len(model.state.Interaction.LatestResult.PreservedResult.Rows), 305; got != want {
 		t.Fatalf("len(PreservedResult.Rows) = %d, want %d", got, want)
@@ -1381,8 +1381,8 @@ func TestModelUpdateCtrlDScrollsWithinPageInResultsPaneOnlyLayout(t *testing.T) 
 		},
 	})
 	// Start on page 0 (rows 1-300).
-	if got, want := model.state.Interaction.ViewerPage, 0; got != want {
-		t.Fatalf("initial state.Interaction.ViewerPage = %d, want %d", got, want)
+	if got, want := model.state.Interaction.ResultsPanePage, 0; got != want {
+		t.Fatalf("initial state.Interaction.ResultsPanePage = %d, want %d", got, want)
 	}
 
 	next, cmd := model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
@@ -1392,8 +1392,8 @@ func TestModelUpdateCtrlDScrollsWithinPageInResultsPaneOnlyLayout(t *testing.T) 
 		t.Fatalf("Update(ctrl+d) cmd = %#v, want nil", cmd)
 	}
 	// Page must NOT change — ctrl+d only scrolls within the current page.
-	if got, want := model.state.Interaction.ViewerPage, 0; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d (ctrl+d must not change page)", got, want)
+	if got, want := model.state.Interaction.ResultsPanePage, 0; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d (ctrl+d must not change page)", got, want)
 	}
 
 	// Repeated ctrl+d presses must not push past page boundary.
@@ -1401,8 +1401,8 @@ func TestModelUpdateCtrlDScrollsWithinPageInResultsPaneOnlyLayout(t *testing.T) 
 		next, _ = model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 		model = next.(Model)
 	}
-	if got, want := model.state.Interaction.ViewerPage, 0; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d after many ctrl+d presses", got, want)
+	if got, want := model.state.Interaction.ResultsPanePage, 0; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d after many ctrl+d presses", got, want)
 	}
 }
 
@@ -1418,7 +1418,7 @@ func TestModelUpdateCtrlUScrollsWithinPageInResultsPaneOnlyLayout(t *testing.T) 
 			Rows:    make([]db.ResultRow, 605),
 		},
 	})
-	model.state.SetViewerPage(2)
+	model.state.SetResultsPanePage(2)
 
 	next, cmd := model.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	model = next.(Model)
@@ -1427,8 +1427,8 @@ func TestModelUpdateCtrlUScrollsWithinPageInResultsPaneOnlyLayout(t *testing.T) 
 		t.Fatalf("Update(ctrl+u) cmd = %#v, want nil", cmd)
 	}
 	// Page must NOT change — ctrl+u only scrolls within the current page.
-	if got, want := model.state.Interaction.ViewerPage, 2; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d (ctrl+u must not change page)", got, want)
+	if got, want := model.state.Interaction.ResultsPanePage, 2; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d (ctrl+u must not change page)", got, want)
 	}
 
 	// Repeated ctrl+u presses must not push past page boundary.
@@ -1436,12 +1436,12 @@ func TestModelUpdateCtrlUScrollsWithinPageInResultsPaneOnlyLayout(t *testing.T) 
 		next, _ = model.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 		model = next.(Model)
 	}
-	if got, want := model.state.Interaction.ViewerPage, 2; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d after many ctrl+u presses", got, want)
+	if got, want := model.state.Interaction.ResultsPanePage, 2; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d after many ctrl+u presses", got, want)
 	}
 }
 
-func TestModelUpdateCtrlDScrollsOnlyWhenViewerFocusedInSplitLayout(t *testing.T) {
+func TestModelUpdateCtrlDScrollsOnlyWhenResultsPaneFocusedInSplitLayout(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
@@ -1452,24 +1452,24 @@ func TestModelUpdateCtrlDScrollsOnlyWhenViewerFocusedInSplitLayout(t *testing.T)
 			Rows:    make([]db.ResultRow, 605),
 		},
 	})
-	model.state.SetViewerPage(1)
+	model.state.SetResultsPanePage(1)
 	model.command.editor.SetValue("select 1;")
 	model.command.editor.CursorEnd()
 	model.syncCurrentSQL()
 
-	// Without Results Pane focus, ctrl+d must not affect the viewer page.
+	// Without Results Pane focus, ctrl+d must not affect the Results Pane page.
 	next, _ := model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	model = next.(Model)
-	if got, want := model.state.Interaction.ViewerPage, 1; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
+	if got, want := model.state.Interaction.ResultsPanePage, 1; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d", got, want)
 	}
 
 	// With Results Pane focus, ctrl+d scrolls within the current page — page must stay the same.
 	model.state.SetActivePane(PaneResultsPane)
 	next, _ = model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	model = next.(Model)
-	if got, want := model.state.Interaction.ViewerPage, 1; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d (ctrl+d must not change page)", got, want)
+	if got, want := model.state.Interaction.ResultsPanePage, 1; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d (ctrl+d must not change page)", got, want)
 	}
 }
 
@@ -1486,7 +1486,7 @@ func TestModelUpdateCtrlDDoesNotPageDuringHistorySearch(t *testing.T) {
 			Rows:    make([]db.ResultRow, 605),
 		},
 	})
-	model.state.SetViewerPage(1)
+	model.state.SetResultsPanePage(1)
 
 	next, cmd := model.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	model = next.(Model)
@@ -1494,8 +1494,8 @@ func TestModelUpdateCtrlDDoesNotPageDuringHistorySearch(t *testing.T) {
 	if cmd != nil {
 		t.Fatalf("Update(ctrl+d) cmd = %#v, want nil", cmd)
 	}
-	if got, want := model.state.Interaction.ViewerPage, 1; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
+	if got, want := model.state.Interaction.ResultsPanePage, 1; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d", got, want)
 	}
 	if got, want := model.state.Interaction.ActiveModal, ModalHistorySearch; got != want {
 		t.Fatalf("state.Interaction.ActiveModal = %q, want %q", got, want)
@@ -1524,29 +1524,29 @@ func TestModelUpdateArrowKeysNavigateResultsPaneSelectionAcrossPages(t *testing.
 		t.Fatalf("Update(right) cmd = %#v, want nil", cmd)
 	}
 	if got, want := model.resultsPane.selectedColumn, 1; got != want {
-		t.Fatalf("viewer.selectedColumn = %d, want %d", got, want)
+		t.Fatalf("resultsPane.selectedColumn = %d, want %d", got, want)
 	}
-	if got, want := model.state.Interaction.ViewerPage, 0; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
+	if got, want := model.state.Interaction.ResultsPanePage, 0; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d", got, want)
 	}
 
 	model.resultsPane.selectedRow = 299
 	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	model = next.(Model)
 	if got, want := model.resultsPane.selectedRow, 300; got != want {
-		t.Fatalf("viewer.selectedRow = %d, want %d", got, want)
+		t.Fatalf("resultsPane.selectedRow = %d, want %d", got, want)
 	}
-	if got, want := model.state.Interaction.ViewerPage, 1; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
+	if got, want := model.state.Interaction.ResultsPanePage, 1; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d", got, want)
 	}
 
 	next, _ = model.Update(tea.KeyPressMsg{Text: "k"})
 	model = next.(Model)
 	if got, want := model.resultsPane.selectedRow, 299; got != want {
-		t.Fatalf("viewer.selectedRow = %d, want %d", got, want)
+		t.Fatalf("resultsPane.selectedRow = %d, want %d", got, want)
 	}
-	if got, want := model.state.Interaction.ViewerPage, 0; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
+	if got, want := model.state.Interaction.ResultsPanePage, 0; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d", got, want)
 	}
 }
 
@@ -1648,11 +1648,11 @@ func TestModelUpdateNavigationIgnoredOutsideResultsPane(t *testing.T) {
 	next, cmd := model.Update(tea.KeyPressMsg{Text: "l"})
 	model = next.(Model)
 
-	if got, want := model.state.Interaction.ViewerPage, 0; got != want {
-		t.Fatalf("state.Interaction.ViewerPage = %d, want %d", got, want)
+	if got, want := model.state.Interaction.ResultsPanePage, 0; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d", got, want)
 	}
 	if got, want := model.resultsPane.selectedColumn, 0; got != want {
-		t.Fatalf("viewer.selectedColumn = %d, want %d", got, want)
+		t.Fatalf("resultsPane.selectedColumn = %d, want %d", got, want)
 	}
 	if got := model.command.Value(); !strings.Contains(got, "l") {
 		t.Fatalf("command.Value() = %q, want rune handled by command mode", got)
@@ -1779,7 +1779,7 @@ func TestModelUpdateLayoutSwitchesToResultsPaneOnlyAndClosesHistorySearch(t *tes
 	next, _ := model.Update(historyIntentMsg{})
 	model = next.(Model)
 
-	// Switch to viewer-only via the intent message (alt+1/alt+2 bindings have been removed)
+	// Switch to results-pane-only via the intent message (alt+1/alt+2 bindings have been removed)
 	next, _ = model.Update(switchLayoutIntentMsg{Layout: LayoutResultsPaneOnly})
 	model = next.(Model)
 
@@ -1795,12 +1795,12 @@ func TestModelUpdateLayoutSwitchesToResultsPaneOnlyAndClosesHistorySearch(t *tes
 	if model.state.Interaction.SelectedHistoryEntry != nil {
 		t.Fatalf("state.Interaction.SelectedHistoryEntry = %#v, want nil", model.state.Interaction.SelectedHistoryEntry)
 	}
-	if got, want := model.state.Status, "Switched to viewer only. Run a query that returns rows to populate the viewer."; got != want {
+	if got, want := model.state.Status, "Switched to results pane only. Run a query that returns rows to populate the Results Pane."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
 
-func TestModelUpdateLayoutSwitchesToCommandOnlyFromSplitViewerFocus(t *testing.T) {
+func TestModelUpdateLayoutSwitchesToCommandOnlyFromSplitResultsPaneFocus(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
@@ -2352,10 +2352,10 @@ func TestModelViewResultsPaneShowsWritePrompt(t *testing.T) {
 	next, _ = model.Update(tea.KeyPressMsg{Text: ":"})
 	model = next.(Model)
 	if got, want := model.resultsPane.pendingAction, resultsPanePendingActionExport; got != want {
-		t.Fatalf("viewer.pendingAction = %q, want %q", got, want)
+		t.Fatalf("resultsPane.pendingAction = %q, want %q", got, want)
 	}
 	if got, want := model.resultsPane.exportBuffer, ":"; got != want {
-		t.Fatalf("viewer.writeBuffer = %q, want %q", got, want)
+		t.Fatalf("resultsPane.writeBuffer = %q, want %q", got, want)
 	}
 	if got := model.state.Status; !strings.Contains(got, "Type :w") {
 		t.Fatalf("state.Status = %q, want to contain export guidance", got)

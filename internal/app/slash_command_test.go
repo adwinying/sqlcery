@@ -807,7 +807,7 @@ func TestModelSubmitNeedsTargetCommandWithoutArgOpensTableSelection(t *testing.T
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
-	// The popup should render with a simpler header (no step labels) and "esc close".
+	// The modal should render with a simpler header (no step labels) and "esc close".
 	view := model.View().Content
 	for _, want := range []string{"Choose a table for /select:", "> main.widgets", "esc close"} {
 		if !containsLine(view, want) {

@@ -866,7 +866,7 @@ func (m *Model) handleResultsPanePagingKey(msg tea.KeyPressMsg) bool {
 			return true
 		}
 		m.resultsPane.syncSelection(m.state.Interaction)
-		page := resultsPanePageContextFor(m.state.Interaction.ViewerPage, len(result.Rows))
+		page := resultsPanePageContextFor(m.state.Interaction.ResultsPanePage, len(result.Rows))
 		pageMinRow := page.StartRow - 1 // inclusive lower bound (0-indexed)
 		pageMaxRow := page.EndRow - 1   // inclusive upper bound (0-indexed)
 		scrollAmount := max(1, m.resultsPane.height/2)
@@ -876,20 +876,20 @@ func (m *Model) handleResultsPanePagingKey(msg tea.KeyPressMsg) bool {
 			m.resultsPane.selectedRow = max(m.resultsPane.selectedRow-scrollAmount, pageMinRow)
 		}
 		m.resultsPane.selectionActive = true
-		// Do not call SetViewerPage — the page must not change on scroll.
+		// Do not call SetResultsPanePage — the page must not change on scroll.
 		return true
 	}
 
 	// ctrl+p = prev page, ctrl+n = next page
-	previous := m.state.Interaction.ViewerPage
+	previous := m.state.Interaction.ResultsPanePage
 	if key == "ctrl+p" {
-		m.state.ChangeViewerPage(-1)
+		m.state.ChangeResultsPanePage(-1)
 	} else {
-		m.state.ChangeViewerPage(1)
+		m.state.ChangeResultsPanePage(1)
 	}
 
-	page := resultsPanePageContextFor(m.state.Interaction.ViewerPage, len(latest.PreservedResult.Rows))
-	if m.state.Interaction.ViewerPage == previous {
+	page := resultsPanePageContextFor(m.state.Interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
+	if m.state.Interaction.ResultsPanePage == previous {
 		if previous == 0 {
 			m.state.SetPendingIntent(IntentNone, "results-pane-page", fmt.Sprintf("Already at the first Results Pane page (%s).", formatResultsPaneRowRange(page)))
 			return true
@@ -914,7 +914,7 @@ func (m *Model) handleResultsPaneNavigationKey(msg tea.KeyPressMsg) bool {
 	}
 	m.resultsPane.pendingAction = resultsPanePendingActionNone
 
-	m.state.SetViewerPage(page)
+	m.state.SetResultsPanePage(page)
 	return true
 }
 
@@ -930,16 +930,16 @@ func (m *Model) handleResultsPaneSelectionKey(msg tea.KeyPressMsg) bool {
 
 	row, selected, handled := m.resultsPane.ToggleSelectedRow(&m.state.Interaction)
 	if !handled {
-		m.state.SetPendingIntent(IntentNone, "viewer-select", "Results Pane has no rows to select.")
+		m.state.SetPendingIntent(IntentNone, "results-pane-select", "Results Pane has no rows to select.")
 		return true
 	}
 
 	if selected {
-		m.state.SetPendingIntent(IntentNone, "viewer-select", fmt.Sprintf("Selected row %d (%d total).", row+1, len(m.state.Interaction.LatestResult.SelectedRows)))
+		m.state.SetPendingIntent(IntentNone, "results-pane-select", fmt.Sprintf("Selected row %d (%d total).", row+1, len(m.state.Interaction.LatestResult.SelectedRows)))
 		return true
 	}
 
-	m.state.SetPendingIntent(IntentNone, "viewer-select", fmt.Sprintf("Unselected row %d (%d total).", row+1, len(m.state.Interaction.LatestResult.SelectedRows)))
+	m.state.SetPendingIntent(IntentNone, "results-pane-select", fmt.Sprintf("Unselected row %d (%d total).", row+1, len(m.state.Interaction.LatestResult.SelectedRows)))
 	return true
 }
 
@@ -958,7 +958,7 @@ func (m *Model) handleResultsPaneComposeKey(msg tea.KeyPressMsg) bool {
 	case 'y':
 		if m.resultsPane.pendingAction != resultsPanePendingActionComposeInsert {
 			m.resultsPane.pendingAction = resultsPanePendingActionComposeInsert
-			m.state.SetPendingIntent(IntentNone, "viewer-compose", "Press y again to load INSERT for the selected row into command mode.")
+			m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Press y again to load INSERT for the selected row into command mode.")
 			return true
 		}
 		m.resultsPane.pendingAction = resultsPanePendingActionNone
@@ -973,7 +973,7 @@ func (m *Model) handleResultsPaneComposeKey(msg tea.KeyPressMsg) bool {
 	case 'd':
 		if m.resultsPane.pendingAction != resultsPanePendingActionComposeDelete {
 			m.resultsPane.pendingAction = resultsPanePendingActionComposeDelete
-			m.state.SetPendingIntent(IntentNone, "viewer-compose", "Press d again to load DELETE for the selected row into command mode.")
+			m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Press d again to load DELETE for the selected row into command mode.")
 			return true
 		}
 		m.resultsPane.pendingAction = resultsPanePendingActionNone
@@ -986,13 +986,13 @@ func (m *Model) handleResultsPaneComposeKey(msg tea.KeyPressMsg) bool {
 
 func (m *Model) composeResultsPaneInsert() bool {
 	if m.state.Interaction.LatestResult == nil || m.state.Interaction.LatestResult.PreservedResult == nil {
-		m.state.SetPendingIntent(IntentNone, "viewer-compose", "Results Pane has no rows to compose.")
+		m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Results Pane has no rows to compose.")
 		return true
 	}
 
 	result, err := composeResultsPaneInsertSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
 	if err != nil {
-		m.state.SetPendingIntent(IntentNone, "viewer-compose", fmt.Sprintf("Could not compose INSERT: %v", err))
+		m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose INSERT: %v", err))
 		return true
 	}
 
@@ -1003,20 +1003,20 @@ func (m *Model) composeResultsPaneInsert() bool {
 	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, PaneResultsPane))
 	m.state.SetActivePane(PaneCommand)
 	m.state.SetPendingPaneSwitch(nil)
-	m.state.SetPendingIntent(IntentNone, "viewer-compose", resultsPaneComposeStatus(result))
+	m.state.SetPendingIntent(IntentNone, "results-pane-compose", resultsPaneComposeStatus(result))
 	m.syncPaneSizes()
 	return true
 }
 
 func (m *Model) composeResultsPaneUpdate() bool {
 	if m.state.Interaction.LatestResult == nil || m.state.Interaction.LatestResult.PreservedResult == nil {
-		m.state.SetPendingIntent(IntentNone, "viewer-compose", "Results Pane has no rows to compose.")
+		m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Results Pane has no rows to compose.")
 		return true
 	}
 
 	result, err := composeResultsPaneUpdateSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
 	if err != nil {
-		m.state.SetPendingIntent(IntentNone, "viewer-compose", fmt.Sprintf("Could not compose UPDATE: %v", err))
+		m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose UPDATE: %v", err))
 		return true
 	}
 
@@ -1027,20 +1027,20 @@ func (m *Model) composeResultsPaneUpdate() bool {
 	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, PaneResultsPane))
 	m.state.SetActivePane(PaneCommand)
 	m.state.SetPendingPaneSwitch(nil)
-	m.state.SetPendingIntent(IntentNone, "viewer-compose", resultsPaneComposeStatus(result))
+	m.state.SetPendingIntent(IntentNone, "results-pane-compose", resultsPaneComposeStatus(result))
 	m.syncPaneSizes()
 	return true
 }
 
 func (m *Model) composeResultsPaneDelete() bool {
 	if m.state.Interaction.LatestResult == nil || m.state.Interaction.LatestResult.PreservedResult == nil {
-		m.state.SetPendingIntent(IntentNone, "viewer-compose", "Results Pane has no rows to compose.")
+		m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Results Pane has no rows to compose.")
 		return true
 	}
 
 	result, err := composeResultsPaneDeleteSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
 	if err != nil {
-		m.state.SetPendingIntent(IntentNone, "viewer-compose", fmt.Sprintf("Could not compose DELETE: %v", err))
+		m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose DELETE: %v", err))
 		return true
 	}
 
@@ -1051,7 +1051,7 @@ func (m *Model) composeResultsPaneDelete() bool {
 	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, PaneResultsPane))
 	m.state.SetActivePane(PaneCommand)
 	m.state.SetPendingPaneSwitch(nil)
-	m.state.SetPendingIntent(IntentNone, "viewer-compose", resultsPaneComposeStatus(result))
+	m.state.SetPendingIntent(IntentNone, "results-pane-compose", resultsPaneComposeStatus(result))
 	m.syncPaneSizes()
 	return true
 }
@@ -1668,7 +1668,7 @@ func (m *Model) applyLayoutSwitch(layout AppLayout) {
 			m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s with %d row(s) visible.", layoutLabel(layout), len(latest.PreservedResult.Rows)))
 			return
 		}
-		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s. Run a query that returns rows to populate the viewer.", layoutLabel(layout)))
+		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s. Run a query that returns rows to populate the Results Pane.", layoutLabel(layout)))
 	case LayoutSplit:
 		if m.state.Interaction.ActivePane == PaneResultsPane {
 			m.command.Blur()
@@ -1784,16 +1784,16 @@ func renderHelpSurface(st InteractionState) string {
 	}
 	sections = append(sections, helpSection{Title: "Command mode", Lines: commandLines})
 
-	viewerLines := []string{
+	resultsPaneLines := []string{
 		"arrows/hjkl move cell; space toggle selected row",
 		"yy/cc/dd load INSERT/UPDATE/DELETE into command mode",
 		":w [file] export selected rows or current result rows",
 		"ctrl+u/ctrl+d scroll; ctrl+p/ctrl+n page; ctrl+x focus command",
 	}
 	if st.SlashWizard != nil {
-		viewerLines = append(viewerLines, "slash wizard: enter confirm; ctrl+n/ctrl+p move; esc back or close")
+		resultsPaneLines = append(resultsPaneLines, "slash wizard: enter confirm; ctrl+n/ctrl+p move; esc back or close")
 	}
-	sections = append(sections, helpSection{Title: "Results Pane", Lines: viewerLines})
+	sections = append(sections, helpSection{Title: "Results Pane", Lines: resultsPaneLines})
 
 	if st.Layout == LayoutSplit {
 		var layoutLines []string
@@ -1855,7 +1855,7 @@ func layoutLabel(layout AppLayout) string {
 	case LayoutSplit:
 		return "split"
 	case LayoutResultsPaneOnly:
-		return "viewer only"
+		return "results pane only"
 	default:
 		return "command only"
 	}

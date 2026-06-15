@@ -275,11 +275,11 @@ func TestCommandModeViewRendersSlashWizard(t *testing.T) {
 			}},
 		},
 	}
-	popup := renderSlashWizard(query)
+	modal := renderSlashWizard(query)
 
 	for _, want := range []string{"Command wizard:", "Step 1/2: choose a slash command", "> /tables - list tables in the current database", "enter confirm | ctrl+n next | ctrl+p prev | esc close"} {
-		if !strings.Contains(popup, want) {
-			t.Fatalf("renderSlashWizard() = %q, want to contain %q", popup, want)
+		if !strings.Contains(modal, want) {
+			t.Fatalf("renderSlashWizard() = %q, want to contain %q", modal, want)
 		}
 	}
 }
@@ -293,11 +293,11 @@ func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 		},
 		SessionHistory: []HistoryEntryContext{{	Statement: "select * from user_sessions"}, {	Statement: "select * from users"}},
 	}
-	popup := renderHistorySearch(query)
+	modal := renderHistorySearch(query)
 
 	for _, want := range []string{"Reverse search:", "query> su", "2 match(es); newest first.", "> select * from users", "enter restore | ctrl+r older | ctrl+n newer | esc close"} {
-		if !strings.Contains(popup, want) {
-			t.Fatalf("renderHistorySearch() = %q, want to contain %q", popup, want)
+		if !strings.Contains(modal, want) {
+			t.Fatalf("renderHistorySearch() = %q, want to contain %q", modal, want)
 		}
 	}
 }
@@ -369,7 +369,7 @@ func TestCommandModeFooterShowsRunningIndicator(t *testing.T) {
 	}
 }
 
-func TestCommandModeFooterShowsViewerPagingWhenViewerFocusedInSplit(t *testing.T) {
+func TestCommandModeFooterShowsResultsPanePagingWhenResultsPaneFocusedInSplit(t *testing.T) {
 	mode := newCommandModeModel()
 	mode.SetSize(80, 20)
 	footer := mode.Footer("local", "sqlite", InteractionState{
@@ -384,7 +384,7 @@ func TestCommandModeFooterShowsViewerPagingWhenViewerFocusedInSplit(t *testing.T
 	}
 }
 
-func TestCommandModeFooterShowsSelectionCountFromViewerResult(t *testing.T) {
+func TestCommandModeFooterShowsSelectionCountFromResultsPaneResult(t *testing.T) {
 	mode := newCommandModeModel()
 	mode.SetSize(80, 20)
 	footer := mode.Footer("local", "sqlite", InteractionState{

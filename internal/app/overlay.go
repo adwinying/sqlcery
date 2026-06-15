@@ -57,31 +57,31 @@ func renderModal(content string, maxOuterWidth int) string {
 	return strings.Join(result, "\n")
 }
 
-// overlayCenter composites popup centered over bg.
+// overlayCenter composites modal centered over bg.
 // bgW and bgH are the visual dimensions of bg (width in columns, height in rows).
-// If the terminal is too small to fit the popup with at least one column of
+// If the terminal is too small to fit the modal with at least one column of
 // margin on each side, bg is returned unchanged as a fallback.
-func overlayCenter(bg, popup string, bgW, bgH int) string {
-	popupLines := strings.Split(popup, "\n")
-	popupH := len(popupLines)
+func overlayCenter(bg, modal string, bgW, bgH int) string {
+	modalLines := strings.Split(modal, "\n")
+	modalH := len(modalLines)
 
-	popupW := 0
-	for _, line := range popupLines {
-		if w := ansi.StringWidth(line); w > popupW {
-			popupW = w
+	modalW := 0
+	for _, line := range modalLines {
+		if w := ansi.StringWidth(line); w > modalW {
+			modalW = w
 		}
 	}
 
 	// Require at least one column of margin on each side and one row above/below.
-	if bgW < popupW+2 || bgH < popupH+2 {
+	if bgW < modalW+2 || bgH < modalH+2 {
 		return bg
 	}
 
-	startX := (bgW - popupW) / 2
-	startY := (bgH - popupH) / 2
+	startX := (bgW - modalW) / 2
+	startY := (bgH - modalH) / 2
 
 	bgLines := strings.Split(bg, "\n")
-	// Ensure we have enough rows to place the popup.
+	// Ensure we have enough rows to place the modal.
 	for len(bgLines) < bgH {
 		bgLines = append(bgLines, "")
 	}
@@ -89,12 +89,12 @@ func overlayCenter(bg, popup string, bgW, bgH int) string {
 	result := make([]string, len(bgLines))
 	copy(result, bgLines)
 
-	for i, popupLine := range popupLines {
+	for i, modalLine := range modalLines {
 		targetRow := startY + i
 		if targetRow < 0 || targetRow >= len(result) {
 			continue
 		}
-		result[targetRow] = overlayLine(result[targetRow], popupLine, startX, bgW)
+		result[targetRow] = overlayLine(result[targetRow], modalLine, startX, bgW)
 	}
 
 	return strings.Join(result, "\n")

@@ -14,8 +14,8 @@ const (
 	PaneResultsPane Pane = "results-pane"
 )
 
-// AppModal tracks which overlay modal is currently open. Orthogonal to
-// ActiveMode: a modal can be open while either pane has focus.
+// AppModal tracks which modal is currently open. Orthogonal to
+// ActivePane: a modal can be open while either pane has focus.
 type AppModal string
 
 const (
@@ -78,7 +78,7 @@ type InteractionState struct {
 	Layout               AppLayout
 	ActivePane           Pane
 	ActiveModal          AppModal
-	ViewerPage           int
+	ResultsPanePage      int
 	SessionHistory       []HistoryEntryContext
 	HistorySearch        *HistorySearchContext
 	AutocompleteSchema   *AutocompleteSchemaContext
@@ -173,9 +173,9 @@ func NewSharedAppState() SharedAppState {
 			Current: StateStartup,
 		},
 		Interaction: InteractionState{
-			Layout:     LayoutSplit,
-			ActivePane: PaneCommand,
-			ViewerPage: 0,
+			Layout:          LayoutSplit,
+			ActivePane:      PaneCommand,
+			ResultsPanePage: 0,
 		},
 		Status: "Starting SQLcery.",
 	}
@@ -267,15 +267,15 @@ func (s *SharedAppState) SetHistorySearchContext(context *HistorySearchContext) 
 
 func (s *SharedAppState) SetLatestResultContext(context *LatestResultContext) {
 	s.Interaction.LatestResult = cloneLatestResultContext(context)
-	s.Interaction.ViewerPage = 0
+	s.Interaction.ResultsPanePage = 0
 }
 
-func (s *SharedAppState) SetViewerPage(page int) {
-	s.Interaction.ViewerPage = clampResultsPanePage(page, resultsPaneRowCount(s.Interaction.LatestResult))
+func (s *SharedAppState) SetResultsPanePage(page int) {
+	s.Interaction.ResultsPanePage = clampResultsPanePage(page, resultsPaneRowCount(s.Interaction.LatestResult))
 }
 
-func (s *SharedAppState) ChangeViewerPage(delta int) {
-	s.SetViewerPage(s.Interaction.ViewerPage + delta)
+func (s *SharedAppState) ChangeResultsPanePage(delta int) {
+	s.SetResultsPanePage(s.Interaction.ResultsPanePage + delta)
 }
 
 func (s *SharedAppState) SetSlashWizardContext(context *SlashCommandWizardContext) {
