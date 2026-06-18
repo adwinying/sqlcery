@@ -297,10 +297,10 @@ func (m *resultsPaneModeModel) Navigate(msg tea.KeyPressMsg, interaction Interac
 	m.selectedColumn = min(max(m.selectedColumn+deltaColumn, 0), len(result.Columns)-1)
 	m.selectionActive = true
 
-	// Update horizontal scroll offset to keep the selected column visible.
+	// Edge-lock: cursor is always the leftmost visible column, so every
+	// horizontal navigation press immediately scrolls the viewport.
 	if deltaColumn != 0 {
-		preparedPage := m.preparePage(result, interaction.ResultsPanePage, false)
-		m.colScrollOffset = resultsPaneColumnScrollOffset(m.colScrollOffset, m.selectedColumn, preparedPage.Widths, m.width)
+		m.colScrollOffset = m.selectedColumn
 	}
 
 	return clampResultsPanePage(m.selectedRow/resultsPanePageSize, len(result.Rows)), true
@@ -687,49 +687,3 @@ func trimRenderedWidth(value string, width int) string {
 	return strings.Join(lines, "\n")
 }
 
-// resultsPaneColumnScrollOffset computes a new column scroll offset that ensures
-// the selected column is visible within the given display width.
-// It returns the smallest offset such that the selected column fits within the viewport.
-func resultsPaneColumnScrollOffset(current, selectedColumn int, widths []int, viewWidth int) int {
-	if len(widths) == 0 || viewWidth <= 0 {
-		return 0
-	}
-
-	// Clamp current offset.
-	if current < 0 {
-		current = 0
-	}
-	if current >= len(widths) {
-		current = len(widths) - 1
-	}
-
-	// If selected column is to the left of the offset, scroll left.
-	if selectedColumn < current {
-		return selectedColumn
-	}
-
-	// Find the rightmost column offset such that selected column is still visible.
-	// Walk from current offset forward and measure how many columns fit.
-	offset := current
-	for {
-		// Measure total width of columns from offset to selectedColumn (inclusive).
-		totalWidth := 0
-		for i := offset; i <= selectedColumn && i < len(widths); i++ {
-			if i > offset {
-				totalWidth += 3 // " | " separator
-			}
-			totalWidth += widths[i]
-		}
-		if totalWidth <= viewWidth {
-			break
-		}
-		// Selected column doesn't fit; advance offset by one.
-		offset++
-		if offset >= selectedColumn {
-			offset = selectedColumn
-			break
-		}
-	}
-
-	return offset
-}

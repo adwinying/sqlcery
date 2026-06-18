@@ -647,6 +647,54 @@ func TestResultsPaneTableTruncatesMultilineValues(t *testing.T) {
 	}
 }
 
+func TestResultsPaneModeNavigateEdgeLockScrollsOnEveryHorizontalPress(t *testing.T) {
+	mode := newResultsPaneModeModel()
+	mode.SetSize(20, 8)
+
+	query := InteractionState{
+		LatestResult: &LatestResultContext{
+			PreservedResult: &db.ResultSet{
+				Columns: []db.ResultColumn{{Name: "id"}, {Name: "name"}, {Name: "email"}, {Name: "age"}},
+				Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}, {Kind: db.ValueKindString, Value: "Ada"}, {Kind: db.ValueKindString, Value: "ada@example.com"}, {Kind: db.ValueKindInteger, Value: int64(30)}}}},
+			},
+		},
+	}
+
+	// First right press from col 0 must immediately advance the viewport.
+	mode.Navigate(tea.KeyPressMsg{Code: tea.KeyRight}, query)
+	if got, want := mode.selectedColumn, 1; got != want {
+		t.Fatalf("selectedColumn after 1st right = %d, want %d", got, want)
+	}
+	if got, want := mode.colScrollOffset, 1; got != want {
+		t.Fatalf("colScrollOffset after 1st right = %d, want %d (edge-lock: no dead zone)", got, want)
+	}
+
+	// Second right press advances again.
+	mode.Navigate(tea.KeyPressMsg{Code: tea.KeyRight}, query)
+	if got, want := mode.colScrollOffset, 2; got != want {
+		t.Fatalf("colScrollOffset after 2nd right = %d, want %d", got, want)
+	}
+
+	// Left press immediately scrolls back.
+	mode.Navigate(tea.KeyPressMsg{Text: "h"}, query)
+	if got, want := mode.selectedColumn, 1; got != want {
+		t.Fatalf("selectedColumn after left = %d, want %d", got, want)
+	}
+	if got, want := mode.colScrollOffset, 1; got != want {
+		t.Fatalf("colScrollOffset after left = %d, want %d (edge-lock: immediate scroll back)", got, want)
+	}
+
+	// Pressing left at col 0 clamps cursor and does not underflow offset.
+	mode.Navigate(tea.KeyPressMsg{Text: "h"}, query) // back to col 0
+	mode.Navigate(tea.KeyPressMsg{Text: "h"}, query) // attempt to go left of col 0
+	if got, want := mode.selectedColumn, 0; got != want {
+		t.Fatalf("selectedColumn after clamped left = %d, want %d", got, want)
+	}
+	if got, want := mode.colScrollOffset, 0; got != want {
+		t.Fatalf("colScrollOffset after clamped left = %d, want %d", got, want)
+	}
+}
+
 func BenchmarkResultsPaneModeViewLargePage(b *testing.B) {
 	mode := newResultsPaneModeModel()
 	mode.SetSize(140, 24)
