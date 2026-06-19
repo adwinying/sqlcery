@@ -48,7 +48,6 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 	state.SetLatestResultContext(&LatestResultContext{
 		Statement:           "select * from widgets",
 		OriginPane:          PaneCommand,
-		SelectedRows:        []int{1, 301},
 		StatementKind:       db.StatementResultKindQuery,
 		RowsAffected:        cloneInt64Pointer(int64PointerForTest(3)),
 		LastInsertID:        cloneInt64Pointer(int64PointerForTest(9)),
@@ -68,6 +67,7 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 			}},
 		},
 	})
+	state.SetMarkedRows([]int{1, 301})
 	state.SetResultsPanePage(1)
 	state.SetPendingPaneSwitch(&PaneSwitchContext{
 		FromLayout:    LayoutSplit,
@@ -92,7 +92,7 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 	state.Interaction.AutocompleteSchema.Tables[0].Name = "changed"
 	state.Interaction.AutocompleteSchema.Tables[0].Columns[0] = "changed"
 	state.Interaction.LatestResult.Statement = "mutated"
-	state.Interaction.LatestResult.SelectedRows[0] = 999
+	state.Interaction.MarkedRows[0] = 999
 	state.Interaction.PendingPaneSwitch.ToPane = PaneCommand
 	state.Interaction.PendingPaneSwitch.ResultContext.Statement = "mutated switch"
 	*state.Interaction.LatestResult.RowsAffected = 99
@@ -166,8 +166,8 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 		t.Fatalf("snapshot.Interaction.LatestResult.Statement = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Interaction.LatestResult.SelectedRows, []int{1, 301}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
-		t.Fatalf("snapshot.Interaction.LatestResult.SelectedRows = %#v, want %#v", got, want)
+	if got, want := snapshot.Interaction.MarkedRows, []int{1, 301}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("snapshot.Interaction.MarkedRows = %#v, want %#v", got, want)
 	}
 
 	if snapshot.Interaction.LatestResult.RowsAffected == nil || *snapshot.Interaction.LatestResult.RowsAffected != 3 {

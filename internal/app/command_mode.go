@@ -73,6 +73,25 @@ type commandModeKeyMap struct {
 	ScrollTranscriptDown key.Binding
 }
 
+// defaultCommandModeKeys returns the fixed key bindings used by command mode
+// and modals. Modals call this directly rather than reading from a model instance.
+func defaultCommandModeKeys() commandModeKeyMap {
+	return commandModeKeyMap{
+		Submit:               key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit")),
+		Cancel:               key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
+		Help:                 key.NewBinding(key.WithKeys("alt+h"), key.WithHelp("alt+h", "help")),
+		History:              key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "history")),
+		RestoreHistory:       key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restore")),
+		SwitchMode:           key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "focus")),
+		LayoutCommandOnly:    key.NewBinding(key.WithKeys("ctrl+3"), key.WithHelp("ctrl+3", "command")),
+		AcceptSuggestion:     key.NewBinding(key.WithKeys("tab", "ctrl+y"), key.WithHelp("tab/ctrl+y", "accept")),
+		NextSuggestion:       key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "next suggestion")),
+		PrevSuggestion:       key.NewBinding(key.WithKeys("ctrl+p"), key.WithHelp("ctrl+p", "prev suggestion")),
+		ScrollTranscriptUp:   key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "scroll up")),
+		ScrollTranscriptDown: key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "scroll down")),
+	}
+}
+
 func newCommandModeModel() commandModeModel {
 	editor := textarea.New()
 	editor.Prompt = "> "
@@ -87,20 +106,7 @@ func newCommandModeModel() commandModeModel {
 		highlighter: newSQLSyntaxHighlighter(),
 		innerWidth:  defaultEditorWidth,
 		innerHeight: 1,
-		keys: commandModeKeyMap{
-			Submit:               key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit")),
-			Cancel:               key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
-			Help:                 key.NewBinding(key.WithKeys("alt+h"), key.WithHelp("alt+h", "help")),
-			History:              key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "history")),
-			RestoreHistory:       key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restore")),
-			SwitchMode:           key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "focus")),
-			LayoutCommandOnly:    key.NewBinding(key.WithKeys("ctrl+3"), key.WithHelp("ctrl+3", "command")),
-			AcceptSuggestion:     key.NewBinding(key.WithKeys("tab", "ctrl+y"), key.WithHelp("tab/ctrl+y", "accept")),
-			NextSuggestion:       key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "next suggestion")),
-			PrevSuggestion:       key.NewBinding(key.WithKeys("ctrl+p"), key.WithHelp("ctrl+p", "prev suggestion")),
-			ScrollTranscriptUp:   key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "scroll up")),
-			ScrollTranscriptDown: key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "scroll down")),
-		},
+		keys:        defaultCommandModeKeys(),
 	}
 }
 
@@ -287,10 +293,8 @@ func (m commandModeModel) Footer(connectionName, dialect string, interaction Int
 		parts = append(parts, label)
 	}
 
-	if latest := interaction.LatestResult; latest != nil {
-		if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
-			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
-		}
+	if selectedCount := len(interaction.MarkedRows); selectedCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
 	}
 
 	parts = append(parts, fmt.Sprintf("line %d col %d", m.editor.Line()+1, m.editor.LineInfo().ColumnOffset+1))

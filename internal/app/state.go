@@ -80,6 +80,7 @@ type InteractionState struct {
 	ActivePane         Pane
 	ActiveModal        AppModal
 	ResultsPanePage    int
+	MarkedRows         []int
 	History            []HistoryEntryContext
 	AutocompleteSchema *AutocompleteSchemaContext
 	LatestResult       *LatestResultContext
@@ -139,7 +140,6 @@ type LatestResultContext struct {
 	OriginPane          Pane
 	PreservedResult     *db.ResultSet
 	InlineResult        *db.ResultSet
-	SelectedRows        []int
 	StatementKind       db.StatementResultKind
 	RowsAffected        *int64
 	LastInsertID        *int64
@@ -257,6 +257,19 @@ func (s *SharedAppState) SetHistory(entries []HistoryEntryContext) {
 func (s *SharedAppState) SetLatestResultContext(context *LatestResultContext) {
 	s.Interaction.LatestResult = cloneLatestResultContext(context)
 	s.Interaction.ResultsPanePage = 0
+	s.Interaction.MarkedRows = nil
+}
+
+func (s *SharedAppState) SetMarkedRows(rows []int) {
+	if len(rows) == 0 {
+		s.Interaction.MarkedRows = nil
+		return
+	}
+	s.Interaction.MarkedRows = append([]int(nil), rows...)
+}
+
+func (s *SharedAppState) ClearMarkedRows() {
+	s.Interaction.MarkedRows = nil
 }
 
 func (s *SharedAppState) SetResultsPanePage(page int) {
@@ -286,6 +299,7 @@ func (q InteractionState) snapshot() InteractionState {
 	clone.AutocompleteSchema = cloneAutocompleteSchemaContext(q.AutocompleteSchema)
 	clone.LatestResult = cloneLatestResultContext(q.LatestResult)
 	clone.PendingPaneSwitch = clonePaneSwitchContext(q.PendingPaneSwitch)
+	clone.MarkedRows = append([]int(nil), q.MarkedRows...)
 	return clone
 }
 
@@ -312,7 +326,6 @@ func cloneLatestResultContext(context *LatestResultContext) *LatestResultContext
 	clone := *context
 	clone.PreservedResult = cloneResultSet(context.PreservedResult)
 	clone.InlineResult = cloneResultSet(context.InlineResult)
-	clone.SelectedRows = append([]int(nil), context.SelectedRows...)
 	clone.RowsAffected = cloneInt64Pointer(context.RowsAffected)
 	clone.LastInsertID = cloneInt64Pointer(context.LastInsertID)
 	return &clone

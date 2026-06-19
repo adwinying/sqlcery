@@ -142,200 +142,15 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		if m.state.App.Current != StateReady {
-			switch msg.String() {
-			case "ctrl+c":
-				return m, tea.Quit
-			}
-			return m, nil
-		}
-
-		if m.modal != nil {
-			if msg.String() != "ctrl+c" {
-				m.pendingQuit = false
-			}
-			return m, m.modal.HandleKey(msg, &m)
-		}
-
-		if msg.String() != "ctrl+c" {
-			m.pendingQuit = false
-		}
-
-		if m.handleResultsPaneNavigationKey(msg) {
-			return m, nil
-		}
-
-		if m.handleResultsPaneExportKey(msg) {
-			return m, nil
-		}
-
-		if m.handleResultsPaneSelectionKey(msg) {
-			return m, nil
-		}
-
-		if m.handleResultsPaneComposeKey(msg) {
-			return m, nil
-		}
-
-		if m.handleResultsPanePagingKey(msg) {
-			return m, nil
-		}
-
-		if cmd := m.handleKey(msg); cmd != nil {
-			return m, cmd
-		}
-
-		switch msg.String() {
-		case "ctrl+c":
-			// If in command mode with text, clear the input
-			if m.state.App.Current == StateReady && m.command.Focused() && strings.TrimSpace(m.command.Value()) != "" {
-				m.pendingQuit = false
-				return m, func() tea.Msg { return clearInputIntentMsg{} }
-			}
-			// Double ctrl-c to quit: first press shows hint, second press exits
-			if m.pendingQuit {
-				return m, tea.Quit
-			}
-			m.pendingQuit = true
-			m.state.SetPendingIntent(IntentNone, "quit", "Press ctrl+c again to exit.")
-			return m, nil
-		case "q":
-			if !m.command.Focused() {
-				return m, tea.Quit
-			}
-		}
+		return m.handleKeyPressMsg(msg)
 	case submitIntentMsg:
-		if running := m.state.Interaction.Running; running != nil {
-			m.state.SetPendingIntent(IntentSubmit, "submit", fmt.Sprintf("%s is still running. Press esc to cancel; timeout after %s.", runningLabel(running), formatExecutionTimeout(defaultInteractiveExecutionTimeout)))
-			return m, nil
-		}
-
-		m.syncCurrentSQL()
-		submittedSQL := m.state.Interaction.CurrentSQL
-		if strings.TrimSpace(submittedSQL) == "" {
-			m.state.SetRunningStatementContext(nil)
-			m.state.SetReady("")
-			m.state.SetPendingIntent(IntentSubmit, "submit", "Submit requested with empty input.")
-			return m, nil
-		}
-
-		parsedSlash, err := parseSlashCommand(submittedSQL)
-		if err != nil {
-			m.state.SetRunningStatementContext(nil)
-			m.state.SetReady("")
-			m.state.SetPendingIntent(IntentNone, "submit", fmt.Sprintf("Slash command parse failed: %v", err))
-			m.state.SetLatestResultContext(nil)
-			m.state.SetPendingPaneSwitch(nil)
-			return m, nil
-		}
-		if parsedSlash != nil {
-			if spec, ok := defaultSlashCommandRegistry.byName[parsedSlash.Name]; ok && spec.NeedsTarget && len(parsedSlash.Args) == 0 {
-				return m.openTableSelectionForCommand(parsedSlash)
-			}
-			if parsedSlash.Name == "commands" {
-				return m.openCommandWizard()
-			}
-			return m, m.startExecution(parsedSlash.DisplayName, fmt.Sprintf("Dispatching %s.", parsedSlash.DisplayName), executeSlashCommandCmd(slashCommandContext{
-				Session: m.session,
-				Dialect: m.adapterDialect(),
-				Query:   m.state.Interaction.snapshot(),
-			}, *parsedSlash))
-		}
-
-		if !isCompleteSQLStatement(submittedSQL) {
-			m.state.SetRunningStatementContext(nil)
-			m.state.SetPendingIntent(IntentNone, "submit", "SQL is incomplete. End the statement with ';' to run it.")
-			return m, nil
-		}
-
-		m.state.SetLastSubmittedSQL(submittedSQL)
-		return m, m.startExecution("SQL", fmt.Sprintf("Executing %d characters of SQL.", len(submittedSQL)), executeStatementCmd(m.session.Adapter, submittedSQL))
+		return m.handleSubmitIntent()
 	case cancelRunningIntentMsg:
-		if running := m.state.Interaction.Running; running != nil {
-			if m.executionCancel != nil {
-				m.executionCancel()
-			}
-			m.state.SetPendingIntent(IntentSubmit, "submit", fmt.Sprintf("Cancelling %s...", runningLabel(running)))
-		}
-		return m, nil
+		return m.handleCancelRunningIntent()
 	case statementExecutedMsg:
-		running := m.state.Interaction.Running
-		m.clearExecution()
-		historyErr := m.appendHistory(msg.Statement, msg.ResultSummary)
-		m.state.SetRunningStatementContext(nil)
-		m.state.Interaction.PendingIntent = IntentNone
-		m.state.Interaction.LastAction = "submit"
-		m.state.SetPendingPaneSwitch(nil)
-		if msg.Err != nil {
-			if status, ok := executionInterruptedStatus(running, msg.Err); ok {
-			m.command.AppendReplEntry("> ", msg.Statement, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
-			m.command.Clear()
-			m.state.SetReady(withHistoryWarning(status, historyErr))
-			m.state.SetLatestResultContext(nil)
-			return m, nil
-		}
-		m.command.AppendReplEntry("> ", msg.Statement, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
-		m.command.Clear()
-		m.state.SetReady(withHistoryWarning(formatOperationFailure("Execution failed.", msg.Err), historyErr))
-		m.state.SetLatestResultContext(nil)
-		return m, nil
-	}
-
-	m.command.AppendReplEntry("> ", msg.Statement, "OK: "+formatReplStatementOutput(msg.Result, nil))
-	m.command.Clear()
-	m.state.SetReady(withHistoryWarning(describeStatementStatus(msg.Result), historyErr))
-	m.state.SetLatestResultContext(buildLatestResultContext(msg.Statement, m.resultOriginPane(), msg.Result))
-		return m, nil
+		return m.handleStatementExecuted(msg)
 	case slashCommandExecutedMsg:
-		running := m.state.Interaction.Running
-		m.clearExecution()
-		shouldRecordSlashCommand := msg.Err != nil || !msg.Result.ShouldReplace
-		var historyErr error
-		if shouldRecordSlashCommand {
-			historyErr = m.appendHistory(msg.Command.RawInput, msg.ResultSummary)
-			m.state.SetLastSubmittedSQL(msg.Command.RawInput)
-		}
-		m.state.SetRunningStatementContext(nil)
-		m.state.Interaction.PendingIntent = IntentNone
-		m.state.Interaction.LastAction = "slash:" + msg.Command.DisplayName
-		m.state.SetPendingPaneSwitch(nil)
-		if msg.Err != nil {
-			m.closeModal()
-			m.command.AppendReplEntry("> ", msg.Command.RawInput, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
-			m.command.Clear()
-			if status, ok := executionInterruptedStatus(running, msg.Err); ok {
-				m.state.SetReady(withHistoryWarning(status, historyErr))
-				m.state.SetLatestResultContext(nil)
-				return m, nil
-			}
-			m.state.SetReady(withHistoryWarning(formatOperationFailure(msg.Command.DisplayName+" failed", msg.Err), historyErr))
-			m.state.SetLatestResultContext(nil)
-			return m, nil
-		}
-
-		if msg.Result.Wizard != nil {
-			m.modal = &slashWizardModal{wizard: *msg.Result.Wizard}
-			m.state.SetActiveModal(ModalSlashWizard)
-		}
-
-		if msg.Result.ShouldReplace {
-			m.command.SetEditorValue(msg.Result.ReplaceEditor)
-			m.syncCurrentSQL()
-			m.state.SetLatestResultContext(nil)
-		} else {
-			// Not a replace — add to transcript and clear
-			m.command.AppendReplEntry("> ", msg.Command.RawInput, "OK: "+formatReplSlashOutput(msg))
-			m.command.Clear()
-		}
-
-		if msg.Result.Statement != nil {
-			m.state.SetLatestResultContext(buildLatestResultContext(msg.Command.RawInput, m.resultOriginPane(), msg.Result.Statement))
-		} else if !msg.Result.PreserveResult && !msg.Result.ShouldReplace {
-			m.state.SetLatestResultContext(nil)
-		}
-
-		m.state.SetReady(withHistoryWarning(defaultStatus(msg.Result.Status, fmt.Sprintf("%s completed.", msg.Command.DisplayName)), historyErr))
-		return m, nil
+		return m.handleSlashCommandExecuted(msg)
 	case toggleHelpIntentMsg:
 		visible := !m.state.Interaction.HelpVisible
 		m.state.SetHelpVisible(visible)
@@ -410,7 +225,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if running == nil || !running.StartedAt.Equal(msg.StartedAt) {
 			return m, nil
 		}
-
 		updated := *running
 		if msg.Now.After(updated.StartedAt) {
 			updated.Elapsed = msg.Now.Sub(updated.StartedAt)
@@ -432,6 +246,214 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.command, cmd = m.command.Update(msg, m.state.Interaction)
 	m.syncCurrentSQL()
 	return m, cmd
+}
+
+func (m Model) handleKeyPressMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.state.App.Current != StateReady {
+		switch msg.String() {
+		case "ctrl+c":
+			return m, tea.Quit
+		}
+		return m, nil
+	}
+
+	if m.modal != nil {
+		if msg.String() != "ctrl+c" {
+			m.pendingQuit = false
+		}
+		result := m.modal.HandleKey(msg, ModalContext{
+			Interaction: m.state.Interaction.snapshot(),
+			Session:     m.session,
+			Dialect:     m.adapterDialect(),
+		})
+		return m, m.applyModalResult(result)
+	}
+
+	if msg.String() != "ctrl+c" {
+		m.pendingQuit = false
+	}
+
+	if m.handleResultsPaneNavigationKey(msg) {
+		return m, nil
+	}
+	if m.handleResultsPaneExportKey(msg) {
+		return m, nil
+	}
+	if m.handleResultsPaneSelectionKey(msg) {
+		return m, nil
+	}
+	if m.handleResultsPaneComposeKey(msg) {
+		return m, nil
+	}
+	if m.handleResultsPanePagingKey(msg) {
+		return m, nil
+	}
+	if cmd := m.handleKey(msg); cmd != nil {
+		return m, cmd
+	}
+
+	switch msg.String() {
+	case "ctrl+c":
+		if m.state.App.Current == StateReady && m.command.Focused() && strings.TrimSpace(m.command.Value()) != "" {
+			m.pendingQuit = false
+			return m, func() tea.Msg { return clearInputIntentMsg{} }
+		}
+		if m.pendingQuit {
+			return m, tea.Quit
+		}
+		m.pendingQuit = true
+		m.state.SetPendingIntent(IntentNone, "quit", "Press ctrl+c again to exit.")
+		return m, nil
+	case "q":
+		if !m.command.Focused() {
+			return m, tea.Quit
+		}
+	}
+
+	if m.state.Interaction.ActivePane == PaneResults && !layoutShowsCommand(m.state.Interaction.Layout) {
+		return m, nil
+	}
+
+	var cmd tea.Cmd
+	m.command, cmd = m.command.Update(msg, m.state.Interaction)
+	m.syncCurrentSQL()
+	return m, cmd
+}
+
+func (m Model) handleSubmitIntent() (tea.Model, tea.Cmd) {
+	if running := m.state.Interaction.Running; running != nil {
+		m.state.SetPendingIntent(IntentSubmit, "submit", fmt.Sprintf("%s is still running. Press esc to cancel; timeout after %s.", runningLabel(running), formatExecutionTimeout(defaultInteractiveExecutionTimeout)))
+		return m, nil
+	}
+
+	m.syncCurrentSQL()
+	submittedSQL := m.state.Interaction.CurrentSQL
+	if strings.TrimSpace(submittedSQL) == "" {
+		m.state.SetRunningStatementContext(nil)
+		m.state.SetReady("")
+		m.state.SetPendingIntent(IntentSubmit, "submit", "Submit requested with empty input.")
+		return m, nil
+	}
+
+	parsedSlash, err := parseSlashCommand(submittedSQL)
+	if err != nil {
+		m.state.SetRunningStatementContext(nil)
+		m.state.SetReady("")
+		m.state.SetPendingIntent(IntentNone, "submit", fmt.Sprintf("Slash command parse failed: %v", err))
+		m.state.SetLatestResultContext(nil)
+		m.state.SetPendingPaneSwitch(nil)
+		return m, nil
+	}
+	if parsedSlash != nil {
+		if spec, ok := defaultSlashCommandRegistry.byName[parsedSlash.Name]; ok && spec.NeedsTarget && len(parsedSlash.Args) == 0 {
+			return m.openTableSelectionForCommand(parsedSlash)
+		}
+		if parsedSlash.Name == "commands" {
+			return m.openCommandWizard()
+		}
+		return m, m.startExecution(parsedSlash.DisplayName, fmt.Sprintf("Dispatching %s.", parsedSlash.DisplayName), executeSlashCommandCmd(slashCommandContext{
+			Session: m.session,
+			Dialect: m.adapterDialect(),
+			Query:   m.state.Interaction.snapshot(),
+		}, *parsedSlash))
+	}
+
+	if !isCompleteSQLStatement(submittedSQL) {
+		m.state.SetRunningStatementContext(nil)
+		m.state.SetPendingIntent(IntentNone, "submit", "SQL is incomplete. End the statement with ';' to run it.")
+		return m, nil
+	}
+
+	m.state.SetLastSubmittedSQL(submittedSQL)
+	return m, m.startExecution("SQL", fmt.Sprintf("Executing %d characters of SQL.", len(submittedSQL)), executeStatementCmd(m.session.Adapter, submittedSQL))
+}
+
+func (m Model) handleCancelRunningIntent() (tea.Model, tea.Cmd) {
+	if running := m.state.Interaction.Running; running != nil {
+		if m.executionCancel != nil {
+			m.executionCancel()
+		}
+		m.state.SetPendingIntent(IntentSubmit, "submit", fmt.Sprintf("Cancelling %s...", runningLabel(running)))
+	}
+	return m, nil
+}
+
+func (m Model) handleStatementExecuted(msg statementExecutedMsg) (tea.Model, tea.Cmd) {
+	running := m.state.Interaction.Running
+	m.clearExecution()
+	historyErr := m.appendHistory(msg.Statement, msg.ResultSummary)
+	m.state.SetRunningStatementContext(nil)
+	m.state.Interaction.PendingIntent = IntentNone
+	m.state.Interaction.LastAction = "submit"
+	m.state.SetPendingPaneSwitch(nil)
+	if msg.Err != nil {
+		m.command.AppendReplEntry("> ", msg.Statement, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
+		m.command.Clear()
+		if status, ok := executionInterruptedStatus(running, msg.Err); ok {
+			m.state.SetReady(withHistoryWarning(status, historyErr))
+			m.state.SetLatestResultContext(nil)
+			return m, nil
+		}
+		m.state.SetReady(withHistoryWarning(formatOperationFailure("Execution failed.", msg.Err), historyErr))
+		m.state.SetLatestResultContext(nil)
+		return m, nil
+	}
+	m.command.AppendReplEntry("> ", msg.Statement, "OK: "+formatReplStatementOutput(msg.Result, nil))
+	m.command.Clear()
+	m.state.SetReady(withHistoryWarning(describeStatementStatus(msg.Result), historyErr))
+	m.state.SetLatestResultContext(buildLatestResultContext(msg.Statement, m.resultOriginPane(), msg.Result))
+	return m, nil
+}
+
+func (m Model) handleSlashCommandExecuted(msg slashCommandExecutedMsg) (tea.Model, tea.Cmd) {
+	running := m.state.Interaction.Running
+	m.clearExecution()
+	shouldRecordSlashCommand := msg.Err != nil || !msg.Result.ShouldReplace
+	var historyErr error
+	if shouldRecordSlashCommand {
+		historyErr = m.appendHistory(msg.Command.RawInput, msg.ResultSummary)
+		m.state.SetLastSubmittedSQL(msg.Command.RawInput)
+	}
+	m.state.SetRunningStatementContext(nil)
+	m.state.Interaction.PendingIntent = IntentNone
+	m.state.Interaction.LastAction = "slash:" + msg.Command.DisplayName
+	m.state.SetPendingPaneSwitch(nil)
+	if msg.Err != nil {
+		m.closeModal()
+		m.command.AppendReplEntry("> ", msg.Command.RawInput, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
+		m.command.Clear()
+		if status, ok := executionInterruptedStatus(running, msg.Err); ok {
+			m.state.SetReady(withHistoryWarning(status, historyErr))
+			m.state.SetLatestResultContext(nil)
+			return m, nil
+		}
+		m.state.SetReady(withHistoryWarning(formatOperationFailure(msg.Command.DisplayName+" failed", msg.Err), historyErr))
+		m.state.SetLatestResultContext(nil)
+		return m, nil
+	}
+
+	if msg.Result.Wizard != nil {
+		m.modal = &slashWizardModal{wizard: *msg.Result.Wizard}
+		m.state.SetActiveModal(ModalSlashWizard)
+	}
+
+	if msg.Result.ShouldReplace {
+		m.command.SetEditorValue(msg.Result.ReplaceEditor)
+		m.syncCurrentSQL()
+		m.state.SetLatestResultContext(nil)
+	} else {
+		m.command.AppendReplEntry("> ", msg.Command.RawInput, "OK: "+formatReplSlashOutput(msg))
+		m.command.Clear()
+	}
+
+	if msg.Result.Statement != nil {
+		m.state.SetLatestResultContext(buildLatestResultContext(msg.Command.RawInput, m.resultOriginPane(), msg.Result.Statement))
+	} else if !msg.Result.PreserveResult && !msg.Result.ShouldReplace {
+		m.state.SetLatestResultContext(nil)
+	}
+
+	m.state.SetReady(withHistoryWarning(defaultStatus(msg.Result.Status, fmt.Sprintf("%s completed.", msg.Command.DisplayName)), historyErr))
+	return m, nil
 }
 
 func (m Model) View() tea.View {
@@ -842,18 +864,19 @@ func (m *Model) handleResultsPaneSelectionKey(msg tea.KeyPressMsg) bool {
 	}
 	m.resultsPane.pendingAction = resultsPanePendingActionNone
 
-	row, selected, handled := m.resultsPane.ToggleSelectedRow(&m.state.Interaction)
+	row, newMarked, selected, handled := m.resultsPane.ToggleSelectedRow(m.state.Interaction)
 	if !handled {
 		m.state.SetPendingIntent(IntentNone, "results-pane-select", "Results Pane has no rows to select.")
 		return true
 	}
 
+	m.state.SetMarkedRows(newMarked)
 	if selected {
-		m.state.SetPendingIntent(IntentNone, "results-pane-select", fmt.Sprintf("Selected row %d (%d total).", row+1, len(m.state.Interaction.LatestResult.SelectedRows)))
+		m.state.SetPendingIntent(IntentNone, "results-pane-select", fmt.Sprintf("Selected row %d (%d total).", row+1, len(m.state.Interaction.MarkedRows)))
 		return true
 	}
 
-	m.state.SetPendingIntent(IntentNone, "results-pane-select", fmt.Sprintf("Unselected row %d (%d total).", row+1, len(m.state.Interaction.LatestResult.SelectedRows)))
+	m.state.SetPendingIntent(IntentNone, "results-pane-select", fmt.Sprintf("Unselected row %d (%d total).", row+1, len(m.state.Interaction.MarkedRows)))
 	return true
 }
 

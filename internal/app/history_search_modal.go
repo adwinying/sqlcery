@@ -21,47 +21,39 @@ type historySearchModal struct {
 
 func (h *historySearchModal) Name() AppModal { return ModalHistorySearch }
 
-func (h *historySearchModal) HandleKey(msg tea.KeyPressMsg, m *Model) tea.Cmd {
-	keys := m.command.KeyMap()
+func (h *historySearchModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) ModalResult {
+	keys := defaultCommandModeKeys()
 
 	switch {
 	case msg.String() == "ctrl+c":
-		h.close(m, "Exited history search.")
-		return nil
+		return modalResultPendingStatus{intent: IntentNone, action: "history", status: "Exited history search.", dismiss: true}
 	case key.Matches(msg, keys.Help):
-		return func() tea.Msg { return toggleHelpIntentMsg{} }
+		return modalResultForward{cmd: func() tea.Msg { return toggleHelpIntentMsg{} }}
 	case key.Matches(msg, keys.RestoreHistory):
-		h.restore(m)
-		return nil
+		return h.restore(ctx)
 	case key.Matches(msg, keys.Cancel):
-		h.close(m, "Exited history search.")
-		return nil
+		return modalResultPendingStatus{intent: IntentNone, action: "history", status: "Exited history search.", dismiss: true}
 	case key.Matches(msg, keys.History), key.Matches(msg, keys.NextSuggestion), msg.String() == "up":
-		h.cycle(m, 1)
-		return nil
+		return h.cycle(ctx, 1)
 	case key.Matches(msg, keys.PrevSuggestion), msg.String() == "down":
-		h.cycle(m, -1)
-		return nil
+		return h.cycle(ctx, -1)
 	case msg.String() == "backspace" || msg.String() == "ctrl+h" || msg.String() == "delete":
-		h.updateFilter(m, trimLastRune(h.filter))
-		return nil
+		return h.updateFilter(ctx, trimLastRune(h.filter))
 	case msg.String() == "space":
-		h.updateFilter(m, h.filter+" ")
-		return nil
+		return h.updateFilter(ctx, h.filter+" ")
 	case len(msg.Text) > 0 && !msg.Mod.Contains(tea.ModAlt):
-		h.updateFilter(m, h.filter+msg.Text)
-		return nil
+		return h.updateFilter(ctx, h.filter+msg.Text)
 	// Layout keys pass through so the user can rearrange panes while searching.
-	case key.Matches(msg, m.command.KeyMap().LayoutCommandOnly), msg.String() == "ctrl+3", msg.String() == "alt+3":
-		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
+	case key.Matches(msg, keys.LayoutCommandOnly), msg.String() == "ctrl+3", msg.String() == "alt+3":
+		return modalResultForward{cmd: func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }}
 	case msg.String() == "ctrl+q":
-		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneResults} }
+		return modalResultForward{cmd: func() tea.Msg { return focusPaneIntentMsg{Pane: PaneResults} }}
 	case msg.String() == "ctrl+w":
-		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneCommand} }
+		return modalResultForward{cmd: func() tea.Msg { return focusPaneIntentMsg{Pane: PaneCommand} }}
 	case msg.String() == "ctrl+z":
-		return func() tea.Msg { return toggleZoomIntentMsg{} }
+		return modalResultForward{cmd: func() tea.Msg { return toggleZoomIntentMsg{} }}
 	default:
-		return nil
+		return modalResultNone{}
 	}
 }
 
@@ -102,38 +94,31 @@ func (h *historySearchModal) Render(interaction InteractionState) string {
 	return strings.Join(lines, "\n")
 }
 
-func (h *historySearchModal) close(m *Model, status string) {
-	m.modal = nil
-	m.state.SetActiveModal(ModalNone)
-	m.state.SetPendingIntent(IntentNone, "history", status)
-}
-
-func (h *historySearchModal) restore(m *Model) {
-	matches := filterHistorySearchEntries(m.state.Interaction.History, h.filter)
+func (h *historySearchModal) restore(ctx ModalContext) ModalResult {
+	matches := filterHistorySearchEntries(ctx.Interaction.History, h.filter)
 	if len(matches) == 0 {
-		m.state.SetPendingIntent(IntentHistory, "history", h.status(m.state.Interaction))
-		return
+		return modalResultPendingStatus{intent: IntentHistory, action: "history", status: h.status(ctx.Interaction)}
 	}
 	idx := wrapHistorySearchIndex(h.selectedIndex, len(matches))
-	m.command.SetEditorValue(matches[idx].Statement)
-	m.syncCurrentSQL()
-	h.close(m, "Restored selected history entry into the editor.")
+	return modalResultRestoreHistory{
+		sql:    matches[idx].Statement,
+		status: "Restored selected history entry into the editor.",
+	}
 }
 
-func (h *historySearchModal) cycle(m *Model, delta int) {
-	matches := filterHistorySearchEntries(m.state.Interaction.History, h.filter)
+func (h *historySearchModal) cycle(ctx ModalContext, delta int) ModalResult {
+	matches := filterHistorySearchEntries(ctx.Interaction.History, h.filter)
 	if len(matches) == 0 {
-		m.state.SetPendingIntent(IntentHistory, "history", h.status(m.state.Interaction))
-		return
+		return modalResultPendingStatus{intent: IntentHistory, action: "history", status: h.status(ctx.Interaction)}
 	}
 	h.selectedIndex = wrapHistorySearchIndex(h.selectedIndex+delta, len(matches))
-	m.state.SetPendingIntent(IntentHistory, "history", h.status(m.state.Interaction))
+	return modalResultPendingStatus{intent: IntentHistory, action: "history", status: h.status(ctx.Interaction)}
 }
 
-func (h *historySearchModal) updateFilter(m *Model, filter string) {
+func (h *historySearchModal) updateFilter(ctx ModalContext, filter string) ModalResult {
 	h.filter = filter
 	h.selectedIndex = 0
-	m.state.SetPendingIntent(IntentHistory, "history", h.status(m.state.Interaction))
+	return modalResultPendingStatus{intent: IntentHistory, action: "history", status: h.status(ctx.Interaction)}
 }
 
 func (h *historySearchModal) status(interaction InteractionState) string {

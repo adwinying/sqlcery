@@ -383,9 +383,9 @@ func TestCommandModeFooterShowsSelectionCountFromResultsPaneResult(t *testing.T)
 	mode := newCommandModeModel()
 	mode.SetSize(80, 20)
 	footer := mode.Footer("local", "sqlite", InteractionState{
-		Layout:       LayoutSplit,
-		ActivePane:   PaneCommand,
-		LatestResult: &LatestResultContext{SelectedRows: []int{0, 2}},
+		Layout:     LayoutSplit,
+		ActivePane: PaneCommand,
+		MarkedRows: []int{0, 2},
 	})
 
 	for _, want := range []string{"Command mode", "connection local", "sqlite", "2 selected"} {

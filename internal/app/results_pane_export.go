@@ -71,8 +71,8 @@ func (m *Model) exportResultsPane(command string) bool {
 		return true
 	}
 
-	rowIndices := selectedRowsForExport(latest)
-	usedSelectedRows := len(latest.SelectedRows) > 0
+	rowIndices := selectedRowsForExport(latest, m.state.Interaction.MarkedRows)
+	usedSelectedRows := len(m.state.Interaction.MarkedRows) > 0
 	written, err := export.Export(export.ExportOptions{
 		CWD:        m.session.WorkingDir,
 		Filename:   filename,
@@ -112,15 +112,15 @@ func parseResultsPaneExportCommand(input string) (string, bool) {
 	return fields[1], true
 }
 
-func selectedRowsForExport(latest *LatestResultContext) []int {
+func selectedRowsForExport(latest *LatestResultContext, markedRows []int) []int {
 	if latest == nil || latest.PreservedResult == nil {
 		return nil
 	}
-	if len(latest.SelectedRows) == 0 {
+	if len(markedRows) == 0 {
 		return nil
 	}
-	rows := make([]int, 0, len(latest.SelectedRows))
-	for _, row := range latest.SelectedRows {
+	rows := make([]int, 0, len(markedRows))
+	for _, row := range markedRows {
 		if row < 0 || row >= len(latest.PreservedResult.Rows) {
 			continue
 		}

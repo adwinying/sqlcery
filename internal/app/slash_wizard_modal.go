@@ -18,37 +18,30 @@ type slashWizardModal struct {
 
 func (s *slashWizardModal) Name() AppModal { return ModalSlashWizard }
 
-func (s *slashWizardModal) HandleKey(msg tea.KeyPressMsg, m *Model) tea.Cmd {
-	keys := m.command.KeyMap()
+func (s *slashWizardModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) ModalResult {
+	keys := defaultCommandModeKeys()
 
 	switch {
 	case msg.String() == "ctrl+c":
-		m.closeModal()
-		m.state.SetReady("Closed the slash command wizard.")
-		return nil
+		return modalResultReady{status: "Closed the slash command wizard.", dismiss: true}
 	case key.Matches(msg, keys.Cancel):
-		return s.handleEsc(m)
+		return s.handleEsc(ctx)
 	case key.Matches(msg, keys.Submit), msg.String() == "enter":
-		return s.submit(m)
+		return s.submit(ctx)
 	case key.Matches(msg, keys.NextSuggestion), msg.String() == "ctrl+n":
-		s.move(m, 1)
-		return nil
+		return s.move(ctx, 1)
 	case key.Matches(msg, keys.PrevSuggestion), msg.String() == "ctrl+p":
-		s.move(m, -1)
-		return nil
+		return s.move(ctx, -1)
 	case s.wizard.Step == SlashCommandWizardStepTarget &&
 		(msg.String() == "backspace" || msg.String() == "ctrl+h" || msg.String() == "delete"):
-		s.updateFilter(m, trimLastRune(s.wizard.TargetFilter))
-		return nil
+		return s.updateFilter(ctx, trimLastRune(s.wizard.TargetFilter))
 	case s.wizard.Step == SlashCommandWizardStepTarget && msg.String() == "space":
-		s.updateFilter(m, s.wizard.TargetFilter+" ")
-		return nil
+		return s.updateFilter(ctx, s.wizard.TargetFilter+" ")
 	case s.wizard.Step == SlashCommandWizardStepTarget &&
 		len(msg.Text) > 0 && !msg.Mod.Contains(tea.ModAlt):
-		s.updateFilter(m, s.wizard.TargetFilter+msg.Text)
-		return nil
+		return s.updateFilter(ctx, s.wizard.TargetFilter+msg.Text)
 	default:
-		return nil
+		return modalResultNone{}
 	}
 }
 
@@ -56,114 +49,107 @@ func (s *slashWizardModal) Render(_ InteractionState) string {
 	return renderSlashWizardContext(&s.wizard)
 }
 
-func (s *slashWizardModal) handleEsc(m *Model) tea.Cmd {
+func (s *slashWizardModal) handleEsc(ctx ModalContext) ModalResult {
 	if s.wizard.Step == SlashCommandWizardStepTarget {
 		if strings.TrimSpace(s.wizard.TargetFilter) != "" {
-			s.updateFilter(m, "")
-			return nil
+			return s.updateFilter(ctx, "")
 		}
 		if s.wizard.DirectInvocation {
-			m.closeModal()
-			m.state.SetReady("Closed the slash command wizard.")
-			return nil
+			return modalResultReady{status: "Closed the slash command wizard.", dismiss: true}
 		}
 		s.wizard.Step = SlashCommandWizardStepCommand
 		s.wizard.Targets = nil
 		s.wizard.SelectedTarget = 0
 		selectedCommand, _ := slashWizardCommandByIndex(&s.wizard)
-		m.state.SetReady(fmt.Sprintf("Choose a command. %s is selected.", selectedCommand.DisplayName))
-		return nil
+		return modalResultReady{status: fmt.Sprintf("Choose a command. %s is selected.", selectedCommand.DisplayName)}
 	}
-	m.closeModal()
-	m.state.SetReady("Closed the slash command wizard.")
-	return nil
+	return modalResultReady{status: "Closed the slash command wizard.", dismiss: true}
 }
 
-func (s *slashWizardModal) submit(m *Model) tea.Cmd {
+func (s *slashWizardModal) submit(ctx ModalContext) ModalResult {
 	selectedCommand, ok := slashWizardCommandByIndex(&s.wizard)
 	if !ok {
-		m.closeModal()
-		m.state.SetReady("Slash command wizard is empty.")
-		return nil
+		return modalResultReady{status: "Slash command wizard is empty.", dismiss: true}
 	}
 
 	if selectedCommand.NeedsTarget {
 		if s.wizard.Step != SlashCommandWizardStepTarget {
 			nextWizard, err := buildSlashWizardFromCommand(context.Background(), slashCommandContext{
-				Session: m.session,
-				Dialect: m.adapterDialect(),
-				Query:   m.state.Interaction.snapshot(),
+				Session: ctx.Session,
+				Dialect: ctx.Dialect,
+				Query:   ctx.Interaction,
 			}, s.wizard.Commands, selectedCommand, s.wizard.SelectedCommand)
 			if err != nil {
-				m.closeModal()
-				m.state.SetReady(fmt.Sprintf("/commands failed: %v", err))
-				m.state.SetLatestResultContext(nil)
-				return nil
+				return modalResultReady{
+					status:      fmt.Sprintf("/commands failed: %v", err),
+					dismiss:     true,
+					clearResult: true,
+				}
 			}
 			if nextWizard == nil || len(nextWizard.Targets) == 0 {
-				m.closeModal()
-				m.state.SetReady(fmt.Sprintf("/commands: no tables available for %s.", selectedCommand.DisplayName))
-				return nil
+				return modalResultReady{
+					status:  fmt.Sprintf("/commands: no tables available for %s.", selectedCommand.DisplayName),
+					dismiss: true,
+				}
 			}
 			s.wizard = *nextWizard
-			m.state.SetReady(fmt.Sprintf("Choose a table for %s and press enter.", selectedCommand.DisplayName))
-			return nil
+			return modalResultReady{status: fmt.Sprintf("Choose a table for %s and press enter.", selectedCommand.DisplayName)}
 		}
 
 		selectedTarget, ok := slashWizardFilteredTargetByIndex(&s.wizard)
 		if !ok {
-			m.state.SetReady(fmt.Sprintf("/commands: choose a table for %s.", selectedCommand.DisplayName))
-			return nil
+			return modalResultReady{status: fmt.Sprintf("/commands: choose a table for %s.", selectedCommand.DisplayName)}
 		}
 
 		parsed := buildSlashWizardCommand(selectedCommand, &selectedTarget)
-		m.closeModal()
-		return m.startExecution(parsed.DisplayName,
-			fmt.Sprintf("Dispatching %s from wizard.", parsed.DisplayName),
-			executeSlashCommandCmd(slashCommandContext{
-				Session: m.session,
-				Dialect: m.adapterDialect(),
-				Query:   m.state.Interaction.snapshot(),
-			}, parsed))
+		return modalResultExecute{
+			label:  parsed.DisplayName,
+			status: fmt.Sprintf("Dispatching %s from wizard.", parsed.DisplayName),
+			execute: executeSlashCommandCmd(slashCommandContext{
+				Session: ctx.Session,
+				Dialect: ctx.Dialect,
+				Query:   ctx.Interaction,
+			}, parsed),
+		}
 	}
 
 	parsed := buildSlashWizardCommand(selectedCommand, nil)
-	m.closeModal()
-	return m.startExecution(parsed.DisplayName,
-		fmt.Sprintf("Dispatching %s from wizard.", parsed.DisplayName),
-		executeSlashCommandCmd(slashCommandContext{
-			Session: m.session,
-			Dialect: m.adapterDialect(),
-			Query:   m.state.Interaction.snapshot(),
-		}, parsed))
+	return modalResultExecute{
+		label:  parsed.DisplayName,
+		status: fmt.Sprintf("Dispatching %s from wizard.", parsed.DisplayName),
+		execute: executeSlashCommandCmd(slashCommandContext{
+			Session: ctx.Session,
+			Dialect: ctx.Dialect,
+			Query:   ctx.Interaction,
+		}, parsed),
+	}
 }
 
-func (s *slashWizardModal) move(m *Model, delta int) {
+func (s *slashWizardModal) move(_ ModalContext, delta int) ModalResult {
 	switch s.wizard.Step {
 	case SlashCommandWizardStepTarget:
 		filtered := filterWizardTargets(s.wizard.Targets, s.wizard.TargetFilter)
 		if len(filtered) == 0 {
-			return
+			return modalResultNone{}
 		}
 		s.wizard.SelectedTarget = wrapSelection(s.wizard.SelectedTarget+delta, len(filtered))
-		m.state.SetReady(fmt.Sprintf("Selected table %s.", filtered[s.wizard.SelectedTarget].Display))
+		return modalResultReady{status: fmt.Sprintf("Selected table %s.", filtered[s.wizard.SelectedTarget].Display)}
 	default:
 		if len(s.wizard.Commands) == 0 {
-			return
+			return modalResultNone{}
 		}
 		s.wizard.SelectedCommand = wrapSelection(s.wizard.SelectedCommand+delta, len(s.wizard.Commands))
 		selectedCommand, _ := slashWizardCommandByIndex(&s.wizard)
-		m.state.SetReady(fmt.Sprintf("Selected %s.", selectedCommand.DisplayName))
+		return modalResultReady{status: fmt.Sprintf("Selected %s.", selectedCommand.DisplayName)}
 	}
 }
 
-func (s *slashWizardModal) updateFilter(m *Model, filter string) {
+func (s *slashWizardModal) updateFilter(_ ModalContext, filter string) ModalResult {
 	s.wizard.TargetFilter = filter
 	s.wizard.SelectedTarget = 0
 	filtered := filterWizardTargets(s.wizard.Targets, filter)
 	if len(filtered) == 0 {
-		m.state.SetReady(fmt.Sprintf("No tables match %q.", filter))
-	} else {
-		m.state.SetReady(fmt.Sprintf("%d table(s) match filter.", len(filtered)))
+		return modalResultReady{status: fmt.Sprintf("No tables match %q.", filter)}
 	}
+	return modalResultReady{status: fmt.Sprintf("%d table(s) match filter.", len(filtered))}
 }

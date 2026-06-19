@@ -1578,7 +1578,7 @@ func TestModelUpdateSpaceTogglesSelectedRowsInResultsPane(t *testing.T) {
 	if cmd != nil {
 		t.Fatalf("Update(space) cmd = %#v, want nil", cmd)
 	}
-	if got, want := model.state.Interaction.LatestResult.SelectedRows, []int{0}; len(got) != len(want) || got[0] != want[0] {
+	if got, want := model.state.Interaction.MarkedRows, []int{0}; len(got) != len(want) || got[0] != want[0] {
 		t.Fatalf("SelectedRows = %#v, want %#v", got, want)
 	}
 	if got, want := model.state.Status, "Selected row 1 (1 total)."; got != want {
@@ -1588,7 +1588,7 @@ func TestModelUpdateSpaceTogglesSelectedRowsInResultsPane(t *testing.T) {
 	model.resultsPane.selectedRow = 1
 	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	model = next.(Model)
-	if got, want := model.state.Interaction.LatestResult.SelectedRows, []int{0, 1}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+	if got, want := model.state.Interaction.MarkedRows, []int{0, 1}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("SelectedRows = %#v, want %#v", got, want)
 	}
 	if got, want := model.state.Status, "Selected row 2 (2 total)."; got != want {
@@ -1598,7 +1598,7 @@ func TestModelUpdateSpaceTogglesSelectedRowsInResultsPane(t *testing.T) {
 	model.resultsPane.selectedRow = 0
 	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	model = next.(Model)
-	if got, want := model.state.Interaction.LatestResult.SelectedRows, []int{1}; len(got) != len(want) || got[0] != want[0] {
+	if got, want := model.state.Interaction.MarkedRows, []int{1}; len(got) != len(want) || got[0] != want[0] {
 		t.Fatalf("SelectedRows = %#v, want %#v", got, want)
 	}
 	if got, want := model.state.Status, "Unselected row 1 (1 total)."; got != want {
@@ -1609,7 +1609,7 @@ func TestModelUpdateSpaceTogglesSelectedRowsInResultsPane(t *testing.T) {
 	model = next.(Model)
 	// In REPL mode, Results Pane is not rendered in View();
 	// verify selected row state instead.
-	if got, want := len(model.state.Interaction.LatestResult.SelectedRows), 1; got != want {
+	if got, want := len(model.state.Interaction.MarkedRows), 1; got != want {
 		t.Fatalf("len(SelectedRows) = %d, want %d after view update", got, want)
 	}
 }
@@ -1629,8 +1629,8 @@ func TestModelUpdateSpaceIgnoredOutsideResultsPane(t *testing.T) {
 
 	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	model = next.(Model)
-	if model.state.Interaction.LatestResult != nil && len(model.state.Interaction.LatestResult.SelectedRows) != 0 {
-		t.Fatalf("SelectedRows = %#v, want unchanged", model.state.Interaction.LatestResult.SelectedRows)
+	if len(model.state.Interaction.MarkedRows) != 0 {
+		t.Fatalf("MarkedRows = %#v, want unchanged", model.state.Interaction.MarkedRows)
 	}
 	if got, want := model.state.Status, "unchanged"; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -2210,8 +2210,8 @@ func TestModelUpdateResultsPaneWriteExportsSelectedRowsToCSV(t *testing.T) {
 				{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(2)}, {Kind: db.ValueKindString, Value: "two"}}},
 			},
 		},
-		SelectedRows: []int{1},
 	})
+	model.state.SetMarkedRows([]int{1})
 
 	for _, msg := range []tea.KeyPressMsg{
 		{Text: ":"},

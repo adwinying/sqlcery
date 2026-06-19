@@ -150,10 +150,10 @@ func (m *resultsPaneModeModel) View(interaction InteractionState) string {
 
 	// In split layout, show just the table with no metadata header
 	if interaction.Layout == LayoutSplit {
-		preparedPage := m.preparePage(result, interaction.ResultsPanePage, len(latest.SelectedRows) > 0)
+		preparedPage := m.preparePage(result, interaction.ResultsPanePage, len(interaction.MarkedRows) > 0)
 		body := renderPreparedResultsPanePage(preparedPage, m.width, m.height, resultsPaneRenderState{
 			Active:          resultsPaneSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
-			SelectedRows:    selectedRowSet(latest.SelectedRows),
+			SelectedRows:    selectedRowSet(interaction.MarkedRows),
 			ColScrollOffset: m.colScrollOffset,
 		})
 		if body == "" {
@@ -172,14 +172,14 @@ func (m *resultsPaneModeModel) View(interaction InteractionState) string {
 	if m.pendingAction == resultsPanePendingActionExport {
 		header = append(header, appTheme.warningNotice.Render(fmt.Sprintf("Command: %s", m.exportBuffer)))
 	}
-	if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
+	if selectedCount := len(interaction.MarkedRows); selectedCount > 0 {
 		header = append(header, appTheme.resultsPaneSelection.Render(fmt.Sprintf("Selected: %d", selectedCount)))
 	}
 
-	preparedPage := m.preparePage(result, interaction.ResultsPanePage, len(latest.SelectedRows) > 0)
+	preparedPage := m.preparePage(result, interaction.ResultsPanePage, len(interaction.MarkedRows) > 0)
 	body := renderPreparedResultsPanePage(preparedPage, m.width, m.height-len(header)-2, resultsPaneRenderState{
 		Active:          resultsPaneSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
-		SelectedRows:    selectedRowSet(latest.SelectedRows),
+		SelectedRows:    selectedRowSet(interaction.MarkedRows),
 		ColScrollOffset: m.colScrollOffset,
 	})
 	if body == "" {
@@ -194,7 +194,7 @@ func (m resultsPaneModeModel) FooterHints(interaction InteractionState) string {
 	if latest := interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
 		page := resultsPanePageContextFor(interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
 		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
-		if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
+		if selectedCount := len(interaction.MarkedRows); selectedCount > 0 {
 			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
 		}
 	}
@@ -219,7 +219,7 @@ func (m resultsPaneModeModel) Footer(connectionName, dialect string, interaction
 	if latest := interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
 		page := resultsPanePageContextFor(interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
 		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
-		if selectedCount := len(latest.SelectedRows); selectedCount > 0 {
+		if selectedCount := len(interaction.MarkedRows); selectedCount > 0 {
 			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
 		}
 	}
@@ -306,12 +306,15 @@ func (m *resultsPaneModeModel) Navigate(msg tea.KeyPressMsg, interaction Interac
 	return clampResultsPanePage(m.selectedRow/resultsPanePageSize, len(result.Rows)), true
 }
 
-func (m *resultsPaneModeModel) ToggleSelectedRow(interaction *InteractionState) (int, bool, bool) {
-	if interaction == nil || interaction.LatestResult == nil || interaction.LatestResult.PreservedResult == nil {
+// ToggleSelectedRow marks or unmarks the current cursor row and returns
+// the cursor row, the updated marked-row slice, whether the row is now
+// selected, and whether the operation was handled.
+func (m *resultsPaneModeModel) ToggleSelectedRow(interaction InteractionState) (int, []int, bool, bool) {
+	if interaction.LatestResult == nil || interaction.LatestResult.PreservedResult == nil {
 		m.selectedRow = 0
 		m.selectedColumn = 0
 		m.selectionActive = false
-		return 0, false, false
+		return 0, nil, false, false
 	}
 
 	result := interaction.LatestResult.PreservedResult
@@ -319,13 +322,13 @@ func (m *resultsPaneModeModel) ToggleSelectedRow(interaction *InteractionState) 
 		m.selectedRow = 0
 		m.selectedColumn = 0
 		m.selectionActive = false
-		return 0, false, false
+		return 0, nil, false, false
 	}
 
-	m.syncSelection(*interaction)
-	interaction.LatestResult.SelectedRows = toggleSelectedRowIndices(interaction.LatestResult.SelectedRows, m.selectedRow)
+	m.syncSelection(interaction)
+	newMarked := toggleSelectedRowIndices(interaction.MarkedRows, m.selectedRow)
 	m.selectionActive = true
-	return m.selectedRow, rowIndexSelected(interaction.LatestResult.SelectedRows, m.selectedRow), true
+	return m.selectedRow, newMarked, rowIndexSelected(newMarked, m.selectedRow), true
 }
 
 func renderResultsPaneTable(result *db.ResultSet, page, width, height int, state resultsPaneRenderState) string {

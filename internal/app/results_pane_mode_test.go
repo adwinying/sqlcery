@@ -123,7 +123,8 @@ func TestResultsPaneModeFooterIncludesModeDetails(t *testing.T) {
 	mode := newResultsPaneModeModel()
 	footer := mode.Footer("local", "sqlite", InteractionState{
 		Layout:       LayoutResultsOnly,
-		LatestResult: &LatestResultContext{PreservedResult: &db.ResultSet{Rows: []db.ResultRow{{}, {}}}, SelectedRows: []int{0}},
+		MarkedRows:   []int{0},
+		LatestResult: &LatestResultContext{PreservedResult: &db.ResultSet{Rows: []db.ResultRow{{}, {}}}},
 		Running:      &RunningStatementContext{Label: "/tables", Elapsed: 2*time.Second + 300*time.Millisecond},
 	})
 
@@ -407,9 +408,9 @@ func TestResultsPaneModeViewShowsSelectedRowCount(t *testing.T) {
 	mode.SetSize(80, 8)
 
 	view := ansi.Strip(mode.View(InteractionState{
+		MarkedRows: []int{0, 2},
 		LatestResult: &LatestResultContext{
-			Statement:        "select id from widgets order by id",
-			SelectedRows: []int{0, 2},
+			Statement:       "select id from widgets order by id",
 			PreservedResult: &db.ResultSet{
 				Columns: []db.ResultColumn{{Name: "id"}},
 				Rows: []db.ResultRow{
@@ -442,30 +443,32 @@ func TestResultsPaneModeToggleSelectedRowTracksMultipleRows(t *testing.T) {
 		},
 	}
 
-	row, selected, handled := mode.ToggleSelectedRow(&query)
+	row, newMarked, selected, handled := mode.ToggleSelectedRow(query)
 	if !handled || !selected || row != 0 {
 		t.Fatalf("ToggleSelectedRow(first) = (%d, %t, %t), want (0, true, true)", row, selected, handled)
 	}
-	if got, want := query.LatestResult.SelectedRows, []int{0}; len(got) != len(want) || got[0] != want[0] {
-		t.Fatalf("SelectedRows = %#v, want %#v", got, want)
+	if got, want := newMarked, []int{0}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("newMarked = %#v, want %#v", got, want)
 	}
+	query.MarkedRows = newMarked
 
 	mode.selectedRow = 1
-	row, selected, handled = mode.ToggleSelectedRow(&query)
+	row, newMarked, selected, handled = mode.ToggleSelectedRow(query)
 	if !handled || !selected || row != 1 {
 		t.Fatalf("ToggleSelectedRow(second) = (%d, %t, %t), want (1, true, true)", row, selected, handled)
 	}
-	if got, want := query.LatestResult.SelectedRows, []int{0, 1}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
-		t.Fatalf("SelectedRows = %#v, want %#v", got, want)
+	if got, want := newMarked, []int{0, 1}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("newMarked = %#v, want %#v", got, want)
 	}
+	query.MarkedRows = newMarked
 
 	mode.selectedRow = 0
-	row, selected, handled = mode.ToggleSelectedRow(&query)
+	row, newMarked, selected, handled = mode.ToggleSelectedRow(query)
 	if !handled || selected || row != 0 {
 		t.Fatalf("ToggleSelectedRow(toggle-off) = (%d, %t, %t), want (0, false, true)", row, selected, handled)
 	}
-	if got, want := query.LatestResult.SelectedRows, []int{1}; len(got) != len(want) || got[0] != want[0] {
-		t.Fatalf("SelectedRows = %#v, want %#v", got, want)
+	if got, want := newMarked, []int{1}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("newMarked = %#v, want %#v", got, want)
 	}
 }
 
