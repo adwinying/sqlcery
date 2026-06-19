@@ -301,7 +301,7 @@ func (m commandModeModel) Footer(connectionName, dialect string, interaction Int
 	if interaction.ActiveModal == ModalHistorySearch {
 		parts = append(parts, bindingSummary(m.keys.RestoreHistory), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
 	}
-	if interaction.SlashWizard != nil {
+	if interaction.ActiveModal == ModalSlashWizard {
 		parts = append(parts, "wizard /commands")
 	}
 	if running := formatRunningIndicator(interaction.Running); running != "" {
@@ -886,8 +886,7 @@ func renderInlineResult(interaction InteractionState) string {
 	return renderInlineQueryResult(latest)
 }
 
-func renderSlashWizard(interaction InteractionState) string {
-	wizard := interaction.SlashWizard
+func renderSlashWizardContext(wizard *SlashCommandWizardContext) string {
 	if wizard == nil {
 		return ""
 	}

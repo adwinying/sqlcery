@@ -21,6 +21,7 @@ type AppModal string
 const (
 	ModalNone          AppModal = ""
 	ModalHistorySearch AppModal = "history-search"
+	ModalSlashWizard   AppModal = "slash-wizard"
 )
 
 type AppLayout string
@@ -69,28 +70,20 @@ type ReconnectContext struct {
 }
 
 type InteractionState struct {
-	CurrentSQL           string
-	LastSubmittedSQL     string
-	PendingIntent        PendingIntent
-	LastAction           string
-	HelpVisible          bool
-	Running              *RunningStatementContext
-	Layout               AppLayout
-	ActivePane           Pane
-	ActiveModal          AppModal
-	ResultsPanePage      int
-	History              []HistoryEntryContext
-	HistorySearch        *HistorySearchContext
-	AutocompleteSchema   *AutocompleteSchemaContext
-	LatestResult         *LatestResultContext
-	SlashWizard          *SlashCommandWizardContext
-	PendingPaneSwitch    *PaneSwitchContext
-	SelectedHistoryEntry *HistoryEntryContext
-}
-
-type HistorySearchContext struct {
-	Filter        string
-	SelectedIndex int
+	CurrentSQL         string
+	LastSubmittedSQL   string
+	PendingIntent      PendingIntent
+	LastAction         string
+	HelpVisible        bool
+	Running            *RunningStatementContext
+	Layout             AppLayout
+	ActivePane         Pane
+	ActiveModal        AppModal
+	ResultsPanePage    int
+	History            []HistoryEntryContext
+	AutocompleteSchema *AutocompleteSchemaContext
+	LatestResult       *LatestResultContext
+	PendingPaneSwitch  *PaneSwitchContext
 }
 
 type RunningStatementContext struct {
@@ -261,10 +254,6 @@ func (s *SharedAppState) SetHistory(entries []HistoryEntryContext) {
 	s.Interaction.History = cloneHistoryEntries(entries)
 }
 
-func (s *SharedAppState) SetHistorySearchContext(context *HistorySearchContext) {
-	s.Interaction.HistorySearch = cloneHistorySearchContext(context)
-}
-
 func (s *SharedAppState) SetLatestResultContext(context *LatestResultContext) {
 	s.Interaction.LatestResult = cloneLatestResultContext(context)
 	s.Interaction.ResultsPanePage = 0
@@ -276,10 +265,6 @@ func (s *SharedAppState) SetResultsPanePage(page int) {
 
 func (s *SharedAppState) ChangeResultsPanePage(delta int) {
 	s.SetResultsPanePage(s.Interaction.ResultsPanePage + delta)
-}
-
-func (s *SharedAppState) SetSlashWizardContext(context *SlashCommandWizardContext) {
-	s.Interaction.SlashWizard = cloneSlashCommandWizardContext(context)
 }
 
 func (s *SharedAppState) SetPendingPaneSwitch(context *PaneSwitchContext) {
@@ -294,20 +279,13 @@ func (s *SharedAppState) SetAutocompleteSchema(schema *AutocompleteSchemaContext
 	s.Interaction.AutocompleteSchema = cloneAutocompleteSchemaContext(schema)
 }
 
-func (s *SharedAppState) SetSelectedHistoryEntry(entry *HistoryEntryContext) {
-	s.Interaction.SelectedHistoryEntry = cloneHistoryEntryContext(entry)
-}
-
 func (q InteractionState) snapshot() InteractionState {
 	clone := q
 	clone.Running = cloneRunningStatementContext(q.Running)
 	clone.History = cloneHistoryEntries(q.History)
-	clone.HistorySearch = cloneHistorySearchContext(q.HistorySearch)
 	clone.AutocompleteSchema = cloneAutocompleteSchemaContext(q.AutocompleteSchema)
 	clone.LatestResult = cloneLatestResultContext(q.LatestResult)
-	clone.SlashWizard = cloneSlashCommandWizardContext(q.SlashWizard)
 	clone.PendingPaneSwitch = clonePaneSwitchContext(q.PendingPaneSwitch)
-	clone.SelectedHistoryEntry = cloneHistoryEntryContext(q.SelectedHistoryEntry)
 	return clone
 }
 
@@ -350,25 +328,6 @@ func clonePaneSwitchContext(context *PaneSwitchContext) *PaneSwitchContext {
 	return &clone
 }
 
-func cloneSlashCommandWizardContext(context *SlashCommandWizardContext) *SlashCommandWizardContext {
-	if context == nil {
-		return nil
-	}
-
-	clone := &SlashCommandWizardContext{
-		Step:             context.Step,
-		SelectedCommand:  context.SelectedCommand,
-		SelectedTarget:   context.SelectedTarget,
-		DirectInvocation: context.DirectInvocation,
-		TargetFilter:     context.TargetFilter,
-		Commands:         make([]SlashCommandWizardCommand, len(context.Commands)),
-		Targets:          make([]SlashCommandWizardTarget, len(context.Targets)),
-	}
-	copy(clone.Commands, context.Commands)
-	copy(clone.Targets, context.Targets)
-	return clone
-}
-
 func cloneAutocompleteSchemaContext(schema *AutocompleteSchemaContext) *AutocompleteSchemaContext {
 	if schema == nil {
 		return nil
@@ -393,15 +352,6 @@ func cloneAutocompleteSchemaContext(schema *AutocompleteSchemaContext) *Autocomp
 	return clone
 }
 
-func cloneHistoryEntryContext(entry *HistoryEntryContext) *HistoryEntryContext {
-	if entry == nil {
-		return nil
-	}
-
-	clone := *entry
-	return &clone
-}
-
 func cloneHistoryEntries(entries []HistoryEntryContext) []HistoryEntryContext {
 	if len(entries) == 0 {
 		return nil
@@ -410,15 +360,6 @@ func cloneHistoryEntries(entries []HistoryEntryContext) []HistoryEntryContext {
 	clone := make([]HistoryEntryContext, len(entries))
 	copy(clone, entries)
 	return clone
-}
-
-func cloneHistorySearchContext(context *HistorySearchContext) *HistorySearchContext {
-	if context == nil {
-		return nil
-	}
-
-	clone := *context
-	return &clone
 }
 
 func cloneReconnectContext(reconnect *ReconnectContext) *ReconnectContext {

@@ -264,40 +264,35 @@ func TestCommandModeViewRendersAutocompletePanel(t *testing.T) {
 }
 
 func TestCommandModeViewRendersSlashWizard(t *testing.T) {
-	query := InteractionState{
-		SlashWizard: &SlashCommandWizardContext{
-			Step: SlashCommandWizardStepCommand,
-			Commands: []SlashCommandWizardCommand{{
-				Name:        "tables",
-				DisplayName: "/tables",
-				Summary:     "list tables in the current database",
-				Usage:       "/tables",
-			}},
-		},
-	}
-	modal := renderSlashWizard(query)
+	m := &slashWizardModal{wizard: SlashCommandWizardContext{
+		Step: SlashCommandWizardStepCommand,
+		Commands: []SlashCommandWizardCommand{{
+			Name:        "tables",
+			DisplayName: "/tables",
+			Summary:     "list tables in the current database",
+			Usage:       "/tables",
+		}},
+	}}
+	modal := m.Render(InteractionState{})
 
 	for _, want := range []string{"Command wizard:", "Step 1/2: choose a slash command", "> /tables - list tables in the current database", "enter confirm | ctrl+n next | ctrl+p prev | esc close"} {
 		if !strings.Contains(modal, want) {
-			t.Fatalf("renderSlashWizard() = %q, want to contain %q", modal, want)
+			t.Fatalf("slashWizardModal.Render() = %q, want to contain %q", modal, want)
 		}
 	}
 }
 
 func TestCommandModeViewRendersHistorySearch(t *testing.T) {
-	query := InteractionState{
+	h := &historySearchModal{filter: "su", selectedIndex: 0}
+	interaction := InteractionState{
 		ActiveModal: ModalHistorySearch,
-		HistorySearch: &HistorySearchContext{
-			Filter:        "su",
-			SelectedIndex: 0,
-		},
-		History: []HistoryEntryContext{{	Statement: "select * from user_sessions"}, {	Statement: "select * from users"}},
+		History:     []HistoryEntryContext{{Statement: "select * from user_sessions"}, {Statement: "select * from users"}},
 	}
-	modal := renderHistorySearch(query)
+	modal := h.Render(interaction)
 
 	for _, want := range []string{"Reverse search:", "query> su", "2 match(es); newest first.", "> select * from users", "enter restore | ctrl+r older | ctrl+n newer | esc close"} {
 		if !strings.Contains(modal, want) {
-			t.Fatalf("renderHistorySearch() = %q, want to contain %q", modal, want)
+			t.Fatalf("historySearchModal.Render() = %q, want to contain %q", modal, want)
 		}
 	}
 }

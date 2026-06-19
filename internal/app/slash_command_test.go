@@ -488,8 +488,8 @@ func TestModelSubmitCommandsOpensWizard(t *testing.T) {
 	}
 	model = next.(Model)
 
-	if model.state.Interaction.SlashWizard == nil {
-		t.Fatal("state.Query.SlashWizard = nil, want wizard context")
+	if model.modal == nil {
+		t.Fatal("model.modal = nil, want wizard modal open")
 	}
 	if got, want := model.state.Status, "Choose a slash command and press enter."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -516,7 +516,7 @@ func TestModelSubmitCommandsWizardDispatchesResultCommand(t *testing.T) {
 
 	model := NewModel(Session{ConnectionName: "local", DatabaseType: "sqlite", Adapter: adapter})
 	model.state.SetReady("")
-	model.state.SetSlashWizardContext(&SlashCommandWizardContext{
+	model.modal = &slashWizardModal{wizard: SlashCommandWizardContext{
 		Step: SlashCommandWizardStepCommand,
 		Commands: []SlashCommandWizardCommand{{
 			Name:        "tables",
@@ -524,11 +524,12 @@ func TestModelSubmitCommandsWizardDispatchesResultCommand(t *testing.T) {
 			Summary:     "list tables in the current database",
 			Usage:       "/tables",
 		}},
-	})
+	}}
+	model.state.SetActiveModal(ModalSlashWizard)
 
-	next, cmd := model.Update(submitIntentMsg{})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
-		t.Fatal("Update(submitIntentMsg{}) cmd = nil, want slash dispatch command")
+		t.Fatal("Update(enter) cmd = nil, want slash dispatch command")
 	}
 	model = next.(Model)
 	if got, want := model.state.Status, "Dispatching /tables from wizard. Press esc to cancel; timeout after 30s."; got != want {
@@ -546,8 +547,8 @@ func TestModelSubmitCommandsWizardDispatchesResultCommand(t *testing.T) {
 	if model.state.Interaction.Running != nil {
 		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Interaction.Running)
 	}
-	if model.state.Interaction.SlashWizard != nil {
-		t.Fatalf("state.Query.SlashWizard = %#v, want nil", model.state.Interaction.SlashWizard)
+	if model.modal != nil {
+		t.Fatalf("model.modal = %#v, want nil after dispatch", model.modal)
 	}
 	if got, want := model.state.Status, "Expanded /tables for current database into command mode. Review it, then press enter to run."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -557,7 +558,7 @@ func TestModelSubmitCommandsWizardDispatchesResultCommand(t *testing.T) {
 func TestModelSubmitCommandsWizardLoadsTargetedTemplate(t *testing.T) {
 	model := NewModel(Session{ConnectionName: "local", DatabaseType: "sqlite"})
 	model.state.SetReady("")
-	model.state.SetSlashWizardContext(&SlashCommandWizardContext{
+	model.modal = &slashWizardModal{wizard: SlashCommandWizardContext{
 		Step: SlashCommandWizardStepTarget,
 		Commands: []SlashCommandWizardCommand{{
 			Name:        "select",
@@ -567,11 +568,12 @@ func TestModelSubmitCommandsWizardLoadsTargetedTemplate(t *testing.T) {
 			NeedsTarget: true,
 		}},
 		Targets: []SlashCommandWizardTarget{{Value: "widgets", Display: "widgets"}},
-	})
+	}}
+	model.state.SetActiveModal(ModalSlashWizard)
 
-	next, cmd := model.Update(submitIntentMsg{})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
-		t.Fatal("Update(submitIntentMsg{}) cmd = nil, want slash dispatch command")
+		t.Fatal("Update(enter) cmd = nil, want slash dispatch command")
 	}
 	model = next.(Model)
 	if got, want := model.state.Status, "Dispatching /select from wizard. Press esc to cancel; timeout after 30s."; got != want {
@@ -592,8 +594,8 @@ func TestModelSubmitCommandsWizardLoadsTargetedTemplate(t *testing.T) {
 	if got, want := model.command.editor.Value(), "SELECT\n  *\nFROM \"widgets\";"; got != want {
 		t.Fatalf("editor.Value() = %q, want %q", got, want)
 	}
-	if model.state.Interaction.SlashWizard != nil {
-		t.Fatalf("state.Query.SlashWizard = %#v, want nil", model.state.Interaction.SlashWizard)
+	if model.modal != nil {
+		t.Fatalf("model.modal = %#v, want nil after dispatch", model.modal)
 	}
 }
 
@@ -615,7 +617,7 @@ func TestModelSubmitCommandsWizardAdvancesToTargetSelection(t *testing.T) {
 		m, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 		model = m.(Model)
 	}
-	model.state.SetSlashWizardContext(&SlashCommandWizardContext{
+	model.modal = &slashWizardModal{wizard: SlashCommandWizardContext{
 		Step: SlashCommandWizardStepCommand,
 		Commands: []SlashCommandWizardCommand{{
 			Name:        "select",
@@ -624,15 +626,17 @@ func TestModelSubmitCommandsWizardAdvancesToTargetSelection(t *testing.T) {
 			Usage:       "/select <table>",
 			NeedsTarget: true,
 		}},
-	})
+	}}
+	model.state.SetActiveModal(ModalSlashWizard)
 
-	next, cmd := model.Update(submitIntentMsg{})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd != nil {
-		t.Fatalf("Update(submitIntentMsg{}) cmd = %v, want nil while advancing wizard", cmd)
+		t.Fatalf("Update(enter) cmd = %v, want nil while advancing wizard", cmd)
 	}
 	model = next.(Model)
-	if model.state.Interaction.SlashWizard == nil || model.state.Interaction.SlashWizard.Step != SlashCommandWizardStepTarget {
-		t.Fatalf("state.Query.SlashWizard = %#v, want target step", model.state.Interaction.SlashWizard)
+	wiz, _ := model.modal.(*slashWizardModal)
+	if wiz == nil || wiz.wizard.Step != SlashCommandWizardStepTarget {
+		t.Fatalf("model.modal wizard step = %#v, want target step", model.modal)
 	}
 	if got, want := model.state.Status, "Choose a table for /select and press enter."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -648,7 +652,7 @@ func TestModelSubmitCommandsWizardAdvancesToTargetSelection(t *testing.T) {
 func TestModelSlashWizardNavigationKeysMoveBackAndClose(t *testing.T) {
 	model := NewModel(Session{ConnectionName: "local", DatabaseType: "sqlite"})
 	model.state.SetReady("")
-	model.state.SetSlashWizardContext(&SlashCommandWizardContext{
+	model.modal = &slashWizardModal{wizard: SlashCommandWizardContext{
 		Step: SlashCommandWizardStepTarget,
 		Commands: []SlashCommandWizardCommand{{
 			Name:        "select",
@@ -658,39 +662,30 @@ func TestModelSlashWizardNavigationKeysMoveBackAndClose(t *testing.T) {
 			NeedsTarget: true,
 		}},
 		Targets: []SlashCommandWizardTarget{{Value: "users", Display: "users"}, {Value: "widgets", Display: "widgets"}},
-	})
+	}}
+	model.state.SetActiveModal(ModalSlashWizard)
 
-	next, cmd := model.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
-	if cmd == nil {
-		t.Fatal("Update(ctrl+n) cmd = nil, want move command")
-	}
+	// ctrl+n moves selection directly (no cmd round-trip)
+	next, _ := model.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
 	model = next.(Model)
-	next, _ = model.Update(cmd())
-	model = next.(Model)
-	if got, want := model.state.Interaction.SlashWizard.SelectedTarget, 1; got != want {
+	wiz, _ := model.modal.(*slashWizardModal)
+	if got, want := wiz.wizard.SelectedTarget, 1; got != want {
 		t.Fatalf("SelectedTarget = %d, want %d", got, want)
 	}
 
-	next, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-	if cmd == nil {
-		t.Fatal("Update(esc) cmd = nil, want back command")
-	}
+	// esc steps back to command selection
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	model = next.(Model)
-	next, _ = model.Update(cmd())
-	model = next.(Model)
-	if model.state.Interaction.SlashWizard == nil || model.state.Interaction.SlashWizard.Step != SlashCommandWizardStepCommand {
-		t.Fatalf("state.Query.SlashWizard = %#v, want command step", model.state.Interaction.SlashWizard)
+	wiz, _ = model.modal.(*slashWizardModal)
+	if wiz == nil || wiz.wizard.Step != SlashCommandWizardStepCommand {
+		t.Fatalf("model.modal wizard step = %#v, want command step", model.modal)
 	}
 
-	next, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-	if cmd == nil {
-		t.Fatal("Update(esc) cmd = nil, want close command")
-	}
+	// esc closes the wizard
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	model = next.(Model)
-	next, _ = model.Update(cmd())
-	model = next.(Model)
-	if model.state.Interaction.SlashWizard != nil {
-		t.Fatalf("state.Query.SlashWizard = %#v, want nil", model.state.Interaction.SlashWizard)
+	if model.modal != nil {
+		t.Fatalf("model.modal = %#v, want nil after close", model.modal)
 	}
 	if got, want := model.state.Status, "Closed the slash command wizard."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -783,10 +778,11 @@ func TestModelSubmitNeedsTargetCommandWithoutArgOpensTableSelection(t *testing.T
 	}
 	model = next.(Model)
 
-	wizard := model.state.Interaction.SlashWizard
-	if wizard == nil {
-		t.Fatal("state.Query.SlashWizard = nil, want table selection wizard")
+	wm, _ := model.modal.(*slashWizardModal)
+	if wm == nil {
+		t.Fatal("model.modal is not *slashWizardModal, want table selection wizard")
 	}
+	wizard := &wm.wizard
 	if got, want := wizard.Step, SlashCommandWizardStepTarget; got != want {
 		t.Fatalf("wizard.Step = %q, want %q", got, want)
 	}
@@ -842,14 +838,14 @@ func TestModelSubmitNeedsTargetCommandWithoutArgConfirmDispatchesCommand(t *test
 	next, _ := model.Update(submitIntentMsg{})
 	model = next.(Model)
 
-	if model.state.Interaction.SlashWizard == nil {
+	if model.modal == nil {
 		t.Fatal("wizard not opened after /select without args")
 	}
 
-	// Confirm with the pre-selected table
-	next, cmd := model.Update(submitIntentMsg{})
+	// Confirm with the pre-selected table via Enter key
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
-		t.Fatal("Update(submitIntentMsg{}) cmd = nil after confirming table, want dispatch command")
+		t.Fatal("Update(enter) cmd = nil after confirming table, want dispatch command")
 	}
 	model = next.(Model)
 	if got, want := model.state.Interaction.Running.Label, "/select"; got != want {
@@ -859,8 +855,8 @@ func TestModelSubmitNeedsTargetCommandWithoutArgConfirmDispatchesCommand(t *test
 	next, _ = model.Update(firstCommandMessageForTest[slashCommandExecutedMsg](t, cmd))
 	model = next.(Model)
 
-	if model.state.Interaction.SlashWizard != nil {
-		t.Fatalf("wizard still open after dispatch; want nil")
+	if model.modal != nil {
+		t.Fatalf("model.modal = %#v, want nil after dispatch", model.modal)
 	}
 	for _, want := range []string{"SELECT", `FROM "main"."widgets";`} {
 		if got := model.command.editor.Value(); !containsLine(got, want) {
@@ -872,7 +868,7 @@ func TestModelSubmitNeedsTargetCommandWithoutArgConfirmDispatchesCommand(t *test
 func TestModelSubmitNeedsTargetCommandWithoutArgEscClosesWizard(t *testing.T) {
 	model := NewModel(Session{ConnectionName: "local", DatabaseType: "sqlite"})
 	model.state.SetReady("")
-	model.state.SetSlashWizardContext(&SlashCommandWizardContext{
+	model.modal = &slashWizardModal{wizard: SlashCommandWizardContext{
 		Step: SlashCommandWizardStepTarget,
 		Commands: []SlashCommandWizardCommand{{
 			Name:        "select",
@@ -883,19 +879,15 @@ func TestModelSubmitNeedsTargetCommandWithoutArgEscClosesWizard(t *testing.T) {
 		}},
 		Targets:          []SlashCommandWizardTarget{{Value: "users", Display: "users"}},
 		DirectInvocation: true,
-	})
+	}}
+	model.state.SetActiveModal(ModalSlashWizard)
 
 	// ESC on a direct-invocation wizard at target step should close, not go back.
-	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-	if cmd == nil {
-		t.Fatal("Update(esc) cmd = nil, want close command")
-	}
-	model = next.(Model)
-	next, _ = model.Update(cmd())
+	next, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	model = next.(Model)
 
-	if model.state.Interaction.SlashWizard != nil {
-		t.Fatalf("state.Query.SlashWizard = %#v, want nil (closed)", model.state.Interaction.SlashWizard)
+	if model.modal != nil {
+		t.Fatalf("model.modal = %#v, want nil (closed)", model.modal)
 	}
 	if got, want := model.state.Status, "Closed the slash command wizard."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)

@@ -284,8 +284,6 @@ func TestModelViewIncludesSharedInteractionStatePlaceholders(t *testing.T) {
 	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select 1", ConnectionName: "local"}})
 	model.state.SetLatestResultContext(&LatestResultContext{Statement: "select 1", OriginPane: PaneCommand})
 	model.state.SetPendingPaneSwitch(&PaneSwitchContext{FromLayout: LayoutCommandOnly, ToLayout: LayoutResultsOnly, FromPane: PaneCommand, ToPane: PaneResults})
-	model.state.SetSelectedHistoryEntry(&HistoryEntryContext{	Statement: "select 2", ConnectionName: "local"})
-
 	if model.state.Interaction.LatestResult == nil {
 		t.Fatal("state.Interaction.LatestResult = nil, want available")
 	}
@@ -294,9 +292,6 @@ func TestModelViewIncludesSharedInteractionStatePlaceholders(t *testing.T) {
 	}
 	if got, want := len(model.state.Interaction.History), 1; got != want {
 		t.Fatalf("len(state.Interaction.History) = %d, want %d", got, want)
-	}
-	if model.state.Interaction.SelectedHistoryEntry == nil {
-		t.Fatal("state.Interaction.SelectedHistoryEntry = nil, want available")
 	}
 }
 
@@ -1050,18 +1045,23 @@ func TestModelUpdateHistorySetsPendingIntent(t *testing.T) {
 	if got, want := model.state.Interaction.ActiveModal, ModalHistorySearch; got != want {
 		t.Fatalf("state.Interaction.ActiveModal = %q, want %q", got, want)
 	}
-	if model.state.Interaction.HistorySearch == nil {
-		t.Fatal("state.Interaction.HistorySearch = nil, want search context")
+	if model.modal == nil {
+		t.Fatal("model.modal = nil, want history search modal open")
 	}
 
 	if got, want := model.state.Status, "History search matched 2 entries; selected \"/tables\"."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
-	if model.state.Interaction.SelectedHistoryEntry == nil {
-		t.Fatal("state.Interaction.SelectedHistoryEntry = nil, want latest history entry")
+	h, _ := model.modal.(*historySearchModal)
+	if h == nil {
+		t.Fatal("model.modal is not *historySearchModal")
 	}
-	if got, want := model.state.Interaction.SelectedHistoryEntry.Statement, "/tables"; got != want {
-		t.Fatalf("state.Interaction.SelectedHistoryEntry.Statement = %q, want %q", got, want)
+	matches := filterHistorySearchEntries(model.state.Interaction.History, h.filter)
+	if len(matches) == 0 {
+		t.Fatal("history search modal has no matches, want at least one")
+	}
+	if got, want := matches[wrapHistorySearchIndex(h.selectedIndex, len(matches))].Statement, "/tables"; got != want {
+		t.Fatalf("selected history entry = %q, want %q", got, want)
 	}
 }
 
@@ -1078,8 +1078,8 @@ func TestModelUpdateHistoryHandlesEmptyHistory(t *testing.T) {
 	if got, want := model.state.Interaction.ActiveModal, ModalHistorySearch; got != want {
 		t.Fatalf("state.Interaction.ActiveModal = %q, want %q", got, want)
 	}
-	if model.state.Interaction.SelectedHistoryEntry != nil {
-		t.Fatalf("state.Interaction.SelectedHistoryEntry = %#v, want nil", model.state.Interaction.SelectedHistoryEntry)
+	if model.modal == nil {
+		t.Fatal("model.modal = nil, want history search modal open")
 	}
 }
 
@@ -1094,21 +1094,30 @@ func TestModelUpdateHistorySearchFiltersAndCyclesEntries(t *testing.T) {
 	next, _ = model.Update(tea.KeyPressMsg{Text: "su"})
 	model = next.(Model)
 
-	if got, want := model.state.Interaction.HistorySearch.Filter, "su"; got != want {
-		t.Fatalf("state.Interaction.HistorySearch.Filter = %q, want %q", got, want)
+	h, _ := model.modal.(*historySearchModal)
+	if h == nil {
+		t.Fatal("model.modal is not *historySearchModal")
 	}
-	if model.state.Interaction.SelectedHistoryEntry == nil {
-		t.Fatal("state.Interaction.SelectedHistoryEntry = nil, want selected entry")
+	if got, want := h.filter, "su"; got != want {
+		t.Fatalf("historySearchModal.filter = %q, want %q", got, want)
 	}
-	if got, want := model.state.Interaction.SelectedHistoryEntry.Statement, "select * from user_sessions"; got != want {
-		t.Fatalf("state.Interaction.SelectedHistoryEntry.Statement = %q, want %q", got, want)
+	selectedEntry := func() string {
+		matches := filterHistorySearchEntries(model.state.Interaction.History, h.filter)
+		if len(matches) == 0 {
+			return ""
+		}
+		return matches[wrapHistorySearchIndex(h.selectedIndex, len(matches))].Statement
+	}
+	if got, want := selectedEntry(), "select * from user_sessions"; got != want {
+		t.Fatalf("selected history entry = %q, want %q", got, want)
 	}
 
 	next, _ = model.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
 	model = next.(Model)
+	h, _ = model.modal.(*historySearchModal)
 
-	if got, want := model.state.Interaction.SelectedHistoryEntry.Statement, "select * from users"; got != want {
-		t.Fatalf("state.Interaction.SelectedHistoryEntry.Statement = %q, want %q", got, want)
+	if got, want := selectedEntry(), "select * from users"; got != want {
+		t.Fatalf("selected history entry = %q, want %q", got, want)
 	}
 	if got, want := model.state.Status, "History search matched 2 entries; selected \"select * from users\"."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -1129,8 +1138,8 @@ func TestModelUpdateHistorySearchCancelReturnsToCommandMode(t *testing.T) {
 	if got, want := model.state.Interaction.ActivePane, PaneCommand; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
-	if model.state.Interaction.HistorySearch != nil {
-		t.Fatalf("state.Interaction.HistorySearch = %#v, want nil", model.state.Interaction.HistorySearch)
+	if model.modal != nil {
+		t.Fatalf("model.modal = %#v, want nil after cancel", model.modal)
 	}
 	if got, want := model.state.Interaction.PendingIntent, IntentNone; got != want {
 		t.Fatalf("state.Interaction.PendingIntent = %q, want %q", got, want)
@@ -1166,11 +1175,8 @@ func TestModelUpdateHistorySearchRestoreLoadsEditorAndClosesSearch(t *testing.T)
 	if got, want := model.state.Interaction.ActivePane, PaneCommand; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
-	if model.state.Interaction.HistorySearch != nil {
-		t.Fatalf("state.Interaction.HistorySearch = %#v, want nil", model.state.Interaction.HistorySearch)
-	}
-	if model.state.Interaction.SelectedHistoryEntry != nil {
-		t.Fatalf("state.Interaction.SelectedHistoryEntry = %#v, want nil", model.state.Interaction.SelectedHistoryEntry)
+	if model.modal != nil {
+		t.Fatalf("model.modal = %#v, want nil after restore", model.modal)
 	}
 	if got, want := model.state.Interaction.PendingIntent, IntentNone; got != want {
 		t.Fatalf("state.Interaction.PendingIntent = %q, want %q", got, want)
@@ -1476,8 +1482,9 @@ func TestModelUpdateCtrlDDoesNotPageDuringHistorySearch(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
+	h := &historySearchModal{filter: "sel"}
+	model.modal = h
 	model.state.SetActiveModal(ModalHistorySearch)
-	model.state.SetHistorySearchContext(&HistorySearchContext{Filter: "sel"})
 	model.state.SetLatestResultContext(&LatestResultContext{
 		Statement: "select id from widgets order by id",
 		PreservedResult: &db.ResultSet{
@@ -1499,8 +1506,9 @@ func TestModelUpdateCtrlDDoesNotPageDuringHistorySearch(t *testing.T) {
 	if got, want := model.state.Interaction.ActiveModal, ModalHistorySearch; got != want {
 		t.Fatalf("state.Interaction.ActiveModal = %q, want %q", got, want)
 	}
-	if model.state.Interaction.HistorySearch == nil || model.state.Interaction.HistorySearch.Filter != "sel" {
-		t.Fatalf("state.Interaction.HistorySearch = %#v, want query preserved", model.state.Interaction.HistorySearch)
+	hAfter, _ := model.modal.(*historySearchModal)
+	if hAfter == nil || hAfter.filter != "sel" {
+		t.Fatalf("model.modal = %#v, want history search with filter preserved", model.modal)
 	}
 }
 
@@ -1766,8 +1774,8 @@ func TestModelUpdateFocusResultsPaneFromHistorySearchClosesHistorySearch(t *test
 	if got, want := model.state.Interaction.ActivePane, PaneResults; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
-	if model.state.Interaction.HistorySearch != nil {
-		t.Fatalf("state.Interaction.HistorySearch = %#v, want nil", model.state.Interaction.HistorySearch)
+	if model.modal != nil {
+		t.Fatalf("model.modal = %#v, want nil after pane focus", model.modal)
 	}
 }
 
@@ -1788,11 +1796,8 @@ func TestModelUpdateLayoutSwitchesToResultsPaneOnlyAndClosesHistorySearch(t *tes
 	if got, want := model.state.Interaction.ActivePane, PaneResults; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
-	if model.state.Interaction.HistorySearch != nil {
-		t.Fatalf("state.Interaction.HistorySearch = %#v, want nil", model.state.Interaction.HistorySearch)
-	}
-	if model.state.Interaction.SelectedHistoryEntry != nil {
-		t.Fatalf("state.Interaction.SelectedHistoryEntry = %#v, want nil", model.state.Interaction.SelectedHistoryEntry)
+	if model.modal != nil {
+		t.Fatalf("model.modal = %#v, want nil after layout switch", model.modal)
 	}
 	if got, want := model.state.Status, "Switched to results pane only. Run a query that returns rows to populate the Results Pane."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -2417,7 +2422,7 @@ func TestModelToggleHelpShowsSplitAndWizardSpecificGuidance(t *testing.T) {
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetActivePane(PaneResults)
-	model.state.SetSlashWizardContext(&SlashCommandWizardContext{
+	model.modal = &slashWizardModal{wizard: SlashCommandWizardContext{
 		Step: SlashCommandWizardStepTarget,
 		Commands: []SlashCommandWizardCommand{{
 			Name:        "select",
@@ -2427,12 +2432,9 @@ func TestModelToggleHelpShowsSplitAndWizardSpecificGuidance(t *testing.T) {
 			NeedsTarget: true,
 		}},
 		Targets: []SlashCommandWizardTarget{{Value: "widgets", Display: "widgets"}},
-	})
-
-	next, cmd := model.Update(tea.KeyPressMsg{Code: 'h', Mod: tea.ModAlt})
-	model = next.(Model)
-	next, _ = model.Update(cmd())
-	model = next.(Model)
+	}}
+	model.state.SetActiveModal(ModalSlashWizard)
+	model.state.SetHelpVisible(true)
 
 	view := renderHelpSurface(model.state.Interaction)
 	for _, want := range []string{

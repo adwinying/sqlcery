@@ -25,6 +25,7 @@ type Model struct {
 	state           SharedAppState
 	schema          *AutocompleteSchemaContext
 	loader          autocompleteSchemaLoader
+	modal           Modal
 	width           int
 	height          int
 	splitRatio      float64
@@ -46,14 +47,6 @@ var nopCmd tea.Cmd = func() tea.Msg { return nil }
 type submitIntentMsg struct{}
 
 type cancelRunningIntentMsg struct{}
-
-type slashWizardMoveIntentMsg struct {
-	Delta int
-}
-
-type slashWizardBackIntentMsg struct{}
-
-type slashWizardCloseIntentMsg struct{}
 
 type historyIntentMsg struct{}
 
@@ -157,14 +150,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.state.Interaction.ActiveModal == ModalHistorySearch {
+		if m.modal != nil {
 			if msg.String() != "ctrl+c" {
 				m.pendingQuit = false
 			}
-			if cmd := m.handleLayoutKey(msg); cmd != nil {
-				return m, cmd
-			}
-			return m, m.handleHistorySearchKey(msg)
+			return m, m.modal.HandleKey(msg, &m)
 		}
 
 		if msg.String() != "ctrl+c" {
@@ -197,11 +187,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "ctrl+c":
-			// If a modal is open, close it instead of quitting
-			if m.state.Interaction.SlashWizard != nil {
-				m.pendingQuit = false
-				return m, func() tea.Msg { return slashWizardCloseIntentMsg{} }
-			}
 			// If in command mode with text, clear the input
 			if m.state.App.Current == StateReady && m.command.Focused() && strings.TrimSpace(m.command.Value()) != "" {
 				m.pendingQuit = false
@@ -223,10 +208,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if running := m.state.Interaction.Running; running != nil {
 			m.state.SetPendingIntent(IntentSubmit, "submit", fmt.Sprintf("%s is still running. Press esc to cancel; timeout after %s.", runningLabel(running), formatExecutionTimeout(defaultInteractiveExecutionTimeout)))
 			return m, nil
-		}
-
-		if wizard := m.state.Interaction.SlashWizard; wizard != nil {
-			return m.submitSlashWizard(wizard)
 		}
 
 		m.syncCurrentSQL()
@@ -319,7 +300,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.Interaction.LastAction = "slash:" + msg.Command.DisplayName
 		m.state.SetPendingPaneSwitch(nil)
 		if msg.Err != nil {
-			m.state.SetSlashWizardContext(nil)
+			m.closeModal()
 			m.command.AppendReplEntry("> ", msg.Command.RawInput, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
 			m.command.Clear()
 			if status, ok := executionInterruptedStatus(running, msg.Err); ok {
@@ -332,7 +313,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		m.state.SetSlashWizardContext(msg.Result.Wizard)
+		if msg.Result.Wizard != nil {
+			m.modal = &slashWizardModal{wizard: *msg.Result.Wizard}
+			m.state.SetActiveModal(ModalSlashWizard)
+		}
 
 		if msg.Result.ShouldReplace {
 			m.command.SetEditorValue(msg.Result.ReplaceEditor)
@@ -352,16 +336,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.state.SetReady(withHistoryWarning(defaultStatus(msg.Result.Status, fmt.Sprintf("%s completed.", msg.Command.DisplayName)), historyErr))
 		return m, nil
-	case slashWizardMoveIntentMsg:
-		m.moveSlashWizardSelection(msg.Delta)
-		return m, nil
-	case slashWizardBackIntentMsg:
-		m.stepBackSlashWizard()
-		return m, nil
-	case slashWizardCloseIntentMsg:
-		m.state.SetSlashWizardContext(nil)
-		m.state.SetReady("Closed the slash command wizard.")
-		return m, nil
 	case toggleHelpIntentMsg:
 		visible := !m.state.Interaction.HelpVisible
 		m.state.SetHelpVisible(visible)
@@ -372,9 +346,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case clearInputIntentMsg:
-		if m.state.Interaction.SlashWizard != nil {
-			m.state.SetSlashWizardContext(nil)
-		}
+		m.closeModal()
 		m.command.Clear()
 		m.syncCurrentSQL()
 		m.state.SetReady("")
@@ -383,7 +355,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case historyIntentMsg:
 		m.syncCurrentSQL()
 		m.state.SetReady("")
-		m.openHistorySearch()
+		if !layoutShowsCommand(m.state.Interaction.Layout) {
+			m.state.SetLayout(LayoutSplit)
+		}
+		h := &historySearchModal{}
+		m.modal = h
+		m.state.SetActiveModal(ModalHistorySearch)
+		m.state.SetPendingIntent(IntentHistory, "history", h.status(m.state.Interaction))
 		return m, nil
 	case switchPaneIntentMsg:
 		m.syncCurrentSQL()
@@ -654,10 +632,9 @@ func (m Model) readyStateView(totalHeight int) string {
 		baseH = strings.Count(base, "\n") + 1
 	}
 
-	// Render modal for history search and slash wizard.
-	modalContent := renderHistorySearch(interaction)
-	if modalContent == "" {
-		modalContent = renderSlashWizard(interaction)
+	var modalContent string
+	if m.modal != nil {
+		modalContent = m.modal.Render(interaction)
 	}
 	if modalContent != "" {
 		maxW := min(modalMaxWidth, w-4)
@@ -731,10 +708,6 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	switch {
 	case msg.String() == "enter":
-		// Enter always submits when a slash wizard modal is open.
-		if m.state.Interaction.SlashWizard != nil {
-			return func() tea.Msg { return submitIntentMsg{} }
-		}
 		// Enter submits when statement is complete (ends with ;), otherwise
 		// falls through to textarea to insert a newline for multi-line SQL.
 		m.syncCurrentSQL()
@@ -748,32 +721,12 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, keys.Submit):
 		return func() tea.Msg { return submitIntentMsg{} }
 	case key.Matches(msg, keys.NextSuggestion):
-		if m.state.Interaction.SlashWizard != nil {
-			return func() tea.Msg { return slashWizardMoveIntentMsg{Delta: 1} }
-		}
 		return nil
 	case key.Matches(msg, keys.PrevSuggestion):
-		if m.state.Interaction.SlashWizard != nil {
-			return func() tea.Msg { return slashWizardMoveIntentMsg{Delta: -1} }
-		}
 		return nil
 	case key.Matches(msg, keys.Cancel):
 		if m.state.Interaction.Running != nil {
 			return func() tea.Msg { return cancelRunningIntentMsg{} }
-		}
-		if wizard := m.state.Interaction.SlashWizard; wizard != nil {
-			if wizard.Step == SlashCommandWizardStepTarget {
-				// If a filter is active, clear it first
-			if strings.TrimSpace(wizard.TargetFilter) != "" {
-				m.updateWizardTargetFilter("")
-				return nopCmd
-			}
-				if wizard.DirectInvocation {
-					return func() tea.Msg { return slashWizardCloseIntentMsg{} }
-				}
-				return func() tea.Msg { return slashWizardBackIntentMsg{} }
-			}
-			return func() tea.Msg { return slashWizardCloseIntentMsg{} }
 		}
 		// If the autocomplete dropdown is visible, dismiss it and preserve input.
 		if m.command.AutocompleteVisible(m.state.Interaction) {
@@ -787,43 +740,11 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, keys.SwitchMode):
 		return func() tea.Msg { return switchPaneIntentMsg{} }
 	case msg.String() == "ctrl+q":
-		return func() tea.Msg { return focusPaneIntentMsg{	Pane: PaneResults} }
+		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneResults} }
 	case msg.String() == "ctrl+w":
 		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneCommand} }
 	case msg.String() == "ctrl+3", msg.String() == "alt+3":
 		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
-	case msg.String() == "ctrl+z":
-		return func() tea.Msg { return toggleZoomIntentMsg{} }
-	case m.state.Interaction.SlashWizard != nil && m.state.Interaction.SlashWizard.Step == SlashCommandWizardStepTarget &&
-		(msg.String() == "backspace" || msg.String() == "ctrl+h" || msg.String() == "delete"):
-		wizard := m.state.Interaction.SlashWizard
-		m.updateWizardTargetFilter(trimLastRune(wizard.TargetFilter))
-		return nopCmd
-	case m.state.Interaction.SlashWizard != nil && m.state.Interaction.SlashWizard.Step == SlashCommandWizardStepTarget &&
-		msg.String() == "space":
-		wizard := m.state.Interaction.SlashWizard
-		m.updateWizardTargetFilter(wizard.TargetFilter + " ")
-		return nopCmd
-	case m.state.Interaction.SlashWizard != nil && m.state.Interaction.SlashWizard.Step == SlashCommandWizardStepTarget &&
-		len(msg.Text) > 0 && !msg.Mod.Contains(tea.ModAlt):
-		wizard := m.state.Interaction.SlashWizard
-		m.updateWizardTargetFilter(wizard.TargetFilter + msg.Text)
-		return nopCmd
-	default:
-		return nil
-	}
-}
-
-func (m Model) handleLayoutKey(msg tea.KeyPressMsg) tea.Cmd {
-	keys := m.command.KeyMap()
-
-	switch {
-	case key.Matches(msg, keys.LayoutCommandOnly), msg.String() == "ctrl+3", msg.String() == "alt+3":
-		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
-	case msg.String() == "ctrl+q":
-		return func() tea.Msg { return focusPaneIntentMsg{	Pane: PaneResults} }
-	case msg.String() == "ctrl+w":
-		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneCommand} }
 	case msg.String() == "ctrl+z":
 		return func() tea.Msg { return toggleZoomIntentMsg{} }
 	default:
@@ -991,7 +912,7 @@ func (m *Model) composeResultsPaneInsert() bool {
 
 	m.command.SetEditorValue(result.SQL)
 	m.syncCurrentSQL()
-	m.closeHistorySearch()
+	m.closeModal()
 	m.command.Focus()
 	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, PaneResults))
 	m.state.SetActivePane(PaneCommand)
@@ -1015,7 +936,7 @@ func (m *Model) composeResultsPaneUpdate() bool {
 
 	m.command.SetEditorValue(result.SQL)
 	m.syncCurrentSQL()
-	m.closeHistorySearch()
+	m.closeModal()
 	m.command.Focus()
 	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, PaneResults))
 	m.state.SetActivePane(PaneCommand)
@@ -1039,7 +960,7 @@ func (m *Model) composeResultsPaneDelete() bool {
 
 	m.command.SetEditorValue(result.SQL)
 	m.syncCurrentSQL()
-	m.closeHistorySearch()
+	m.closeModal()
 	m.command.Focus()
 	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, PaneResults))
 	m.state.SetActivePane(PaneCommand)
@@ -1244,15 +1165,15 @@ func (m *Model) openTableSelectionForCommand(parsed *slashCommand) (Model, tea.C
 		return *m, nil
 	}
 
-	wizard := &SlashCommandWizardContext{
+	m.modal = &slashWizardModal{wizard: SlashCommandWizardContext{
 		Step:             SlashCommandWizardStepTarget,
 		Commands:         commands,
 		SelectedCommand:  selectedIdx,
 		Targets:          targets,
 		SelectedTarget:   0,
 		DirectInvocation: true,
-	}
-	m.state.SetSlashWizardContext(wizard)
+	}}
+	m.state.SetActiveModal(ModalSlashWizard)
 	m.state.SetReady(fmt.Sprintf("Choose a table for %s and press enter.", parsed.DisplayName))
 	return *m, nil
 }
@@ -1263,121 +1184,13 @@ func (m *Model) openCommandWizard() (Model, tea.Cmd) {
 		m.state.SetReady("/commands: no slash commands available.")
 		return *m, nil
 	}
-	wizard := &SlashCommandWizardContext{
+	m.modal = &slashWizardModal{wizard: SlashCommandWizardContext{
 		Step:     SlashCommandWizardStepCommand,
 		Commands: commands,
-	}
-	m.state.SetSlashWizardContext(wizard)
+	}}
+	m.state.SetActiveModal(ModalSlashWizard)
 	m.state.SetReady("Choose a slash command and press enter.")
 	return *m, nil
-}
-
-func (m *Model) submitSlashWizard(wizard *SlashCommandWizardContext) (Model, tea.Cmd) {
-	selectedCommand, ok := slashWizardCommandByIndex(wizard)
-	if !ok {
-		m.state.SetReady("Slash command wizard is empty.")
-		m.state.SetSlashWizardContext(nil)
-		return *m, nil
-	}
-
-	if selectedCommand.NeedsTarget {
-		if wizard.Step != SlashCommandWizardStepTarget {
-		nextWizard, err := buildSlashWizardFromCommand(context.Background(), slashCommandContext{
-			Session: m.session,
-			Dialect: m.adapterDialect(),
-			Query:   m.state.Interaction.snapshot(),
-		}, wizard.Commands, selectedCommand, wizard.SelectedCommand)
-			if err != nil {
-				m.state.SetReady(fmt.Sprintf("/commands failed: %v", err))
-				m.state.SetSlashWizardContext(nil)
-				m.state.SetLatestResultContext(nil)
-				return *m, nil
-			}
-			if nextWizard == nil || len(nextWizard.Targets) == 0 {
-				m.state.SetReady(fmt.Sprintf("/commands: no tables available for %s.", selectedCommand.DisplayName))
-				m.state.SetSlashWizardContext(nil)
-				return *m, nil
-			}
-			m.state.SetSlashWizardContext(nextWizard)
-			m.state.SetReady(fmt.Sprintf("Choose a table for %s and press enter.", selectedCommand.DisplayName))
-			return *m, nil
-		}
-
-		selectedTarget, ok := slashWizardFilteredTargetByIndex(wizard)
-		if !ok {
-			m.state.SetReady(fmt.Sprintf("/commands: choose a table for %s.", selectedCommand.DisplayName))
-			return *m, nil
-		}
-
-		parsed := buildSlashWizardCommand(selectedCommand, &selectedTarget)
-		return *m, m.startExecution(parsed.DisplayName, fmt.Sprintf("Dispatching %s from wizard.", parsed.DisplayName), executeSlashCommandCmd(slashCommandContext{
-			Session: m.session,
-			Dialect: m.adapterDialect(),
-			Query:   m.state.Interaction.snapshot(),
-		}, parsed))
-	}
-
-	parsed := buildSlashWizardCommand(selectedCommand, nil)
-	return *m, m.startExecution(parsed.DisplayName, fmt.Sprintf("Dispatching %s from wizard.", parsed.DisplayName), executeSlashCommandCmd(slashCommandContext{
-		Session: m.session,
-		Dialect: m.adapterDialect(),
-		Query:   m.state.Interaction.snapshot(),
-	}, parsed))
-}
-
-func (m *Model) moveSlashWizardSelection(delta int) {
-	wizard := cloneSlashCommandWizardContext(m.state.Interaction.SlashWizard)
-	if wizard == nil || delta == 0 {
-		return
-	}
-
-	switch wizard.Step {
-	case SlashCommandWizardStepTarget:
-		filtered := filterWizardTargets(wizard.Targets, wizard.TargetFilter)
-		if len(filtered) == 0 {
-			return
-		}
-		wizard.SelectedTarget = wrapSelection(wizard.SelectedTarget+delta, len(filtered))
-		m.state.SetSlashWizardContext(wizard)
-		m.state.SetReady(fmt.Sprintf("Selected table %s.", filtered[wizard.SelectedTarget].Display))
-	default:
-		if len(wizard.Commands) == 0 {
-			return
-		}
-		wizard.SelectedCommand = wrapSelection(wizard.SelectedCommand+delta, len(wizard.Commands))
-		selectedCommand, _ := slashWizardCommandByIndex(wizard)
-		m.state.SetSlashWizardContext(wizard)
-		m.state.SetReady(fmt.Sprintf("Selected %s.", selectedCommand.DisplayName))
-	}
-}
-
-func (m *Model) updateWizardTargetFilter(filter string) {
-	wizard := cloneSlashCommandWizardContext(m.state.Interaction.SlashWizard)
-	if wizard == nil || wizard.Step != SlashCommandWizardStepTarget {
-		return
-	}
-	wizard.TargetFilter = filter
-	wizard.SelectedTarget = 0
-	m.state.SetSlashWizardContext(wizard)
-	filtered := filterWizardTargets(wizard.Targets, filter)
-	if len(filtered) == 0 {
-		m.state.SetReady(fmt.Sprintf("No tables match %q.", filter))
-	} else {
-		m.state.SetReady(fmt.Sprintf("%d table(s) match filter.", len(filtered)))
-	}
-}
-
-func (m *Model) stepBackSlashWizard() {
-	wizard := cloneSlashCommandWizardContext(m.state.Interaction.SlashWizard)
-	if wizard == nil || wizard.Step != SlashCommandWizardStepTarget {
-		return
-	}
-	wizard.Step = SlashCommandWizardStepCommand
-	wizard.Targets = nil
-	wizard.SelectedTarget = 0
-	m.state.SetSlashWizardContext(wizard)
-	selectedCommand, _ := slashWizardCommandByIndex(wizard)
-	m.state.SetReady(fmt.Sprintf("Choose a command. %s is selected.", selectedCommand.DisplayName))
 }
 
 func wrapSelection(index, size int) int {
@@ -1600,7 +1413,7 @@ func (m *Model) applyModeSwitch(context *PaneSwitchContext) {
 	}
 
 	if context.ToPane == PaneCommand {
-		m.closeHistorySearch()
+		m.closeModal()
 		m.command.Focus()
 		m.state.SetLayout(context.ToLayout)
 		m.state.SetActivePane(PaneCommand)
@@ -1611,7 +1424,7 @@ func (m *Model) applyModeSwitch(context *PaneSwitchContext) {
 
 	if context.ResultContext == nil || context.ResultContext.PreservedResult == nil {
 		if context.ToLayout == LayoutSplit {
-			m.closeHistorySearch()
+			m.closeModal()
 			m.command.Blur()
 			m.state.SetLayout(context.ToLayout)
 			m.state.SetActivePane(context.ToPane)
@@ -1622,7 +1435,7 @@ func (m *Model) applyModeSwitch(context *PaneSwitchContext) {
 		m.state.SetPendingIntent(IntentSwitchPane, "switch-mode", describeModeSwitchStatus(context))
 		return
 	}
-	m.closeHistorySearch()
+	m.closeModal()
 	m.command.Blur()
 	m.state.SetLayout(context.ToLayout)
 	m.state.SetActivePane(context.ToPane)
@@ -1648,7 +1461,7 @@ func (m *Model) applyLayoutSwitch(layout AppLayout) {
 	switch layout {
 	case LayoutResultsOnly:
 		if m.state.Interaction.ActiveModal == ModalHistorySearch {
-			m.closeHistorySearch()
+			m.closeModal()
 		}
 		m.command.Blur()
 		m.state.SetActivePane(PaneResults)
@@ -1685,7 +1498,7 @@ func (m *Model) handleFocusPane(pane Pane) {
 	m.state.SetPendingPaneSwitch(nil)
 	switch pane {
 	case PaneResults:
-		m.closeHistorySearch()
+		m.closeModal()
 		switch m.state.Interaction.Layout {
 		case LayoutCommandOnly:
 			m.command.Blur()
@@ -1701,7 +1514,7 @@ func (m *Model) handleFocusPane(pane Pane) {
 			m.state.SetPendingIntent(IntentNone, "focus-pane", "Focused results pane.")
 		}
 	case PaneCommand:
-		m.closeHistorySearch()
+		m.closeModal()
 		switch m.state.Interaction.Layout {
 		case LayoutResultsOnly:
 			m.command.Focus()
@@ -1778,7 +1591,7 @@ func renderHelpSurface(st InteractionState) string {
 		":w [file] export selected rows or current result rows",
 		"ctrl+u/ctrl+d scroll; ctrl+p/ctrl+n page; ctrl+x focus command",
 	}
-	if st.SlashWizard != nil {
+	if st.ActiveModal == ModalSlashWizard {
 		resultsPaneLines = append(resultsPaneLines, "slash wizard: enter confirm; ctrl+n/ctrl+p move; esc back or close")
 	}
 	sections = append(sections, helpSection{Title: "Results Pane", Lines: resultsPaneLines})
@@ -1801,7 +1614,7 @@ func renderHelpSurface(st InteractionState) string {
 		}})
 	}
 
-	if st.SlashWizard != nil {
+	if st.ActiveModal == ModalSlashWizard {
 		sections = append(sections, helpSection{Title: "Command wizard", Lines: []string{
 			"/commands opens the guided slash command wizard",
 			"enter confirm selection; ctrl+n/ctrl+p move selection",
