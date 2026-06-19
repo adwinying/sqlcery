@@ -10,7 +10,7 @@ import (
 )
 
 func (m *Model) handleResultsPaneExportKey(msg tea.KeyPressMsg) bool {
-	if m.state.Interaction.ActivePane != PaneResultsPane {
+	if m.state.Interaction.ActivePane != PaneResults {
 		m.resultsPane.pendingAction = resultsPanePendingActionNone
 		m.resultsPane.exportBuffer = ""
 		return false

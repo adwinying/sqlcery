@@ -65,7 +65,7 @@ func runWithDependencies(args []string, getwd func() (string, error), deps runDe
 
 	return deps.start(context.Background(), app.Session{
 		ConnectionName:  resolved.Name,
-		ConnectionType:  resolved.Connection.Type,
+		DatabaseType:    resolved.Connection.Type,
 		ConnectionColor: resolved.Connection.Color,
 		WorkingDir:      cwd,
 		Adapter:         adapter,

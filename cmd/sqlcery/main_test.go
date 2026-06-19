@@ -99,8 +99,8 @@ func TestRunOpensSQLiteConnectionAndStartsApp(t *testing.T) {
 		t.Fatal("run() did not start app")
 	}
 
-	if got, want := session.ConnectionType, "sqlite"; got != want {
-		t.Fatalf("session.ConnectionType = %q, want %q", got, want)
+	if got, want := session.DatabaseType, "sqlite"; got != want {
+		t.Fatalf("session.DatabaseType = %q, want %q", got, want)
 	}
 
 	if _, err := os.Stat(databasePath); err != nil {

@@ -814,7 +814,7 @@ func TestOpenPostgresReturnsAuthenticationError(t *testing.T) {
 	}
 }
 
-func TestOpenRejectsUnsupportedConnectionTypes(t *testing.T) {
+func TestOpenRejectsUnsupportedDatabaseTypes(t *testing.T) {
 	_, err := Open(context.Background(), config.Connection{
 		Type: "oracle",
 	})

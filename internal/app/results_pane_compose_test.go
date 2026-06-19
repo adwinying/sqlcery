@@ -233,7 +233,7 @@ func TestComposeResultsPaneUpdateSQLQuotesTimestampColumns(t *testing.T) {
 			Source: &db.TableRef{Namespace: "public", Name: "widgets"},
 			Columns: []db.ResultColumn{
 				{Name: "id", PrimaryKey: &db.PrimaryKey{Column: "id", Position: 1}},
-				{Name: "updated_at", DatabaseType: "TIMESTAMPTZ"},
+				{Name: "updated_at", DriverColumnType: "TIMESTAMPTZ"},
 			},
 			Rows: []db.ResultRow{{Values: []db.ResultValue{
 				{Kind: db.ValueKindInteger, Value: int64(7)},

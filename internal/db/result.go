@@ -24,7 +24,7 @@ type ResultSet struct {
 type ResultColumn struct {
 	Name         string
 	Position     int
-	DatabaseType string
+	DriverColumnType string
 	ScanType     string
 	Nullable     *bool
 	Length       *int64
@@ -130,8 +130,8 @@ func buildResultColumns(names []string, columnTypes []*sql.ColumnType, options R
 
 		if schemaColumn, ok := matchColumnMetadata(options.Columns, column.Position, column.Name); ok {
 			column.Schema = &schemaColumn
-			if column.DatabaseType == "" {
-				column.DatabaseType = schemaColumn.Type
+			if column.DriverColumnType == "" {
+				column.DriverColumnType = schemaColumn.Type
 			}
 			if column.Nullable == nil {
 				nullable := schemaColumn.Nullable
@@ -150,7 +150,7 @@ func buildResultColumns(names []string, columnTypes []*sql.ColumnType, options R
 }
 
 func applyColumnTypeMetadata(column ResultColumn, columnType *sql.ColumnType) ResultColumn {
-	column.DatabaseType = strings.TrimSpace(columnType.DatabaseTypeName())
+	column.DriverColumnType = strings.TrimSpace(columnType.DatabaseTypeName())
 
 	if scanType := columnType.ScanType(); scanType != nil {
 		column.ScanType = scanType.String()
@@ -308,8 +308,8 @@ func resultColumnTypeMatches(column ResultColumn, fragments ...string) bool {
 
 func resultColumnTypeNames(column ResultColumn) []string {
 	typeNames := make([]string, 0, 2)
-	if column.DatabaseType != "" {
-		typeNames = append(typeNames, strings.ToUpper(strings.TrimSpace(column.DatabaseType)))
+	if column.DriverColumnType != "" {
+		typeNames = append(typeNames, strings.ToUpper(strings.TrimSpace(column.DriverColumnType)))
 	}
 	if column.Schema != nil && column.Schema.Type != "" {
 		typeNames = append(typeNames, strings.ToUpper(strings.TrimSpace(column.Schema.Type)))

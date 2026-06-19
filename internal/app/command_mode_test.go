@@ -291,7 +291,7 @@ func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 			Filter:        "su",
 			SelectedIndex: 0,
 		},
-		SessionHistory: []HistoryEntryContext{{	Statement: "select * from user_sessions"}, {	Statement: "select * from users"}},
+		History: []HistoryEntryContext{{	Statement: "select * from user_sessions"}, {	Statement: "select * from users"}},
 	}
 	modal := renderHistorySearch(query)
 
@@ -374,7 +374,7 @@ func TestCommandModeFooterShowsResultsPanePagingWhenResultsPaneFocusedInSplit(t 
 	mode.SetSize(80, 20)
 	footer := mode.Footer("local", "sqlite", InteractionState{
 		Layout:     LayoutSplit,
-		ActivePane: PaneResultsPane,
+		ActivePane: PaneResults,
 	})
 
 	for _, want := range []string{"Command line hidden focus", "layout split", "alt+h help", "ctrl+u scroll up", "ctrl+d scroll down"} {

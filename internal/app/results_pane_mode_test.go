@@ -122,7 +122,7 @@ func TestResultsPaneModeViewClipsRowsToVisibleViewport(t *testing.T) {
 func TestResultsPaneModeFooterIncludesModeDetails(t *testing.T) {
 	mode := newResultsPaneModeModel()
 	footer := mode.Footer("local", "sqlite", InteractionState{
-		Layout:       LayoutResultsPaneOnly,
+		Layout:       LayoutResultsOnly,
 		LatestResult: &LatestResultContext{PreservedResult: &db.ResultSet{Rows: []db.ResultRow{{}, {}}}, SelectedRows: []int{0}},
 		Running:      &RunningStatementContext{Label: "/tables", Elapsed: 2*time.Second + 300*time.Millisecond},
 	})

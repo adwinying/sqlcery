@@ -167,7 +167,7 @@ When a query returns rows, SQLcery keeps the full result set in the Results Pane
 
 ### Audit Log
 
-All statements executed in SQLcery are written to the audit log at `$XDG_DATA_HOME/sqlcery/history.log`. Each entry is a JSON object with the following fields:
+All statements executed in SQLcery are written to the audit log at `$XDG_DATA_HOME/sqlcery/audit.log`. Each entry is a JSON object with the following fields:
 
 | Field | Description |
 | --- | --- |

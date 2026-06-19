@@ -12,7 +12,7 @@ import (
 
 type Session struct {
 	ConnectionName  string
-	ConnectionType  string
+	DatabaseType    string
 	ConnectionColor string
 	WorkingDir      string
 	Adapter         *db.SQLAdapter

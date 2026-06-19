@@ -13,7 +13,7 @@ import (
 
 const (
 	DirName              = "sqlcery"
-	FileName             = "history.log"
+	FileName             = "audit.log"
 	maxAuditLogSize    = 1 << 20
 	rotatedAuditLogSuffix = ".1"
 	maxLoadedEntries     = 1000

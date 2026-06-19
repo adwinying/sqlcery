@@ -40,8 +40,8 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 	state.SetPendingIntent(IntentSubmit, "submit", "ready")
 	state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL", StartedAt: stamp, Elapsed: 1500 * time.Millisecond, SpinnerFrame: 2})
 	state.SetLayout(LayoutSplit)
-	state.SetActivePane(PaneResultsPane)
-	state.SetSessionHistory([]HistoryEntryContext{{Statement: "select 1", ConnectionName: "local", ExecutedAt: stamp}})
+	state.SetActivePane(PaneResults)
+	state.SetHistory([]HistoryEntryContext{{Statement: "select 1", ConnectionName: "local", ExecutedAt: stamp}})
 	state.SetHistorySearchContext(&HistorySearchContext{Filter: "sel", SelectedIndex: 1})
 	state.SetAutocompleteSchema(&AutocompleteSchemaContext{
 		Tables: []AutocompleteTableContext{{Namespace: "main", Name: "widgets", Columns: []string{"id", "payload"}}},
@@ -83,9 +83,9 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 	})
 	state.SetPendingPaneSwitch(&PaneSwitchContext{
 		FromLayout:    LayoutSplit,
-		ToLayout:      LayoutResultsPaneOnly,
+		ToLayout:      LayoutResultsOnly,
 		FromPane:      PaneCommand,
-		ToPane:        PaneResultsPane,
+		ToPane:        PaneResults,
 		ResultContext: state.Interaction.LatestResult,
 	})
 	state.SetSelectedHistoryEntry(&HistoryEntryContext{
@@ -100,10 +100,10 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 	state.Interaction.LastSubmittedSQL = "mutated"
 	state.Interaction.LastAction = "mutated"
 	state.Interaction.Running.Label = "mutated"
-	state.Interaction.Layout = LayoutResultsPaneOnly
+	state.Interaction.Layout = LayoutResultsOnly
 	state.Interaction.Running.Elapsed = 9 * time.Second
 	state.Interaction.Running.SpinnerFrame = 1
-	state.Interaction.SessionHistory[0].Statement = "mutated history"
+	state.Interaction.History[0].Statement = "mutated history"
 	state.Interaction.HistorySearch.Filter = "mutated search"
 	state.App.Current = StateError
 	state.App.Reconnect.Attempt = 99
@@ -172,8 +172,8 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 		t.Fatalf("snapshot.Interaction.Running.SpinnerFrame = %d, want %d", got, want)
 	}
 
-	if got, want := snapshot.Interaction.SessionHistory[0].Statement, "select 1"; got != want {
-		t.Fatalf("snapshot.Interaction.SessionHistory[0].Statement = %q, want %q", got, want)
+	if got, want := snapshot.Interaction.History[0].Statement, "select 1"; got != want {
+		t.Fatalf("snapshot.Interaction.History[0].Statement = %q, want %q", got, want)
 	}
 
 	if got, want := snapshot.Interaction.HistorySearch.Filter, "sel"; got != want {
@@ -228,7 +228,7 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 		t.Fatalf("snapshot.Interaction.LatestResult.InlineResult.Rows[0].Values[0] = %q, want %q", got, want)
 	}
 
-	if got, want := snapshot.Interaction.PendingPaneSwitch.ToPane, PaneResultsPane; got != want {
+	if got, want := snapshot.Interaction.PendingPaneSwitch.ToPane, PaneResults; got != want {
 		t.Fatalf("snapshot.Interaction.PendingPaneSwitch.ToPane = %q, want %q", got, want)
 	}
 

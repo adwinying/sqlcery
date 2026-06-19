@@ -49,10 +49,13 @@ Writing a Result Set — or a selected subset of its rows — to an output desti
 The list of Statements executed against a given Connection or Connection String. Persists across Sessions — a new Session to the same Connection resumes the same History. Used for fuzzy recall via the History Search modal (Ctrl-r). Distinct from the Audit Log, which is a flat append-only record across all Connections.
 
 ### Audit Log
-The persistent JSON file (`$XDG_DATA_HOME/sqlcery/history.log`) that records every executed Statement. Each entry contains: connection name, statement text, timestamp, and result summary. Written regardless of whether execution succeeded. Distinct from History.
+The persistent JSON file (`$XDG_DATA_HOME/sqlcery/audit.log`) that records every executed Statement. Each entry contains: connection name, statement text, timestamp, and result summary. Written regardless of whether execution succeeded. Distinct from History.
 
 ### Database Type
-The database engine a Connection targets. One of: SQLite, PostgreSQL, MySQL. User-facing term used in config (`type = "sqlite"/"postgres"/"mysql"`). Distinct from Dialect.
+The database engine a Connection targets. One of: SQLite, PostgreSQL, MySQL. User-facing term used in config (`type = "sqlite"/"postgres"/"mysql"`). Distinct from Dialect and from Driver Column Type.
+
+### Driver Column Type
+The raw SQL type name reported by the database driver for a result column (e.g. `"VARCHAR"`, `"TIMESTAMPTZ"`, `"INT"`). This is a driver-level detail surfaced in a Result Set — it is distinct from Database Type (the engine) and from the Schema column type (which comes from schema introspection).
 
 ### Dialect
 The internal implementation of SQL syntax rules and behavior specific to a Database Type — identifier quoting, timestamp formatting, SQL generation, etc. Maps 1-to-1 with Database Type but is an implementation concept, not a user-facing one.

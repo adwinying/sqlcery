@@ -56,7 +56,7 @@ func (m *Model) cycleHistorySearch(delta int) {
 		return
 	}
 
-	matches := filterHistorySearchEntries(m.state.Interaction.SessionHistory, search.Filter)
+	matches := filterHistorySearchEntries(m.state.Interaction.History, search.Filter)
 	if len(matches) == 0 {
 		m.syncHistorySearchSelection()
 		m.state.SetPendingIntent(IntentHistory, "history", historySearchStatus(m.state.Interaction))
@@ -89,7 +89,7 @@ func (m *Model) syncHistorySearchSelection() {
 		return
 	}
 
-	matches := filterHistorySearchEntries(m.state.Interaction.SessionHistory, search.Filter)
+	matches := filterHistorySearchEntries(m.state.Interaction.History, search.Filter)
 	if len(matches) == 0 {
 		search.SelectedIndex = 0
 		m.state.SetHistorySearchContext(search)
@@ -158,14 +158,14 @@ func renderHistorySearch(interaction InteractionState) string {
 	}
 
 	search := interaction.HistorySearch
-	matches := filterHistorySearchEntries(interaction.SessionHistory, search.Filter)
+	matches := filterHistorySearchEntries(interaction.History, search.Filter)
 	lines := []string{
 		appTheme.panelTitle.Render("Reverse search:"),
 		appTheme.panelText.Render(fmt.Sprintf("query> %s", defaultHistorySearchQuery(search.Filter))),
 	}
 
-	if len(interaction.SessionHistory) == 0 {
-		lines = append(lines, appTheme.panelMuted.Render("No session history yet."), appTheme.panelHint.Render("esc close"))
+	if len(interaction.History) == 0 {
+		lines = append(lines, appTheme.panelMuted.Render("No history yet."), appTheme.panelHint.Render("esc close"))
 		return strings.Join(lines, "\n")
 	}
 
@@ -201,9 +201,9 @@ func historySearchStatus(interaction InteractionState) string {
 		return "History search is unavailable."
 	}
 
-	matches := filterHistorySearchEntries(interaction.SessionHistory, search.Filter)
-	if len(interaction.SessionHistory) == 0 {
-		return "History search opened; session history is empty."
+	matches := filterHistorySearchEntries(interaction.History, search.Filter)
+	if len(interaction.History) == 0 {
+		return "History search opened; history is empty."
 	}
 	if len(matches) == 0 {
 		return fmt.Sprintf("History search for %q returned no matches.", search.Filter)

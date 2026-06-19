@@ -18,7 +18,7 @@ These two use cases have incompatible access patterns. A single unified log opti
 Maintain two separate persistence mechanisms:
 
 - **History** — per-Connection (or per-Connection String). Persists across Sessions to the same Connection. Used exclusively for interactive recall via `Ctrl-r`.
-- **Audit Log** — a single flat append-only JSON file at `$XDG_DATA_HOME/sqlcery/history.log`. Records every executed Statement across all Connections with connection name, statement text, timestamp, and result summary.
+- **Audit Log** — a single flat append-only JSON file at `$XDG_DATA_HOME/sqlcery/audit.log`. Records every executed Statement across all Connections with connection name, statement text, timestamp, and result summary.
 
 ## Consequences
 

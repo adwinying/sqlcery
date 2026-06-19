@@ -274,7 +274,7 @@ func (m commandModeModel) Footer(connectionName, dialect string, interaction Int
 	modeLabel := "Command mode"
 	if interaction.ActiveModal == ModalHistorySearch {
 		modeLabel = "History search"
-	} else if interaction.ActivePane == PaneResultsPane && interaction.Layout == LayoutSplit {
+	} else if interaction.ActivePane == PaneResults && interaction.Layout == LayoutSplit {
 		modeLabel = "Command line hidden focus"
 	}
 	parts := []string{modeLabel, fmt.Sprintf("layout %s", layoutLabel(interaction.Layout))}
@@ -295,7 +295,7 @@ func (m commandModeModel) Footer(connectionName, dialect string, interaction Int
 
 	parts = append(parts, fmt.Sprintf("line %d col %d", m.editor.Line()+1, m.editor.LineInfo().ColumnOffset+1))
 	parts = append(parts, bindingSummary(m.keys.Submit), bindingSummary(m.keys.Cancel), bindingSummary(m.keys.Help), bindingSummary(m.keys.History), bindingSummary(m.keys.SwitchMode), bindingSummary(m.keys.LayoutCommandOnly))
-	if interaction.ActivePane == PaneResultsPane {
+	if interaction.ActivePane == PaneResults {
 		parts = append(parts, "ctrl+u scroll up", "ctrl+d scroll down")
 	}
 	if interaction.ActiveModal == ModalHistorySearch {

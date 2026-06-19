@@ -179,7 +179,7 @@ func TestQueryResultContextSQLiteIncludesResultMetadata(t *testing.T) {
 	if idColumn.Schema == nil || idColumn.Schema.Type != "INTEGER" {
 		t.Fatalf("id column schema = %#v, want INTEGER schema metadata", idColumn.Schema)
 	}
-	if idColumn.DatabaseType == "" {
+	if idColumn.DriverColumnType == "" {
 		t.Fatal("id column database type is empty")
 	}
 	if idColumn.ScanType == "" {

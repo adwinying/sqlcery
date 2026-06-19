@@ -11,7 +11,7 @@ type Pane string
 
 const (
 	PaneCommand     Pane = "command"
-	PaneResultsPane Pane = "results-pane"
+	PaneResults Pane = "results-pane"
 )
 
 // AppModal tracks which modal is currently open. Orthogonal to
@@ -28,7 +28,7 @@ type AppLayout string
 const (
 	LayoutSplit       AppLayout = "split"
 	LayoutCommandOnly AppLayout = "command-only"
-	LayoutResultsPaneOnly  AppLayout = "results-pane-only"
+	LayoutResultsOnly  AppLayout = "results-pane-only"
 )
 
 type AppState string
@@ -79,7 +79,7 @@ type InteractionState struct {
 	ActivePane           Pane
 	ActiveModal          AppModal
 	ResultsPanePage      int
-	SessionHistory       []HistoryEntryContext
+	History              []HistoryEntryContext
 	HistorySearch        *HistorySearchContext
 	AutocompleteSchema   *AutocompleteSchemaContext
 	LatestResult         *LatestResultContext
@@ -244,7 +244,7 @@ func (s *SharedAppState) SetActiveModal(modal AppModal) {
 
 func (s *SharedAppState) SetLayout(layout AppLayout) {
 	switch layout {
-	case LayoutSplit, LayoutResultsPaneOnly:
+	case LayoutSplit, LayoutResultsOnly:
 		// keep requested layout
 	default:
 		layout = LayoutCommandOnly
@@ -257,8 +257,8 @@ func (s *SharedAppState) SetRunningStatementContext(context *RunningStatementCon
 	s.Interaction.Running = cloneRunningStatementContext(context)
 }
 
-func (s *SharedAppState) SetSessionHistory(entries []HistoryEntryContext) {
-	s.Interaction.SessionHistory = cloneHistoryEntries(entries)
+func (s *SharedAppState) SetHistory(entries []HistoryEntryContext) {
+	s.Interaction.History = cloneHistoryEntries(entries)
 }
 
 func (s *SharedAppState) SetHistorySearchContext(context *HistorySearchContext) {
@@ -301,7 +301,7 @@ func (s *SharedAppState) SetSelectedHistoryEntry(entry *HistoryEntryContext) {
 func (q InteractionState) snapshot() InteractionState {
 	clone := q
 	clone.Running = cloneRunningStatementContext(q.Running)
-	clone.SessionHistory = cloneHistoryEntries(q.SessionHistory)
+	clone.History = cloneHistoryEntries(q.History)
 	clone.HistorySearch = cloneHistorySearchContext(q.HistorySearch)
 	clone.AutocompleteSchema = cloneAutocompleteSchemaContext(q.AutocompleteSchema)
 	clone.LatestResult = cloneLatestResultContext(q.LatestResult)
