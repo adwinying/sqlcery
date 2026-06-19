@@ -231,7 +231,6 @@ func TestModelAutocompleteUsesCachedSchemaWhileTyping(t *testing.T) {
 
 	loadCalls := 0
 	model := newModelWithDependencies(Session{Adapter: adapter}, modelDependencies{
-		cache: newAutocompleteSchemaCache(),
 		loader: func(context.Context, *db.SQLAdapter) (*AutocompleteSchemaContext, error) {
 			loadCalls++
 			return &AutocompleteSchemaContext{

@@ -23,7 +23,7 @@ type Model struct {
 	command         commandModeModel
 	resultsPane     resultsPaneModeModel
 	state           SharedAppState
-	cache           *autocompleteSchemaCache
+	schema          *AutocompleteSchemaContext
 	loader          autocompleteSchemaLoader
 	width           int
 	height          int
@@ -34,7 +34,6 @@ type Model struct {
 type autocompleteSchemaLoader func(context.Context, *db.SQLAdapter) (*AutocompleteSchemaContext, error)
 
 type modelDependencies struct {
-	cache   *autocompleteSchemaCache
 	loader  autocompleteSchemaLoader
 	history *apphistory.History
 }
@@ -118,11 +117,6 @@ func NewModel(session Session) Model {
 }
 
 func newModelWithDependencies(session Session, deps modelDependencies) Model {
-	cache := deps.cache
-	if cache == nil {
-		cache = newAutocompleteSchemaCache()
-	}
-
 	loader := deps.loader
 	if loader == nil {
 		loader = loadAutocompleteSchema
@@ -134,14 +128,13 @@ func newModelWithDependencies(session Session, deps modelDependencies) Model {
 	}
 
 	model := Model{
-		session:    session,
-		history:    sessionHistory,
-		command:    newCommandModeModel(),
+		session:     session,
+		history:     sessionHistory,
+		command:     newCommandModeModel(),
 		resultsPane: newResultsPaneModeModel(),
-		state:      NewSharedAppState(),
-		cache:      cache,
-		loader:     loader,
-		splitRatio: 0.65,
+		state:       NewSharedAppState(),
+		loader:      loader,
+		splitRatio:  0.65,
 	}
 	model.syncAutocompleteSchemaSnapshot()
 	model.syncHistorySnapshot()
@@ -418,7 +411,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.command.Init(), m.refreshAutocompleteSchemaCmd())
 	case autocompleteSchemaLoadedMsg:
 		if msg.Err == nil {
-			m.cache.Replace(msg.Schema)
+			m.schema = msg.Schema
 			m.syncAutocompleteSchemaSnapshot()
 		}
 		return m, nil
@@ -1123,12 +1116,7 @@ func (m Model) refreshAutocompleteSchemaCmd() tea.Cmd {
 }
 
 func (m *Model) syncAutocompleteSchemaSnapshot() {
-	if m.cache == nil {
-		m.state.SetAutocompleteSchema(nil)
-		return
-	}
-
-	m.state.SetAutocompleteSchema(m.cache.Snapshot())
+	m.state.SetAutocompleteSchema(m.schema)
 }
 
 func loadAutocompleteSchemaCmd(adapter *db.SQLAdapter, loader autocompleteSchemaLoader) tea.Cmd {
