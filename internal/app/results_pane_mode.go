@@ -3,7 +3,6 @@ package app
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/adwinying/sqlcery/internal/db"
 	tea "charm.land/bubbletea/v2"
@@ -13,76 +12,34 @@ import (
 )
 
 const (
-	defaultResultsPaneWidth          = 80
-	defaultResultsPaneHeight         = 24
-	minimumResultsPaneWidth          = 20
-	minimumResultsPaneHeight         = 8
-	resultsPanePageSize              = 300
-	resultsPaneViewportClipThreshold = 20
+	defaultResultsPaneWidth  = 80
+	defaultResultsPaneHeight = 24
+	minimumResultsPaneWidth  = 20
+	minimumResultsPaneHeight = 8
 )
 
 // sqlceryLogo is the "SQLcery" ASCII art rendered in ANSI Shadow style.
 // Each line is 58 characters wide and the art is 6 lines tall.
 const sqlceryLogo = `███████╗ ██████╗ ██╗      ██████╗███████╗██████╗ ██╗   ██╗
 ██╔════╝██╔═══██╗██║     ██╔════╝██╔════╝██╔══██╗╚██╗ ██╔╝
-███████╗██║   ██║██║     ██║     █████╗  ██████╔╝ ╚████╔╝ 
-╚════██║██║▄▄ ██║██║     ██║     ██╔══╝  ██╔══██╗  ╚██╔╝  
-███████║╚██████╔╝███████╗╚██████╗███████╗██║  ██║   ██║   
+███████╗██║   ██║██║     ██║     █████╗  ██████╔╝ ╚████╔╝
+╚════██║██║▄▄ ██║██║     ██║     ██╔══╝  ██╔══██╗  ╚██╔╝
+███████║╚██████╔╝███████╗╚██████╗███████╗██║  ██║   ██║
 ╚══════╝ ╚══▀▀═╝ ╚══════╝ ╚═════╝╚══════╝╚═╝  ╚═╝   ╚═╝   `
 
 const sqlceryLogoWidth = 58
 const sqlceryLogoHeight = 6
 
-type resultsPaneColumn struct {
-	Header     string
-	PrimaryKey bool
-}
-
-type resultsPanePageContext struct {
-	Index      int
-	Number     int
-	TotalPages int
-	StartRow   int
-	EndRow     int
-	TotalRows  int
-}
-
-type resultsPaneSelection struct {
-	Row    int
-	Column int
-	Active bool
-}
-
-type resultsPaneRenderState struct {
-	Active          resultsPaneSelection
-	SelectedRows    map[int]struct{}
-	ColScrollOffset int
-}
-
-type resultsPanePreparedPageKey struct {
-	Result              *db.ResultSet
-	Page                int
-	ShowSelectionMarker bool
-}
-
-type resultsPanePreparedPage struct {
-	Key     resultsPanePreparedPageKey
-	Context resultsPanePageContext
-	Headers []string
-	Widths  []int
-	Rows    [][]string
-}
-
 type resultsPaneModeModel struct {
-	width            int
-	height           int
-	selectedRow      int
-	selectedColumn   int
-	colScrollOffset  int
-	selectionActive  bool
-	pendingAction    resultsPanePendingAction
-	exportBuffer     string
-	cachedPage       *resultsPanePreparedPage
+	width           int
+	height          int
+	selectedRow     int
+	selectedColumn  int
+	colScrollOffset int
+	selectionActive bool
+	pendingAction   resultsPanePendingAction
+	exportBuffer    string
+	cachedPage      *tui.ResultsPanePreparedPage
 }
 
 func newResultsPaneModeModel() resultsPaneModeModel {
@@ -100,7 +57,6 @@ func (m *resultsPaneModeModel) SetSize(width, height int) {
 func (m *resultsPaneModeModel) renderEmptyState(subtitle string) string {
 	logoLines := strings.Split(sqlceryLogo, "\n")
 
-	// Center the logo horizontally
 	var centeredLogoLines []string
 	leftPad := (m.width - sqlceryLogoWidth) / 2
 	if leftPad < 0 {
@@ -111,7 +67,6 @@ func (m *resultsPaneModeModel) renderEmptyState(subtitle string) string {
 		centeredLogoLines = append(centeredLogoLines, padStr+tui.AppTheme.ResultsPaneEmptyLogo.Render(line))
 	}
 
-	// Center the subtitle horizontally
 	subtitleWidth := ansi.StringWidth(subtitle)
 	subLeftPad := (m.width - subtitleWidth) / 2
 	if subLeftPad < 0 {
@@ -119,11 +74,9 @@ func (m *resultsPaneModeModel) renderEmptyState(subtitle string) string {
 	}
 	styledSubtitle := strings.Repeat(" ", subLeftPad) + tui.AppTheme.ResultsPaneEmptySubtitle.Render(subtitle)
 
-	// Build content block: logo + blank line + subtitle
 	contentLines := append(centeredLogoLines, "", styledSubtitle)
 	contentHeight := len(contentLines)
 
-	// Center vertically
 	topPad := (m.height - contentHeight) / 2
 	if topPad < 0 {
 		topPad = 0
@@ -137,26 +90,49 @@ func (m *resultsPaneModeModel) renderEmptyState(subtitle string) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m *resultsPaneModeModel) View(interaction InteractionState) string {
-	latest := interaction.LatestResult
-	if latest == nil || latest.PreservedResult == nil {
-		if interaction.Layout == LayoutSplit {
+// buildViewContext maps InteractionState and the model's mutable navigation
+// state into a ResultsPaneViewContext for stateless rendering in internal/tui.
+func (m *resultsPaneModeModel) buildViewContext(interaction InteractionState) tui.ResultsPaneViewContext {
+	m.syncSelection(interaction)
+
+	var result *db.ResultSet
+	var statement string
+	if interaction.LatestResult != nil {
+		result = interaction.LatestResult.PreservedResult
+		statement = interaction.LatestResult.Statement
+	}
+
+	return tui.ResultsPaneViewContext{
+		Result:          result,
+		Page:            interaction.ResultsPanePage,
+		MarkedRows:      interaction.MarkedRows,
+		Statement:       statement,
+		IsSplit:         interaction.Layout == LayoutSplit,
+		Width:           m.width,
+		Height:          m.height,
+		SelectedRow:     m.selectedRow,
+		SelectedColumn:  m.selectedColumn,
+		SelectionActive: m.selectionActive,
+		ColScrollOffset: m.colScrollOffset,
+		PendingExport:   m.pendingAction == resultsPanePendingActionExport,
+		ExportBuffer:    m.exportBuffer,
+	}
+}
+
+func (m *resultsPaneModeModel) View(ctx tui.ResultsPaneViewContext) string {
+	if ctx.Result == nil {
+		if ctx.IsSplit {
 			return m.renderEmptyState("Run a query that returns rows to populate this pane")
 		}
 		return m.renderEmptyState("Run a query that returns rows, then press ctrl+x or ctrl+3.")
 	}
 
-	m.syncSelection(interaction)
-
-	result := latest.PreservedResult
-
-	// In split layout, show just the table with no metadata header
-	if interaction.Layout == LayoutSplit {
-		preparedPage := m.preparePage(result, interaction.ResultsPanePage, len(interaction.MarkedRows) > 0)
-		body := renderPreparedResultsPanePage(preparedPage, m.width, m.height, resultsPaneRenderState{
-			Active:          resultsPaneSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
-			SelectedRows:    selectedRowSet(interaction.MarkedRows),
-			ColScrollOffset: m.colScrollOffset,
+	if ctx.IsSplit {
+		preparedPage := m.preparePage(ctx.Result, ctx.Page, len(ctx.MarkedRows) > 0)
+		body := tui.RenderPreparedResultsPanePage(preparedPage, ctx.Width, ctx.Height, tui.ResultsPaneRenderState{
+			Active:          tui.ResultsPaneSelection{Row: ctx.SelectedRow, Column: ctx.SelectedColumn, Active: ctx.SelectionActive},
+			SelectedRows:    tui.ResultsPaneSelectedRowSet(ctx.MarkedRows),
+			ColScrollOffset: ctx.ColScrollOffset,
 		})
 		if body == "" {
 			body = tui.AppTheme.ResultsPaneEmpty.Render("(no visible rows)")
@@ -164,25 +140,25 @@ func (m *resultsPaneModeModel) View(interaction InteractionState) string {
 		return body
 	}
 
-	page := resultsPanePageContextFor(interaction.ResultsPanePage, len(result.Rows))
+	page := tui.ResultsPanePageContextFor(ctx.Page, len(ctx.Result.Rows))
 	header := []string{
 		tui.AppTheme.ResultsPaneTitle.Render("Results Pane"),
-		tui.AppTheme.ResultsPaneMeta.Render(fmt.Sprintf("Query: %s", summarizeResultsPaneStatement(latest.Statement, m.width))),
-		tui.AppTheme.ResultsPaneMeta.Render(fmt.Sprintf("Rows: %d  Columns: %d", len(result.Rows), len(result.Columns))),
-		tui.AppTheme.ResultsPaneMeta.Render(fmt.Sprintf("Page: %d/%d  Showing rows %s", page.Number, page.TotalPages, formatResultsPaneRowRange(page))),
+		tui.AppTheme.ResultsPaneMeta.Render(fmt.Sprintf("Query: %s", summarizeResultsPaneStatement(ctx.Statement, ctx.Width))),
+		tui.AppTheme.ResultsPaneMeta.Render(fmt.Sprintf("Rows: %d  Columns: %d", len(ctx.Result.Rows), len(ctx.Result.Columns))),
+		tui.AppTheme.ResultsPaneMeta.Render(fmt.Sprintf("Page: %d/%d  Showing rows %s", page.Number, page.TotalPages, tui.ResultsPaneFormatRowRange(page))),
 	}
-	if m.pendingAction == resultsPanePendingActionExport {
-		header = append(header, tui.AppTheme.WarningNotice.Render(fmt.Sprintf("Command: %s", m.exportBuffer)))
+	if ctx.PendingExport {
+		header = append(header, tui.AppTheme.WarningNotice.Render(fmt.Sprintf("Command: %s", ctx.ExportBuffer)))
 	}
-	if selectedCount := len(interaction.MarkedRows); selectedCount > 0 {
+	if selectedCount := len(ctx.MarkedRows); selectedCount > 0 {
 		header = append(header, tui.AppTheme.ResultsPaneSelection.Render(fmt.Sprintf("Selected: %d", selectedCount)))
 	}
 
-	preparedPage := m.preparePage(result, interaction.ResultsPanePage, len(interaction.MarkedRows) > 0)
-	body := renderPreparedResultsPanePage(preparedPage, m.width, m.height-len(header)-2, resultsPaneRenderState{
-		Active:          resultsPaneSelection{Row: m.selectedRow, Column: m.selectedColumn, Active: m.selectionActive},
-		SelectedRows:    selectedRowSet(interaction.MarkedRows),
-		ColScrollOffset: m.colScrollOffset,
+	preparedPage := m.preparePage(ctx.Result, ctx.Page, len(ctx.MarkedRows) > 0)
+	body := tui.RenderPreparedResultsPanePage(preparedPage, ctx.Width, ctx.Height-len(header)-2, tui.ResultsPaneRenderState{
+		Active:          tui.ResultsPaneSelection{Row: ctx.SelectedRow, Column: ctx.SelectedColumn, Active: ctx.SelectionActive},
+		SelectedRows:    tui.ResultsPaneSelectedRowSet(ctx.MarkedRows),
+		ColScrollOffset: ctx.ColScrollOffset,
 	})
 	if body == "" {
 		body = tui.AppTheme.ResultsPaneEmpty.Render("(no visible rows)")
@@ -194,7 +170,7 @@ func (m *resultsPaneModeModel) View(interaction InteractionState) string {
 func (m resultsPaneModeModel) FooterHints(interaction InteractionState) string {
 	parts := []string{"Results Pane"}
 	if latest := interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
-		page := resultsPanePageContextFor(interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
+		page := tui.ResultsPanePageContextFor(interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
 		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
 		if selectedCount := len(interaction.MarkedRows); selectedCount > 0 {
 			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
@@ -219,7 +195,7 @@ func (m resultsPaneModeModel) Footer(connectionName, dialect string, interaction
 		parts = append(parts, label)
 	}
 	if latest := interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
-		page := resultsPanePageContextFor(interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
+		page := tui.ResultsPanePageContextFor(interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
 		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
 		if selectedCount := len(interaction.MarkedRows); selectedCount > 0 {
 			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
@@ -253,7 +229,7 @@ func (m *resultsPaneModeModel) syncSelection(interaction InteractionState) {
 		return
 	}
 
-	page := resultsPanePageContextFor(interaction.ResultsPanePage, len(result.Rows))
+	page := tui.ResultsPanePageContextFor(interaction.ResultsPanePage, len(result.Rows))
 	if m.selectedRow < page.StartRow-1 || m.selectedRow >= page.EndRow {
 		m.selectedRow = max(0, page.StartRow-1)
 	}
@@ -268,13 +244,12 @@ func (m *resultsPaneModeModel) syncSelection(interaction InteractionState) {
 	}
 }
 
-func (m *resultsPaneModeModel) preparePage(result *db.ResultSet, page int, showSelectionMarker bool) *resultsPanePreparedPage {
-	key := resultsPanePreparedPageKey{Result: result, Page: page, ShowSelectionMarker: showSelectionMarker}
+func (m *resultsPaneModeModel) preparePage(result *db.ResultSet, page int, showSelectionMarker bool) *tui.ResultsPanePreparedPage {
+	key := tui.ResultsPanePreparedPageKey{Result: result, Page: page, ShowSelectionMarker: showSelectionMarker}
 	if m.cachedPage != nil && m.cachedPage.Key == key {
 		return m.cachedPage
 	}
-
-	prepared := prepareResultsPanePage(result, page, showSelectionMarker)
+	prepared := tui.PrepareResultsPanePage(result, page, showSelectionMarker)
 	m.cachedPage = prepared
 	return prepared
 }
@@ -299,13 +274,11 @@ func (m *resultsPaneModeModel) Navigate(msg tea.KeyPressMsg, interaction Interac
 	m.selectedColumn = min(max(m.selectedColumn+deltaColumn, 0), len(result.Columns)-1)
 	m.selectionActive = true
 
-	// Edge-lock: cursor is always the leftmost visible column, so every
-	// horizontal navigation press immediately scrolls the viewport.
 	if deltaColumn != 0 {
 		m.colScrollOffset = m.selectedColumn
 	}
 
-	return clampResultsPanePage(m.selectedRow/resultsPanePageSize, len(result.Rows)), true
+	return tui.ClampResultsPanePage(m.selectedRow/tui.ResultsPanePageSize, len(result.Rows)), true
 }
 
 // ToggleSelectedRow marks or unmarks the current cursor row and returns
@@ -333,146 +306,9 @@ func (m *resultsPaneModeModel) ToggleSelectedRow(interaction InteractionState) (
 	return m.selectedRow, newMarked, rowIndexSelected(newMarked, m.selectedRow), true
 }
 
-func renderResultsPaneTable(result *db.ResultSet, page, width, height int, state resultsPaneRenderState) string {
-	prepared := prepareResultsPanePage(result, page, len(state.SelectedRows) > 0)
-	return renderPreparedResultsPanePage(prepared, width, resultsPanePageHeightHint(height), state)
-}
-
-func renderPreparedResultsPanePage(prepared *resultsPanePreparedPage, width, height int, state resultsPaneRenderState) string {
-	if prepared == nil {
-		return ""
-	}
-
-	// Apply horizontal column scroll offset.
-	colOffset := state.ColScrollOffset
-	if colOffset < 0 {
-		colOffset = 0
-	}
-	if colOffset >= len(prepared.Widths) {
-		colOffset = max(0, len(prepared.Widths)-1)
-	}
-
-	headers := prepared.Headers[colOffset:]
-	widths := prepared.Widths[colOffset:]
-
-	lines := []string{
-		renderInlineResultLine(headers, widths),
-		renderInlineSeparator(widths),
-	}
-
-	if len(prepared.Rows) == 0 {
-		lines = append(lines, tui.AppTheme.ResultsPaneEmpty.Render("(no rows)"))
-		return trimRenderedWidth(strings.Join(lines, "\n"), width)
-	}
-
-	start, end := resultsPaneVisibleRowWindow(prepared.Context, len(prepared.Rows), height, state.Active)
-	for rowIndex := start; rowIndex < end; rowIndex++ {
-		absoluteRowIndex := prepared.Context.StartRow - 1 + rowIndex
-		values := append([]string(nil), prepared.Rows[rowIndex][colOffset:]...)
-		isActiveRow := state.Active.Active && state.Active.Row == absoluteRowIndex
-		for columnIndex := range values {
-			absoluteColumnIndex := colOffset + columnIndex
-			if absoluteColumnIndex == 0 && rowIndexSelectedSet(state.SelectedRows, absoluteRowIndex) {
-				values[columnIndex] = tui.AppTheme.SelectedRowMarker.Render("* ") + values[columnIndex]
-			}
-			if isActiveRow {
-				values[columnIndex] = renderResultsPaneActiveRowCell(values[columnIndex])
-			}
-		}
-		lines = append(lines, renderInlineResultLine(values, widths))
-	}
-
-	ctx := prepared.Context
-	lines = append(lines, tui.AppTheme.PanelHint.Render(fmt.Sprintf("Showing rows %s of %d", formatResultsPaneRowRange(ctx), ctx.TotalRows)))
-
-	return trimRenderedWidth(strings.Join(lines, "\n"), width)
-}
-
-func prepareResultsPanePage(result *db.ResultSet, page int, showSelectionMarker bool) *resultsPanePreparedPage {
-	if result == nil {
-		return &resultsPanePreparedPage{}
-	}
-
-	columns := resultsPaneColumns(result.Columns)
-	pageRows, context := resultsPaneRowsForPage(result.Rows, page)
-	prepared := &resultsPanePreparedPage{
-		Key:     resultsPanePreparedPageKey{Result: result, Page: page, ShowSelectionMarker: showSelectionMarker},
-		Context: context,
-		Headers: make([]string, len(columns)),
-		Widths:  make([]int, len(columns)),
-		Rows:    make([][]string, 0, len(pageRows)),
-	}
-
-	for i, column := range columns {
-		prepared.Headers[i] = column.Header
-		prepared.Widths[i] = ansi.StringWidth(column.Header)
-	}
-	if showSelectionMarker && len(prepared.Widths) > 0 {
-		prepared.Widths[0] += 2
-	}
-
-	for _, row := range pageRows {
-		values := make([]string, len(columns))
-		for i := range columns {
-			formatted := ""
-			if i < len(row.Values) {
-				formatted = formatResultsPaneValue(row.Values[i])
-			}
-			values[i] = formatted
-
-			widthValue := formatted
-			if showSelectionMarker && i == 0 {
-				widthValue = "  " + widthValue
-			}
-			if width := runeWidth(widthValue); width > prepared.Widths[i] {
-				prepared.Widths[i] = width
-			}
-		}
-		prepared.Rows = append(prepared.Rows, values)
-	}
-
-	return prepared
-}
-
-func resultsPaneVisibleRowWindow(context resultsPanePageContext, totalRows, height int, active resultsPaneSelection) (int, int) {
-	if totalRows <= 0 {
-		return 0, 0
-	}
-
-	visibleRows := totalRows
-	if height > 0 {
-		visibleRows = max(1, height-2)
-		if totalRows > visibleRows && height > 3 {
-			visibleRows = max(1, height-3)
-		}
-		visibleRows = min(visibleRows, totalRows)
-	}
-
-	if visibleRows >= totalRows {
-		return 0, totalRows
-	}
-	if totalRows <= resultsPaneViewportClipThreshold {
-		return 0, totalRows
-	}
-
-	start := 0
-	if active.Active && context.TotalRows > 0 && active.Row >= context.StartRow-1 && active.Row < context.EndRow {
-		pageRow := active.Row - (context.StartRow - 1)
-		start = pageRow - visibleRows/2
-	}
-	start = max(0, min(start, totalRows-visibleRows))
-	return start, start + visibleRows
-}
-
-func formatResultsPaneViewportRange(start, end int) string {
-	if start == end {
-		return fmt.Sprintf("%d", start)
-	}
-	return fmt.Sprintf("%d-%d", start, end)
-}
-
-func resultsPanePageHeightHint(height int) int {
-	return height
+func renderResultsPaneTable(result *db.ResultSet, page, width, height int, state tui.ResultsPaneRenderState) string {
+	prepared := tui.PrepareResultsPanePage(result, page, len(state.SelectedRows) > 0)
+	return tui.RenderPreparedResultsPanePage(prepared, width, height, state)
 }
 
 func resultsPaneNavigationDelta(msg tea.KeyPressMsg) (int, int, bool) {
@@ -488,23 +324,6 @@ func resultsPaneNavigationDelta(msg tea.KeyPressMsg) (int, int, bool) {
 	default:
 		return 0, 0, false
 	}
-}
-
-func renderResultsPaneActiveRowCell(value string) string {
-	// Use raw ANSI bold + foreground color 221 (accentWarm dark) to highlight the entire row via text color.
-	return "\x1b[1;38;5;221m" + value + "\x1b[0m"
-}
-
-func selectedRowSet(rows []int) map[int]struct{} {
-	if len(rows) == 0 {
-		return nil
-	}
-
-	selected := make(map[int]struct{}, len(rows))
-	for _, row := range rows {
-		selected[row] = struct{}{}
-	}
-	return selected
 }
 
 func toggleSelectedRowIndices(rows []int, row int) []int {
@@ -527,133 +346,11 @@ func rowIndexSelected(rows []int, row int) bool {
 	return false
 }
 
-func rowIndexSelectedSet(rows map[int]struct{}, row int) bool {
-	if len(rows) == 0 {
-		return false
-	}
-	_, ok := rows[row]
-	return ok
-}
-
-func resultsPaneColumns(columns []db.ResultColumn) []resultsPaneColumn {
-	names := make([]resultsPaneColumn, 0, len(columns))
-	for i, column := range columns {
-		name := strings.TrimSpace(column.Name)
-		if name == "" {
-			name = fmt.Sprintf("column_%d", i+1)
-		}
-		names = append(names, resultsPaneColumn{Header: name, PrimaryKey: column.PrimaryKey != nil})
-	}
-	return names
-}
-
-func formatResultsPaneValue(value db.ResultValue) string {
-	switch value.Kind {
-	case db.ValueKindNull:
-		return "NULL"
-	case db.ValueKindBool:
-		if typed, ok := value.Value.(bool); ok {
-			if typed {
-				return "true"
-			}
-			return "false"
-		}
-	case db.ValueKindInteger, db.ValueKindFloat, db.ValueKindDecimal, db.ValueKindString:
-		return truncateNewlines(fmt.Sprint(value.Value))
-	case db.ValueKindBytes:
-		if typed, ok := value.Value.([]byte); ok {
-			return fmt.Sprintf("0x%x", typed)
-		}
-	case db.ValueKindTime:
-		if typed, ok := value.Value.(time.Time); ok {
-			return typed.Format("2006-01-02 15:04:05")
-		}
-	}
-
-	if value.Value == nil {
-		return "NULL"
-	}
-
-	return truncateNewlines(fmt.Sprint(value.Value))
-}
-
-func truncateNewlines(s string) string {
-	if i := strings.IndexAny(s, "\n\r"); i >= 0 {
-		return s[:i] + "..."
-	}
-	return s
-}
-
 func resultsPaneRowCount(latest *LatestResultContext) int {
 	if latest == nil || latest.PreservedResult == nil {
 		return 0
 	}
-
 	return len(latest.PreservedResult.Rows)
-}
-
-func clampResultsPanePage(page, totalRows int) int {
-	totalPages := resultsPaneTotalPages(totalRows)
-	if totalPages <= 1 {
-		return 0
-	}
-	if page < 0 {
-		return 0
-	}
-	if page >= totalPages {
-		return totalPages - 1
-	}
-	return page
-}
-
-func resultsPaneTotalPages(totalRows int) int {
-	if totalRows <= 0 {
-		return 1
-	}
-
-	return (totalRows-1)/resultsPanePageSize + 1
-}
-
-func resultsPanePageContextFor(page, totalRows int) resultsPanePageContext {
-	clamped := clampResultsPanePage(page, totalRows)
-	context := resultsPanePageContext{
-		Index:      clamped,
-		Number:     clamped + 1,
-		TotalPages: resultsPaneTotalPages(totalRows),
-		TotalRows:  totalRows,
-	}
-	if totalRows == 0 {
-		return context
-	}
-
-	start := clamped * resultsPanePageSize
-	end := min(start+resultsPanePageSize, totalRows)
-	context.StartRow = start + 1
-	context.EndRow = end
-	return context
-}
-
-func resultsPaneRowsForPage(rows []db.ResultRow, page int) ([]db.ResultRow, resultsPanePageContext) {
-	context := resultsPanePageContextFor(page, len(rows))
-	if len(rows) == 0 {
-		return nil, context
-	}
-
-	start := context.StartRow - 1
-	end := context.EndRow
-	return rows[start:end], context
-}
-
-func formatResultsPaneRowRange(page resultsPanePageContext) string {
-	if page.TotalRows == 0 {
-		return "0"
-	}
-
-	if page.StartRow == page.EndRow {
-		return fmt.Sprintf("%d", page.StartRow)
-	}
-
-	return fmt.Sprintf("%d-%d", page.StartRow, page.EndRow)
 }
 
 func summarizeResultsPaneStatement(statement string, width int) string {
@@ -663,7 +360,7 @@ func summarizeResultsPaneStatement(statement string, width int) string {
 	}
 
 	maxWidth := max(20, width-8)
-	if runeWidth(trimmed) <= maxWidth {
+	if ansi.StringWidth(trimmed) <= maxWidth {
 		return trimmed
 	}
 
@@ -673,22 +370,9 @@ func summarizeResultsPaneStatement(statement string, width int) string {
 	return ansi.Truncate(trimmed, maxWidth, "...")
 }
 
-func trimRenderedWidth(value string, width int) string {
-	if width <= 0 {
-		return value
+func truncateNewlines(s string) string {
+	if i := strings.IndexAny(s, "\n\r"); i >= 0 {
+		return s[:i] + "..."
 	}
-
-	lines := strings.Split(value, "\n")
-	for i, line := range lines {
-		if runeWidth(line) <= width {
-			continue
-		}
-		if width <= 3 {
-			lines[i] = ansi.Truncate(line, width, "")
-			continue
-		}
-		lines[i] = ansi.Truncate(line, width, "...")
-	}
-	return strings.Join(lines, "\n")
+	return s
 }
-

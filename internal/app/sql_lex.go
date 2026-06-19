@@ -3,6 +3,8 @@ package app
 import (
 	"strings"
 	"unicode"
+
+	"github.com/adwinying/sqlcery/internal/tui"
 )
 
 // sqlToken is a single lexical token from a SQL input string.
@@ -64,8 +66,8 @@ func sqlLex(input string) []sqlToken {
 			}
 			tokens = append(tokens, sqlToken{Text: unquoteSQLIdentifier(string(runes[i:next])), Ident: true})
 			i = next
-		case isIdentifierStart(runes[i]):
-			end := consumeIdentifier(runes, i)
+		case tui.IsIdentifierStart(runes[i]):
+			end := tui.ConsumeIdentifier(runes, i)
 			text := string(runes[i:end])
 			_, keyword := autocompleteSQLKeywords[strings.ToUpper(text)]
 			tokens = append(tokens, sqlToken{Text: text, Keyword: keyword, Ident: true})

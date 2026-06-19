@@ -7,15 +7,42 @@ import (
 	"time"
 
 	"github.com/adwinying/sqlcery/internal/db"
+	"github.com/adwinying/sqlcery/internal/tui"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 )
+
+func TestResultsPaneModeViewAcceptsResultsPaneViewContext(t *testing.T) {
+	mode := newResultsPaneModeModel()
+	mode.SetSize(80, 8)
+
+	interaction := InteractionState{
+		LatestResult: &LatestResultContext{
+			Statement: "select id, name from widgets",
+			PreservedResult: &db.ResultSet{
+				Columns: []db.ResultColumn{{Name: "id"}, {Name: "name"}},
+				Rows: []db.ResultRow{
+					{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}, {Kind: db.ValueKindString, Value: "Ada"}}},
+				},
+			},
+		},
+	}
+
+	ctx := mode.buildViewContext(interaction)
+	view := ansi.Strip(mode.View(ctx))
+
+	for _, want := range []string{"id", "name", "1", "Ada"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View(ctx) = %q, want to contain %q", view, want)
+		}
+	}
+}
 
 func TestResultsPaneModeViewRendersFullResultSet(t *testing.T) {
 	mode := newResultsPaneModeModel()
 	mode.SetSize(80, 8)
 
-	view := mode.View(InteractionState{
+	interaction := InteractionState{
 		LatestResult: &LatestResultContext{
 			Statement: "select id, name, created_at from widgets order by id",
 			PreservedResult: &db.ResultSet{
@@ -27,7 +54,8 @@ func TestResultsPaneModeViewRendersFullResultSet(t *testing.T) {
 				},
 			},
 		},
-	})
+	}
+	view := mode.View(mode.buildViewContext(interaction))
 
 	plainView := ansi.Strip(view)
 
@@ -56,7 +84,7 @@ func TestResultsPaneModeViewRendersSelectedPage(t *testing.T) {
 		rows = append(rows, db.ResultRow{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(i)}}})
 	}
 
-	view := mode.View(InteractionState{
+	interaction := InteractionState{
 		ResultsPanePage: 1,
 		LatestResult: &LatestResultContext{
 			Statement: "select id from widgets order by id",
@@ -65,7 +93,8 @@ func TestResultsPaneModeViewRendersSelectedPage(t *testing.T) {
 				Rows:    rows,
 			},
 		},
-	})
+	}
+	view := mode.View(mode.buildViewContext(interaction))
 
 	for _, want := range []string{
 		"Rows: 305  Columns: 1",
@@ -96,7 +125,7 @@ func TestResultsPaneModeViewClipsRowsToVisibleViewport(t *testing.T) {
 		rows = append(rows, db.ResultRow{Values: []db.ResultValue{{Kind: db.ValueKindString, Value: fmt.Sprintf("row-%03d", i)}}})
 	}
 
-	view := ansi.Strip(mode.View(InteractionState{
+	interaction := InteractionState{
 		LatestResult: &LatestResultContext{
 			Statement: "select label from widgets order by id",
 			PreservedResult: &db.ResultSet{
@@ -104,7 +133,8 @@ func TestResultsPaneModeViewClipsRowsToVisibleViewport(t *testing.T) {
 				Rows:    rows,
 			},
 		},
-	}))
+	}
+	view := ansi.Strip(mode.View(mode.buildViewContext(interaction)))
 
 	for _, want := range []string{"row-014", "row-018", "Showing rows 1-30 of 30"} {
 		if !strings.Contains(view, want) {
@@ -314,7 +344,7 @@ func TestRenderResultsPaneTableOnlyStylesPrimaryKeyColumns(t *testing.T) {
 			{Name: "name"},
 		},
 		Rows: []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(7)}, {Kind: db.ValueKindString, Value: "Ada"}}}},
-	}, 0, 80, 10, resultsPaneRenderState{})
+	}, 0, 80, 10, tui.ResultsPaneRenderState{})
 
 	plain := ansi.Strip(table)
 	if !strings.Contains(plain, "id | name") {
@@ -338,8 +368,8 @@ func TestClampResultsPanePage(t *testing.T) {
 		{name: "beyond end", page: 9, totalRows: 305, want: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := clampResultsPanePage(tc.page, tc.totalRows); got != tc.want {
-				t.Fatalf("clampResultsPanePage(%d, %d) = %d, want %d", tc.page, tc.totalRows, got, tc.want)
+			if got := tui.ClampResultsPanePage(tc.page, tc.totalRows); got != tc.want {
+				t.Fatalf("ClampResultsPanePage(%d, %d) = %d, want %d", tc.page, tc.totalRows, got, tc.want)
 			}
 		})
 	}
@@ -392,7 +422,7 @@ func TestRenderResultsPaneTableHighlightsSelectedCell(t *testing.T) {
 	table := renderResultsPaneTable(&db.ResultSet{
 		Columns: []db.ResultColumn{{Name: "id"}, {Name: "name"}},
 		Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(7)}, {Kind: db.ValueKindString, Value: "Ada"}}}},
-	}, 0, 80, 10, resultsPaneRenderState{Active: resultsPaneSelection{Row: 0, Column: 1, Active: true}})
+	}, 0, 80, 10, tui.ResultsPaneRenderState{Active: tui.ResultsPaneSelection{Row: 0, Column: 1, Active: true}})
 
 	if !strings.Contains(table, "\x1b[") {
 		t.Fatalf("renderResultsPaneTable() = %q, want ANSI styling for selected cell", table)
@@ -407,10 +437,10 @@ func TestResultsPaneModeViewShowsSelectedRowCount(t *testing.T) {
 	mode := newResultsPaneModeModel()
 	mode.SetSize(80, 8)
 
-	view := ansi.Strip(mode.View(InteractionState{
+	interaction := InteractionState{
 		MarkedRows: []int{0, 2},
 		LatestResult: &LatestResultContext{
-			Statement:       "select id from widgets order by id",
+			Statement: "select id from widgets order by id",
 			PreservedResult: &db.ResultSet{
 				Columns: []db.ResultColumn{{Name: "id"}},
 				Rows: []db.ResultRow{
@@ -420,7 +450,8 @@ func TestResultsPaneModeViewShowsSelectedRowCount(t *testing.T) {
 				},
 			},
 		},
-	}))
+	}
+	view := ansi.Strip(mode.View(mode.buildViewContext(interaction)))
 
 	for _, want := range []string{"Selected: 2", "* 1", "* 3"} {
 		if !strings.Contains(view, want) {
@@ -491,7 +522,7 @@ func TestPrepareResultsPanePageCJKColumnWidths(t *testing.T) {
 		},
 	}
 
-	prepared := prepareResultsPanePage(result, 0, false)
+	prepared := tui.PrepareResultsPanePage(result, 0, false)
 
 	// "名前" header has display width 4; cell "テスト長い値" has display width 12 → column 0 width = 12
 	if got, want := prepared.Widths[0], 12; got != want {
@@ -510,23 +541,23 @@ func TestRenderInlineResultLineCJKPadding(t *testing.T) {
 	widths := []int{4, 10}
 
 	// Row 1: "ab" (width 2) padded to 4, "hello" (width 5) padded to 10
-	line1 := renderInlineResultLine([]string{"ab", "hello"}, widths)
+	line1 := tui.RenderInlineResultLine([]string{"ab", "hello"}, widths)
 	// Row 2: "中文" (width 4) needs no extra padding, "テスト長い値" (width 12) > 10 but no truncation here
-	line2 := renderInlineResultLine([]string{"中文", "テスト長い値"}, widths)
+	line2 := tui.RenderInlineResultLine([]string{"中文", "テスト長い値"}, widths)
 
 	// line1 col0: "ab  " (2 spaces of padding)
 	if !strings.Contains(line1, "ab  ") {
-		t.Fatalf("renderInlineResultLine() line1 = %q, want col0 padded to width 4", line1)
+		t.Fatalf("RenderInlineResultLine() line1 = %q, want col0 padded to width 4", line1)
 	}
 	// line1 col1: "hello     " (5 spaces)
 	if !strings.Contains(line1, "hello     ") {
-		t.Fatalf("renderInlineResultLine() line1 = %q, want col1 padded to width 10", line1)
+		t.Fatalf("RenderInlineResultLine() line1 = %q, want col1 padded to width 10", line1)
 	}
 
 	// line2 col0: "中文" display-width 4, column width 4 → padding=0.
 	// The join separator is " | " so the rendered output is "中文" + "" + " | " = "中文 | ".
 	if !strings.Contains(line2, "中文 | ") {
-		t.Fatalf("renderInlineResultLine() line2 = %q, want CJK value followed by \" | \" (no extra padding when display width equals column width)", line2)
+		t.Fatalf("RenderInlineResultLine() line2 = %q, want CJK value followed by \" | \" (no extra padding when display width equals column width)", line2)
 	}
 }
 
@@ -536,7 +567,7 @@ func TestResultsPaneModeViewCJKCharacters(t *testing.T) {
 	mode := newResultsPaneModeModel()
 	mode.SetSize(80, 12)
 
-	view := ansi.Strip(mode.View(InteractionState{
+	cjkInteraction := InteractionState{
 		LatestResult: &LatestResultContext{
 			Statement: "select 名前, score from users",
 			PreservedResult: &db.ResultSet{
@@ -553,7 +584,8 @@ func TestResultsPaneModeViewCJKCharacters(t *testing.T) {
 				},
 			},
 		},
-	}))
+	}
+	view := ansi.Strip(mode.View(mode.buildViewContext(cjkInteraction)))
 
 	// Header must contain "名前" and "score"
 	if !strings.Contains(view, "名前") {
@@ -586,7 +618,7 @@ func TestResultsPaneModeViewCJKCharacters(t *testing.T) {
 	}
 }
 
-func TestFormatResultsPaneValueTruncatesNewlines(t *testing.T) {
+func TestPrepareResultsPanePageTruncatesNewlineValues(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		value db.ResultValue
@@ -609,8 +641,13 @@ func TestFormatResultsPaneValueTruncatesNewlines(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := formatResultsPaneValue(tc.value); got != tc.want {
-				t.Fatalf("formatResultsPaneValue() = %q, want %q", got, tc.want)
+			result := &db.ResultSet{
+				Columns: []db.ResultColumn{{Name: "note"}},
+				Rows:    []db.ResultRow{{Values: []db.ResultValue{tc.value}}},
+			}
+			prepared := tui.PrepareResultsPanePage(result, 0, false)
+			if got := prepared.Rows[0][0]; got != tc.want {
+				t.Fatalf("PrepareResultsPanePage row value = %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -620,7 +657,7 @@ func TestResultsPaneTableTruncatesMultilineValues(t *testing.T) {
 	mode := newResultsPaneModeModel()
 	mode.SetSize(80, 8)
 
-	view := ansi.Strip(mode.View(InteractionState{
+	truncInteraction := InteractionState{
 		LatestResult: &LatestResultContext{
 			Statement: "select id, note from widgets",
 			PreservedResult: &db.ResultSet{
@@ -637,7 +674,8 @@ func TestResultsPaneTableTruncatesMultilineValues(t *testing.T) {
 				},
 			},
 		},
-	}))
+	}
+	view := ansi.Strip(mode.View(mode.buildViewContext(truncInteraction)))
 
 	if !strings.Contains(view, "first line...") {
 		t.Fatalf("View() = %q, want multiline value truncated to 'first line...'", view)
@@ -733,6 +771,6 @@ func BenchmarkResultsPaneModeViewLargePage(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = mode.View(query)
+		_ = mode.View(mode.buildViewContext(query))
 	}
 }

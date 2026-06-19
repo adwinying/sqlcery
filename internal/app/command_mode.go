@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -16,66 +15,44 @@ import (
 )
 
 const (
-	defaultEditorWidth    = 80
-	minimumEditorWidth    = 20
+	defaultEditorWidth = 80
+	minimumEditorWidth = 20
+	// autocompletePanelRows and bottomPadding mirror tui constants; kept for test access.
 	autocompletePanelRows = 5
-	// bottomPadding reserves rows below the last editor line for the
-	// autocomplete dropdown so the prompt never bounces when the menu opens.
-	bottomPadding   = 5
-	editorLargeHeight = 9999 // fixed height so the textarea never runs its own viewport
+	bottomPadding         = 5
+	editorLargeHeight     = 9999
 )
 
-type replTranscriptEntry struct {
-	Prompt string
-	SQL    string
-	Output string
-}
-
 type commandModeModel struct {
-	editor             textarea.Model
-	keys               commandModeKeyMap
-	highlighter        sqlSyntaxHighlighter
-	selectedSuggestion int
-	replTranscript     []replTranscriptEntry
-	innerWidth         int
-	innerHeight        int
-	scrollOffset       int // lines scrolled up from the natural bottom; 0 = follow latest
-	// autocompleteOpenedByTyping is the primary gate for the autocomplete
-	// dropdown: the menu is only allowed to appear when the most recent key
-	// event modified the editor buffer (printable characters, backspace,
-	// delete). Focus changes, pane switches, cursor movement, history recall,
-	// slash-command expansion, Results Pane compose and submit/clear flows
-	// all reset it to false. The flag lifts the moment the user types the
-	// next character.
-	autocompleteOpenedByTyping bool
-	// autocompleteSuppressed is set when the user explicitly dismisses the
-	// autocomplete dropdown (e.g. via Esc). While the editor value and cursor
-	// offset stay identical to the snapshot captured at dismissal time,
-	// autocompleteItems returns nil so the menu stays closed. Any edit or
-	// cursor movement naturally lifts the suppression because the captured
-	// snapshot no longer matches.
+	editor      textarea.Model
+	keys        commandModeKeyMap
+	widget      tui.EditorWidget
+	innerWidth  int
+	innerHeight int
+	// autocomplete gate state
+	autocompleteOpenedByTyping   bool
 	autocompleteSuppressed       bool
 	autocompleteSuppressedValue  string
 	autocompleteSuppressedCursor int
+	// pre-computed in Update; used by buildViewContext and footer methods
+	cachedSuggestions []tui.AutocompleteSuggestion
 }
 
 type commandModeKeyMap struct {
-	Submit              key.Binding
-	Cancel              key.Binding
-	Help                key.Binding
-	History             key.Binding
-	RestoreHistory      key.Binding
-	SwitchMode          key.Binding
-	LayoutCommandOnly   key.Binding
-	AcceptSuggestion    key.Binding
-	NextSuggestion      key.Binding
-	PrevSuggestion      key.Binding
-	ScrollTranscriptUp  key.Binding
+	Submit               key.Binding
+	Cancel               key.Binding
+	Help                 key.Binding
+	History              key.Binding
+	RestoreHistory       key.Binding
+	SwitchMode           key.Binding
+	LayoutCommandOnly    key.Binding
+	AcceptSuggestion     key.Binding
+	NextSuggestion       key.Binding
+	PrevSuggestion       key.Binding
+	ScrollTranscriptUp   key.Binding
 	ScrollTranscriptDown key.Binding
 }
 
-// defaultCommandModeKeys returns the fixed key bindings used by command mode
-// and modals. Modals call this directly rather than reading from a model instance.
 func defaultCommandModeKeys() commandModeKeyMap {
 	return commandModeKeyMap{
 		Submit:               key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit")),
@@ -104,7 +81,7 @@ func newCommandModeModel() commandModeModel {
 
 	return commandModeModel{
 		editor:      editor,
-		highlighter: newSQLSyntaxHighlighter(),
+		widget:      tui.NewEditorWidget(),
 		innerWidth:  defaultEditorWidth,
 		innerHeight: 1,
 		keys:        defaultCommandModeKeys(),
@@ -117,38 +94,33 @@ func (m commandModeModel) Init() tea.Cmd {
 
 func (m commandModeModel) Update(msg tea.Msg, interaction InteractionState) (commandModeModel, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
-		suggestions := m.autocompleteItems(interaction)
+		suggestions := m.computeSuggestions(interaction)
 		switch {
 		case key.Matches(keyMsg, m.keys.AcceptSuggestion):
 			if len(suggestions) > 0 {
-				m.applySuggestion(suggestions[m.selectedSuggestionIndex(len(suggestions))])
-				// Accepting a suggestion commits text but should close the
-				// menu; it shouldn't linger until the user types again.
+				m.applySuggestion(suggestions[m.widget.SelectedSuggestionIndex(len(suggestions))])
 				m.autocompleteOpenedByTyping = false
 				return m, textarea.Blink
 			}
 		case key.Matches(keyMsg, m.keys.NextSuggestion):
 			if len(suggestions) > 0 {
-				m.selectedSuggestion = (m.selectedSuggestionIndex(len(suggestions)) + 1) % len(suggestions)
+				m.widget.SelectNextSuggestion(len(suggestions))
 				return m, nil
 			}
 		case key.Matches(keyMsg, m.keys.PrevSuggestion):
 			if len(suggestions) > 0 {
-				m.selectedSuggestion = m.selectedSuggestionIndex(len(suggestions)) - 1
-				if m.selectedSuggestion < 0 {
-					m.selectedSuggestion = len(suggestions) - 1
-				}
+				m.widget.SelectPrevSuggestion(len(suggestions))
 				return m, nil
 			}
 		case key.Matches(keyMsg, m.keys.ScrollTranscriptUp):
 			step := max(1, m.innerHeight/2)
-			maxOff := m.computeNaturalScrollTop(max(1, m.innerHeight))
-			m.scrollOffset = min(m.scrollOffset+step, maxOff)
+			naturalTop := m.widget.ComputeNaturalScrollTop(m.buildViewContext(interaction))
+			m.widget.ScrollUp(step, naturalTop)
 			m.autocompleteOpenedByTyping = false
 			return m, nil
 		case key.Matches(keyMsg, m.keys.ScrollTranscriptDown):
 			step := max(1, m.innerHeight/2)
-			m.scrollOffset = max(0, m.scrollOffset-step)
+			m.widget.ScrollDown(step)
 			m.autocompleteOpenedByTyping = false
 			return m, nil
 		}
@@ -165,49 +137,47 @@ func (m commandModeModel) Update(msg tea.Msg, interaction InteractionState) (com
 		valueChanged := m.editor.Value() != priorValue
 		cursorMoved := m.cursorOffset() != priorCursor
 		if valueChanged || cursorMoved {
-			// Any edit or cursor movement snaps back to follow latest output,
-			// matching terminal-shell behaviour.
-			m.scrollOffset = 0
+			m.widget.SnapToBottom()
 		}
 		if valueChanged {
-			// A key event that actually mutated the buffer — printable text,
-			// backspace, delete, or a newline in multi-line SQL. This is the
-			// only path that opens the autocomplete menu.
 			m.autocompleteOpenedByTyping = true
 		} else {
-			// Any key press that did not change the buffer (arrow keys, Home,
-			// End, Ctrl+A/E, modifier-only presses, ignored shortcuts) closes
-			// the menu. The user must type again to reopen it.
 			m.autocompleteOpenedByTyping = false
 		}
 	}
 
-	m.clampSuggestionSelection(interaction)
+	m.cachedSuggestions = m.computeSuggestions(interaction)
+	m.widget.ClampSuggestionSelection(len(m.cachedSuggestions))
 	return m, cmd
 }
 
 func (m *commandModeModel) Clear() {
 	m.editor.Reset()
 	m.editor.Focus()
-	m.selectedSuggestion = 0
+	m.widget.ResetSuggestionSelection()
+	m.cachedSuggestions = nil
 	m.autocompleteOpenedByTyping = false
 	m.clearAutocompleteSuppression()
 }
 
 // AutocompleteVisible reports whether the autocomplete dropdown is currently
-// showing suggestions to the user for the given query context.
+// showing suggestions. Call after Update to read the cached result.
 func (m commandModeModel) AutocompleteVisible(interaction InteractionState) bool {
-	return len(m.autocompleteItems(interaction)) > 0
+	if len(m.cachedSuggestions) > 0 {
+		return true
+	}
+	// Fallback: compute inline for callers that haven't gone through Update.
+	return len(m.computeSuggestions(interaction)) > 0
 }
 
 // DismissAutocomplete suppresses the autocomplete dropdown while the editor
-// value and cursor position remain unchanged. Any subsequent edit or cursor
-// movement implicitly lifts the suppression.
+// value and cursor position remain unchanged.
 func (m *commandModeModel) DismissAutocomplete() {
 	m.autocompleteSuppressed = true
 	m.autocompleteSuppressedValue = m.editor.Value()
 	m.autocompleteSuppressedCursor = m.cursorOffset()
-	m.selectedSuggestion = 0
+	m.widget.ResetSuggestionSelection()
+	m.cachedSuggestions = nil
 	m.autocompleteOpenedByTyping = false
 }
 
@@ -219,8 +189,6 @@ func (m *commandModeModel) clearAutocompleteSuppression() {
 
 func (m *commandModeModel) Focus() {
 	m.editor.Focus()
-	// Refocusing the command pane must not re-open a menu that was already
-	// closed when the pane lost focus.
 	m.autocompleteOpenedByTyping = false
 }
 
@@ -229,14 +197,13 @@ func (m *commandModeModel) Blur() {
 	m.autocompleteOpenedByTyping = false
 }
 
-// SetEditorValue replaces the editor buffer programmatically (history recall,
-// slash-command expansion, Results Pane compose) without marking the change
-// as a typing event, so the autocomplete menu stays closed until the user
-// types the next character.
+// SetEditorValue replaces the editor buffer programmatically without opening
+// the autocomplete menu.
 func (m *commandModeModel) SetEditorValue(value string) {
 	m.editor.SetValue(value)
 	m.editor.CursorEnd()
-	m.selectedSuggestion = 0
+	m.widget.ResetSuggestionSelection()
+	m.cachedSuggestions = nil
 	m.autocompleteOpenedByTyping = false
 	m.clearAutocompleteSuppression()
 }
@@ -261,12 +228,12 @@ func (m commandModeModel) Focused() bool {
 }
 
 func (m commandModeModel) View(interaction InteractionState) string {
-	return m.renderView(interaction)
+	return m.widget.View(m.buildViewContext(interaction))
 }
 
 func (m commandModeModel) FooterHints(interaction InteractionState) string {
 	var parts []string
-	if len(m.autocompleteItems(interaction)) > 0 {
+	if len(m.cachedSuggestions) > 0 || len(m.computeSuggestions(interaction)) > 0 {
 		parts = append(parts, bindingSummary(m.keys.AcceptSuggestion), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
 	}
 	parts = append(parts, "enter submit", bindingSummary(m.keys.Cancel), bindingSummary(m.keys.History))
@@ -289,11 +256,9 @@ func (m commandModeModel) Footer(connectionName, dialect string, interaction Int
 	if label := strings.TrimSpace(connectionName); label != "" {
 		parts = append(parts, fmt.Sprintf("connection %s", label))
 	}
-
 	if label := strings.TrimSpace(dialect); label != "" {
 		parts = append(parts, label)
 	}
-
 	if selectedCount := len(interaction.MarkedRows); selectedCount > 0 {
 		parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
 	}
@@ -313,7 +278,7 @@ func (m commandModeModel) Footer(connectionName, dialect string, interaction Int
 		parts = append(parts, running)
 		parts = append(parts, "esc cancel query")
 	}
-	if len(m.autocompleteItems(interaction)) > 0 {
+	if len(m.cachedSuggestions) > 0 || len(m.computeSuggestions(interaction)) > 0 {
 		parts = append(parts, bindingSummary(m.keys.AcceptSuggestion), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
 	}
 	parts = append(parts, "ctrl+c quit")
@@ -322,196 +287,66 @@ func (m commandModeModel) Footer(connectionName, dialect string, interaction Int
 }
 
 func (m *commandModeModel) AppendReplEntry(prompt, sql, output string) {
-	m.replTranscript = append(m.replTranscript, replTranscriptEntry{
-		Prompt: prompt,
-		SQL:    sql,
-		Output: output,
-	})
-	m.scrollOffset = 0 // auto-scroll to latest
+	m.widget.AppendEntry(prompt, sql, output)
 }
 
-func bindingSummary(binding key.Binding) string {
-	help := binding.Help()
-	return strings.TrimSpace(help.Key + " " + help.Desc)
+// buildViewContext maps the textarea state and cached autocomplete suggestions
+// into an EditorViewContext for stateless rendering by the EditorWidget.
+func (m commandModeModel) buildViewContext(interaction InteractionState) tui.EditorViewContext {
+	lineInfo := m.editor.LineInfo()
+	_ = interaction // suggestions already cached; interaction used only for legacy callers
+	return tui.EditorViewContext{
+		Value:           m.editor.Value(),
+		Lines:           tui.SplitEditorLines(m.editor.Value()),
+		CursorLine:      m.editor.Line(),
+		RowOffset:       lineInfo.RowOffset,
+		ColOffset:       lineInfo.ColumnOffset,
+		CharOffset:      lineInfo.CharOffset,
+		Width:           m.editor.Width(),
+		Height:          m.innerHeight,
+		Prompt:          m.editor.Prompt,
+		Placeholder:     m.editor.Placeholder,
+		ShowLineNumbers: m.editor.ShowLineNumbers,
+		MaxHeight:       m.editor.MaxHeight,
+		AutocompleteSuggestions: m.cachedSuggestions,
+		GhostText:               m.ghostText(),
+		PromptWidth:             ansi.StringWidth(m.editor.Prompt),
+	}
 }
 
-func clampEditorSize(value, minimum int) int {
-	if value < minimum {
-		return minimum
-	}
-
-	return value
-}
-
-func adjustedScrollTop(current, cursorRow, totalRows, height int) int {
-	if height <= 0 {
-		return 0
-	}
-
-	if cursorRow < current {
-		current = cursorRow
-	}
-
-	if cursorRow >= current+height {
-		current = cursorRow - height + 1
-	}
-
-	maxTop := max(0, totalRows-height)
-	if current > maxTop {
-		current = maxTop
-	}
-
-	if current < 0 {
-		return 0
-	}
-
-	return current
-}
-
-// computeNaturalScrollTop returns the scroll-top value that keeps the last
-// editor row on screen with bottomPadding blank reserve rows below it. It is
-// also the upper bound for scrollOffset: scrolling further would show empty
-// space above the first transcript line.
-func (m commandModeModel) computeNaturalScrollTop(viewportH int) int {
-	transcriptLen := len(m.renderReplTranscriptLines())
-	var totalEditorRows int
-	if m.editor.Value() == "" {
-		totalEditorRows = 1
-	} else {
-		_, _, totalEditorRows = m.renderedLines()
-	}
-	contentRows := transcriptLen + totalEditorRows
-	topPadding := max(0, viewportH-bottomPadding-contentRows)
-	lastEditorRow := topPadding + transcriptLen + totalEditorRows - 1
-	return max(0, lastEditorRow+bottomPadding-viewportH+1)
-}
-
-func (m commandModeModel) renderView(interaction InteractionState) string {
-	viewportH := max(1, m.innerHeight)
-
-	// Build the unified line list: transcript + editor.
-	transcriptLines := m.renderReplTranscriptLines()
-
-	ghost := m.ghostText(interaction)
-
-	var editorStrings []string
-	var cursorRowInEditor int
-	var totalEditorRows int
-	if m.editor.Value() == "" && strings.TrimSpace(m.editor.Placeholder) != "" {
-		editorStrings = []string{m.renderPlaceholderView()}
-		cursorRowInEditor = 0
-		totalEditorRows = 1
-	} else {
-		wrappedLines, editorCursor, editorTotal := m.renderedLines()
-		editorStrings = m.renderAllEditorLines(wrappedLines, ghost)
-		cursorRowInEditor = editorCursor
-		totalEditorRows = editorTotal
-	}
-
-	// Assemble the full visual stream as: [top-pad] [transcript] [editor] [reserve].
-	// - top-pad: blank rows that push short content down so the prompt hugs
-	//   the bottom of the pane (minus the reserve). Zero when content is
-	//   tall enough to overflow naturally.
-	// - reserve: bottomPadding blank rows the autocomplete dropdown overlays
-	//   into. Kept as real entries in allLines so adjustedScrollTop's
-	//   internal maxTop clamp does not collapse them away.
-	contentRows := len(transcriptLines) + totalEditorRows
-	topPadding := max(0, viewportH-bottomPadding-contentRows)
-
-	allLines := make([]string, 0, topPadding+contentRows+bottomPadding)
-	for i := 0; i < topPadding; i++ {
-		allLines = append(allLines, "")
-	}
-	allLines = append(allLines, transcriptLines...)
-	allLines = append(allLines, editorStrings...)
-	for i := 0; i < bottomPadding; i++ {
-		allLines = append(allLines, "")
-	}
-
-	cursorRow := topPadding + len(transcriptLines) + cursorRowInEditor
-	lastEditorRow := topPadding + len(transcriptLines) + totalEditorRows - 1
-
-	// naturalScrollTop: scroll position that keeps the last editor row on
-	// screen with the reserve visible below it.
-	naturalScrollTop := max(0, lastEditorRow+bottomPadding-viewportH+1)
-
-	// Apply manual scroll offset (lines scrolled up from the natural position).
-	rawScroll := max(0, naturalScrollTop-m.scrollOffset)
-
-	var scrollTop int
-	if m.scrollOffset == 0 {
-		// Not manually scrolled: ensure the cursor is always visible.
-		scrollTop = adjustedScrollTop(rawScroll, cursorRow, len(allLines), viewportH)
-		scrollTop = min(scrollTop, naturalScrollTop)
-	} else {
-		// Explicitly scrolled: let the view stay where the user put it.
-		// The cursor is allowed to go off-screen (terminal-shell behaviour).
-		scrollTop = max(0, min(rawScroll, naturalScrollTop))
-	}
-
-	// Build the visible grid: exactly viewportH rows, blank where allLines
-	// has no content.
-	visible := make([]string, viewportH)
-	for i := range visible {
-		if idx := scrollTop + i; idx < len(allLines) {
-			visible[i] = allLines[idx]
-		}
-	}
-
-	// Overlay the autocomplete dropdown directly below the cursor line.
-	// It replaces whatever rows are there (editor rows or reserve blanks),
-	// so the prompt never shifts vertically when the menu opens or closes.
-	dropdown := m.renderAutocompleteDropdown(interaction)
-	if dropdown == "" {
-		return strings.Join(visible, "\n")
-	}
-
-	cursorVisualRow := cursorRow - scrollTop
-	overlayStart := cursorVisualRow + 1
-	for i, dl := range strings.Split(dropdown, "\n") {
-		if row := overlayStart + i; row >= 0 && row < len(visible) {
-			visible[row] = dl
-		}
-	}
-
-	return strings.Join(visible, "\n")
-}
-
-func (m commandModeModel) renderReplTranscriptLines() []string {
-	if len(m.replTranscript) == 0 {
+// computeSuggestions computes the current autocomplete suggestions from the
+// editor state and interaction context. The result is cached in Update so that
+// View rendering never calls buildAutocompleteItems.
+func (m commandModeModel) computeSuggestions(interaction InteractionState) []tui.AutocompleteSuggestion {
+	if !m.autocompleteOpenedByTyping {
 		return nil
 	}
-	lines := make([]string, 0)
-	for _, entry := range m.replTranscript {
-		prompt := entry.Prompt
-		if prompt == "" {
-			prompt = "> "
-		}
-		sqlLines := strings.Split(strings.TrimRight(entry.SQL, "\n"), "\n")
-		for i, sl := range sqlLines {
-			if i == 0 {
-				lines = append(lines, tui.AppTheme.PromptStyle.Render(prompt)+tui.AppTheme.PanelText.Render(sl))
-			} else {
-				continuation := strings.Repeat(" ", len([]rune(prompt)))
-				lines = append(lines, tui.AppTheme.PanelMuted.Render(continuation+sl))
-			}
-		}
-		if entry.Output != "" {
-			for _, ol := range strings.Split(strings.TrimRight(entry.Output, "\n"), "\n") {
-				lines = append(lines, tui.AppTheme.PanelMuted.Render(ol))
-			}
+	if m.autocompleteSuppressed &&
+		m.editor.Value() == m.autocompleteSuppressedValue &&
+		m.cursorOffset() == m.autocompleteSuppressedCursor {
+		return nil
+	}
+	items := buildAutocompleteItems(m.editor.Value(), m.cursorOffset(), interaction)
+	result := make([]tui.AutocompleteSuggestion, len(items))
+	for i, item := range items {
+		result[i] = tui.AutocompleteSuggestion{
+			Label:      item.Label,
+			InsertText: item.InsertText,
+			Kind:       item.Kind,
+			Detail:     item.Detail,
 		}
 	}
-	return lines
+	return result
 }
 
-func (m commandModeModel) ghostText(interaction InteractionState) string {
-	suggestions := m.autocompleteItems(interaction)
-	if len(suggestions) == 0 {
+// ghostText returns the inline completion suffix to show after the cursor.
+// It uses the already-cached suggestions so that no computation happens at
+// render time.
+func (m commandModeModel) ghostText() string {
+	if len(m.cachedSuggestions) == 0 {
 		return ""
 	}
-
-	selected := suggestions[m.selectedSuggestionIndex(len(suggestions))]
+	selected := m.cachedSuggestions[m.widget.SelectedSuggestionIndex(len(m.cachedSuggestions))]
 	ctx := analyzeAutocompleteContext(m.editor.Value(), m.cursorOffset())
 	prefix := strings.ToLower(m.editor.Value()[ctx.ReplaceStart:ctx.ReplaceEnd])
 	insert := selected.InsertText
@@ -521,185 +356,10 @@ func (m commandModeModel) ghostText(interaction InteractionState) string {
 	if !strings.HasPrefix(strings.ToLower(insert), prefix) {
 		return ""
 	}
-
 	return insert[len(prefix):]
 }
 
-func renderGeneratedStatementWarning(sql string) string {
-	switch leadingSQLKeyword(sql) {
-	case "DELETE":
-		return tui.AppTheme.WarningNotice.Render("Warning: generated DELETE statement. Review carefully before submitting.")
-	case "DROP":
-		return tui.AppTheme.WarningNotice.Render("Warning: generated DROP statement. Review carefully before submitting.")
-	default:
-		return ""
-	}
-}
-
-func (m commandModeModel) renderPlaceholderView() string {
-	line := renderedEditorLine{
-		logicalLine: 0,
-		lineNumber:  1,
-		runes:       sqlStyledLine{},
-		isCursor:    true,
-		cursorCol:   0,
-	}
-	return m.renderLine(line, "")
-}
-
-func (m commandModeModel) renderedLines() ([]renderedEditorLine, int, int) {
-	logicalLines := splitEditorLines(m.editor.Value())
-	highlighted := m.highlighter.highlightLines(logicalLines)
-	contentWidth := max(1, m.editor.Width())
-	currentLine := m.editor.Line()
-	lineInfo := m.editor.LineInfo()
-
-	wrappedLines := make([]renderedEditorLine, 0, len(highlighted))
-	cursorVisualRow := 0
-
-	for lineIndex, line := range highlighted {
-		segments := wrapStyledLine(line, contentWidth)
-		if len(segments) == 0 {
-			segments = []sqlStyledLine{{}}
-		}
-
-		for segmentIndex, segment := range segments {
-			visualLine := renderedEditorLine{
-				logicalLine: lineIndex,
-				lineNumber:  0,
-				runes:       segment,
-				cursorCol:   -1,
-			}
-
-			if segmentIndex == 0 {
-				visualLine.lineNumber = lineIndex + 1
-			}
-
-			if lineIndex == currentLine && segmentIndex == lineInfo.RowOffset {
-				visualLine.isCursor = true
-				visualLine.cursorCol = lineInfo.ColumnOffset
-				cursorVisualRow = len(wrappedLines)
-			}
-
-			wrappedLines = append(wrappedLines, visualLine)
-		}
-	}
-
-	if len(wrappedLines) == 0 {
-		wrappedLines = append(wrappedLines, renderedEditorLine{lineNumber: 1, isCursor: true, cursorCol: 0})
-	}
-
-	return wrappedLines, cursorVisualRow, len(wrappedLines)
-}
-
-func (m commandModeModel) renderVisibleLines(lines []renderedEditorLine, scrollTop int, ghostText string) string {
-	height := max(1, m.editor.Height())
-	if scrollTop < 0 {
-		scrollTop = 0
-	}
-
-	end := min(len(lines), scrollTop+height)
-	visible := lines[scrollTop:end]
-
-	var builder strings.Builder
-	for i, line := range visible {
-		if i > 0 {
-			builder.WriteByte('\n')
-		}
-		lineGhost := ""
-		if line.isCursor {
-			lineGhost = ghostText
-		}
-		builder.WriteString(m.renderLine(line, lineGhost))
-	}
-
-	return builder.String()
-}
-
-// renderAllEditorLines renders every visual editor line into a []string without
-// any height-based clipping. The unified viewport in renderView does the slicing.
-func (m commandModeModel) renderAllEditorLines(lines []renderedEditorLine, ghostText string) []string {
-	result := make([]string, len(lines))
-	for i, line := range lines {
-		lineGhost := ""
-		if line.isCursor {
-			lineGhost = ghostText
-		}
-		result[i] = m.renderLine(line, lineGhost)
-	}
-	return result
-}
-
-func (m commandModeModel) renderLine(line renderedEditorLine, ghostText string) string {
-	lineStyle := tui.AppTheme.PanelText
-	lineNumberStyle := m.highlighter.lineNumberStyle
-	content := m.highlighter.renderLineContentWithGhost(line.runes, line.cursorCol, m.editor.Width(), false, ghostText)
-
-	if line.isCursor {
-		lineStyle = m.highlighter.cursorLineStyle
-		lineNumberStyle = m.highlighter.cursorLineNumberStyle
-	}
-
-	if line.logicalLine == 0 && m.editor.Value() == "" && strings.TrimSpace(m.editor.Placeholder) != "" {
-		content = m.highlighter.renderLineContentWithGhost(line.runes, line.cursorCol, m.editor.Width(), true, "")
-	}
-
-	prompt := m.highlighter.promptStyle.Render(m.editor.Prompt)
-	lineNumber := ""
-	if m.editor.ShowLineNumbers {
-		label := m.formatLineNumber(" ")
-		if line.lineNumber > 0 {
-			label = m.formatLineNumber(line.lineNumber)
-		}
-		lineNumber = lineNumberStyle.Render(label)
-	}
-
-	return lineStyle.Render(prompt + lineNumber + content)
-}
-
-func (m commandModeModel) formatLineNumber(value any) string {
-	digits := len(strconv.Itoa(max(1, m.editor.MaxHeight)))
-	return fmt.Sprintf(" %*v ", digits, value)
-}
-
-func (m commandModeModel) autocompleteItems(interaction InteractionState) []autocompleteItem {
-	// Primary gate: the menu is only allowed to appear as a direct result of
-	// a typing key event. Cursor movement, focus changes, pane switches,
-	// history recall, slash-command expansion, compose flows and submits all
-	// leave this flag false, so the menu stays closed until the user types.
-	if !m.autocompleteOpenedByTyping {
-		return nil
-	}
-	if m.autocompleteSuppressed &&
-		m.editor.Value() == m.autocompleteSuppressedValue &&
-		m.cursorOffset() == m.autocompleteSuppressedCursor {
-		return nil
-	}
-	return buildAutocompleteItems(m.editor.Value(), m.cursorOffset(), interaction)
-}
-
-func (m *commandModeModel) clampSuggestionSelection(interaction InteractionState) {
-	count := len(m.autocompleteItems(interaction))
-	if count == 0 {
-		m.selectedSuggestion = 0
-		return
-	}
-
-	m.selectedSuggestion = m.selectedSuggestionIndex(count)
-}
-
-func (m commandModeModel) selectedSuggestionIndex(count int) int {
-	if count <= 0 || m.selectedSuggestion < 0 {
-		return 0
-	}
-	if m.selectedSuggestion >= count {
-		return count - 1
-	}
-
-	return m.selectedSuggestion
-}
-
-func (m *commandModeModel) applySuggestion(item autocompleteItem) {
+func (m *commandModeModel) applySuggestion(item tui.AutocompleteSuggestion) {
 	value := []rune(m.editor.Value())
 	ctx := analyzeAutocompleteContext(m.editor.Value(), m.cursorOffset())
 	start := clampCursorOffset(ctx.ReplaceStart, len(value))
@@ -709,7 +369,7 @@ func (m *commandModeModel) applySuggestion(item autocompleteItem) {
 	cursor := start + len(insert)
 	m.editor.SetValue(updated)
 	m.setCursorOffset(cursor)
-	m.selectedSuggestion = 0
+	m.widget.ResetSuggestionSelection()
 }
 
 func clampCursorOffset(value, size int) int {
@@ -719,7 +379,6 @@ func clampCursorOffset(value, size int) int {
 	if value > size {
 		return size
 	}
-
 	return value
 }
 
@@ -747,11 +406,9 @@ func rowColFromCursorOffset(lines []string, offset int) (int, int) {
 			remaining--
 		}
 	}
-
 	if len(lines) == 0 {
 		return 0, 0
 	}
-
 	last := len(lines) - 1
 	return last, len([]rune(lines[last]))
 }
@@ -762,116 +419,52 @@ func (m commandModeModel) cursorOffset() int {
 	for i := 0; i < m.editor.Line() && i < len(lines); i++ {
 		offset += len([]rune(lines[i])) + 1
 	}
-
 	return offset + m.editor.LineInfo().CharOffset
 }
 
-func (m commandModeModel) renderAutocompletePanel(interaction InteractionState) string {
-	suggestions := m.autocompleteItems(interaction)
-	selected := m.selectedSuggestionIndex(len(suggestions))
-	visible := min(len(suggestions), autocompletePanelRows)
-	start := 0
-	if selected >= visible {
-		start = selected - visible + 1
-	}
-
-	lines := make([]string, 0, autocompletePanelRows+1)
-	if len(suggestions) > 0 {
-		lines = append(lines, tui.AppTheme.PanelTitle.Render("Suggestions:"))
-	} else {
-		lines = append(lines, tui.AppTheme.PanelMuted.Render("Suggestions:"))
-	}
-
-	for i := start; i < start+autocompletePanelRows; i++ {
-		if i < len(suggestions) {
-			item := suggestions[i]
-			line := fmt.Sprintf("  [%s] %s", item.Kind, item.Label)
-			if detail := strings.TrimSpace(item.Detail); detail != "" {
-				line += " - " + detail
-			}
-			if i == selected {
-				lines = append(lines, tui.AppTheme.PanelSelected.Render("> "+strings.TrimPrefix(line, "  ")))
-			} else {
-				lines = append(lines, tui.AppTheme.PanelText.Render(line))
-			}
-		} else {
-			// Empty row to preserve fixed height
-			lines = append(lines, "")
-		}
-	}
-
-	return strings.Join(lines, "\n")
+// splitEditorLines splits a SQL editor value into logical lines.
+// Thin wrapper over tui.SplitEditorLines kept for package-internal callers.
+func splitEditorLines(value string) []string {
+	return tui.SplitEditorLines(value)
 }
 
+// computeNaturalScrollTop returns the natural scroll top for the current content.
+// Kept as a wrapper for test access.
+func (m commandModeModel) computeNaturalScrollTop(viewportH int) int {
+	ctx := tui.EditorViewContext{
+		Value:  m.editor.Value(),
+		Lines:  tui.SplitEditorLines(m.editor.Value()),
+		Width:  m.editor.Width(),
+		Height: viewportH,
+	}
+	return m.widget.ComputeNaturalScrollTop(ctx)
+}
+
+// autocompleteItems returns the current suggestions as a slice.
+// Kept as a thin wrapper for test access; callers in production code should
+// use cachedSuggestions instead.
+func (m commandModeModel) autocompleteItems(interaction InteractionState) []tui.AutocompleteSuggestion {
+	return m.computeSuggestions(interaction)
+}
+
+// renderAutocompleteDropdown renders the dropdown overlay for tests that call
+// it directly. In production, the widget.View() handles this internally.
 func (m commandModeModel) renderAutocompleteDropdown(interaction InteractionState) string {
-	suggestions := m.autocompleteItems(interaction)
-	if len(suggestions) == 0 {
-		return ""
-	}
+	ctx := m.buildViewContext(interaction)
+	ctx.AutocompleteSuggestions = m.computeSuggestions(interaction)
+	return m.widget.RenderDropdown(ctx)
+}
 
-	selected := m.selectedSuggestionIndex(len(suggestions))
-	visible := min(len(suggestions), autocompletePanelRows)
-	start := 0
-	if selected >= visible {
-		start = selected - visible + 1
-	}
+func bindingSummary(binding key.Binding) string {
+	help := binding.Help()
+	return strings.TrimSpace(help.Key + " " + help.Desc)
+}
 
-	lines := make([]string, 0, visible)
-	for i := start; i < start+visible; i++ {
-		if i >= len(suggestions) {
-			break
-		}
-		item := suggestions[i]
-		line := fmt.Sprintf("[%s] %s", item.Kind, item.Label)
-		if detail := strings.TrimSpace(item.Detail); detail != "" {
-			line += " - " + detail
-		}
-		if i == selected {
-			lines = append(lines, tui.AppTheme.PanelSelected.Render(line))
-		} else {
-			lines = append(lines, tui.AppTheme.PanelText.Render(line))
-		}
+func clampEditorSize(value, minimum int) int {
+	if value < minimum {
+		return minimum
 	}
-
-	// Compute popup width from content
-	maxWidth := 0
-	for _, line := range lines {
-		if w := ansi.StringWidth(line); w > maxWidth {
-			maxWidth = w
-		}
-	}
-	popupWidth := maxWidth
-	editorWidth := m.editor.Width()
-	if popupWidth > editorWidth {
-		popupWidth = editorWidth
-	}
-	if popupWidth < 10 {
-		popupWidth = 10
-	}
-
-	// Determine cursor column offset for positioning
-	promptWidth := ansi.StringWidth(m.editor.Prompt)
-	cursorCol := promptWidth + m.editor.LineInfo().ColumnOffset
-	indent := cursorCol
-	if indent+popupWidth > editorWidth+promptWidth {
-		indent = max(0, editorWidth+promptWidth-popupWidth)
-	}
-	indentStr := strings.Repeat(" ", indent)
-
-	var builder strings.Builder
-	for i, line := range lines {
-		if i > 0 {
-			builder.WriteByte('\n')
-		}
-		padding := popupWidth - ansi.StringWidth(line)
-		if padding < 0 {
-			padding = 0
-			line = ansi.Truncate(line, popupWidth, "")
-		}
-		builder.WriteString(indentStr + line + strings.Repeat(" ", padding))
-	}
-
-	return builder.String()
+	return value
 }
 
 func renderInlineResult(interaction InteractionState) string {
@@ -879,15 +472,12 @@ func renderInlineResult(interaction InteractionState) string {
 	if latest == nil || latest.OriginPane != PaneCommand {
 		return ""
 	}
-
 	if latest.StatementKind == db.StatementResultKindExec {
 		return renderInlineExecResult(latest)
 	}
-
 	if latest.InlineResult == nil {
 		return ""
 	}
-
 	return renderInlineQueryResult(latest)
 }
 
@@ -900,7 +490,7 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext) string {
 	switch wizard.Step {
 	case SlashCommandWizardStepTarget:
 		selectedCommand, _ := slashWizardCommandByIndex(wizard)
-		headerLines := 1 // title already added
+		headerLines := 1
 		if wizard.DirectInvocation {
 			lines = append(lines,
 				tui.AppTheme.PanelText.Render(fmt.Sprintf("Choose a table for %s:", selectedCommand.DisplayName)),
@@ -913,7 +503,6 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext) string {
 			)
 			headerLines += 2
 		}
-		// Filter input row
 		lines = append(lines, tui.AppTheme.PanelText.Render(fmt.Sprintf("filter> %s", defaultWizardFilter(wizard.TargetFilter))))
 		headerLines++
 
@@ -946,7 +535,7 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext) string {
 		}
 	default:
 		lines = append(lines, tui.AppTheme.PanelText.Render("Step 1/2: choose a slash command"))
-		const headerLines = 2 // title + step description
+		const headerLines = 2
 		const footerLines = 1
 		listViewport := tui.ModalFixedRows - headerLines - footerLines
 		if listViewport < 1 {
@@ -1091,11 +680,9 @@ func formatInlineResultValue(value db.ResultValue) string {
 			return typed.Format("2006-01-02 15:04:05")
 		}
 	}
-
 	if value.Value == nil {
 		return "NULL"
 	}
-
 	return truncateNewlines(fmt.Sprint(value.Value))
 }
 
@@ -1123,4 +710,15 @@ func defaultWizardFilter(value string) string {
 		return "(empty)"
 	}
 	return value
+}
+
+func renderGeneratedStatementWarning(sql string) string {
+	switch leadingSQLKeyword(sql) {
+	case "DELETE":
+		return tui.AppTheme.WarningNotice.Render("Warning: generated DELETE statement. Review carefully before submitting.")
+	case "DROP":
+		return tui.AppTheme.WarningNotice.Render("Warning: generated DROP statement. Review carefully before submitting.")
+	default:
+		return ""
+	}
 }

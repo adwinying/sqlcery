@@ -635,14 +635,14 @@ func (m Model) readyStateView(totalHeight int) string {
 		if commandOuterH < 3 {
 			commandOuterH = 3
 		}
-		resultsPaneContent := m.resultsPane.View(interaction)
+		resultsPaneContent := m.resultsPane.View(m.resultsPane.buildViewContext(interaction))
 		commandContent := m.command.View(interaction)
 		resultsPaneActive := interaction.ActivePane == PaneResults
 		resultsPanePane := m.renderBorderedPane(resultsPaneContent, "[1] Results", resultsPaneActive, w, resultsPaneOuterH-2)
 		commandPane := m.renderBorderedPane(commandContent, "[2] Commands", !resultsPaneActive, w, commandOuterH-2)
 		base = resultsPanePane + "\n" + commandPane
 	case LayoutResultsOnly:
-		resultsPaneContent := m.resultsPane.View(interaction)
+		resultsPaneContent := m.resultsPane.View(m.resultsPane.buildViewContext(interaction))
 		base = m.renderBorderedPane(resultsPaneContent, "[1] Results", true, w, totalHeight-2)
 	default: // LayoutCommandOnly
 		commandContent := m.command.View(interaction)
@@ -803,7 +803,7 @@ func (m *Model) handleResultsPanePagingKey(msg tea.KeyPressMsg) bool {
 			return true
 		}
 		m.resultsPane.syncSelection(m.state.Interaction)
-		page := resultsPanePageContextFor(m.state.Interaction.ResultsPanePage, len(result.Rows))
+		page := tui.ResultsPanePageContextFor(m.state.Interaction.ResultsPanePage, len(result.Rows))
 		pageMinRow := page.StartRow - 1 // inclusive lower bound (0-indexed)
 		pageMaxRow := page.EndRow - 1   // inclusive upper bound (0-indexed)
 		scrollAmount := max(1, m.resultsPane.height/2)
@@ -825,17 +825,17 @@ func (m *Model) handleResultsPanePagingKey(msg tea.KeyPressMsg) bool {
 		m.state.ChangeResultsPanePage(1)
 	}
 
-	page := resultsPanePageContextFor(m.state.Interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
+	page := tui.ResultsPanePageContextFor(m.state.Interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
 	if m.state.Interaction.ResultsPanePage == previous {
 		if previous == 0 {
-			m.state.SetPendingIntent(IntentNone, "results-pane-page", fmt.Sprintf("Already at the first Results Pane page (%s).", formatResultsPaneRowRange(page)))
+			m.state.SetPendingIntent(IntentNone, "results-pane-page", fmt.Sprintf("Already at the first Results Pane page (%s).", tui.ResultsPaneFormatRowRange(page)))
 			return true
 		}
-		m.state.SetPendingIntent(IntentNone, "results-pane-page", fmt.Sprintf("Already at the last Results Pane page (%s).", formatResultsPaneRowRange(page)))
+		m.state.SetPendingIntent(IntentNone, "results-pane-page", fmt.Sprintf("Already at the last Results Pane page (%s).", tui.ResultsPaneFormatRowRange(page)))
 		return true
 	}
 
-	m.state.SetPendingIntent(IntentNone, "results-pane-page", fmt.Sprintf("Showing Results Pane page %d/%d (%s).", page.Number, page.TotalPages, formatResultsPaneRowRange(page)))
+	m.state.SetPendingIntent(IntentNone, "results-pane-page", fmt.Sprintf("Showing Results Pane page %d/%d (%s).", page.Number, page.TotalPages, tui.ResultsPaneFormatRowRange(page)))
 	return true
 }
 

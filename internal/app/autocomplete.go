@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/adwinying/sqlcery/internal/tui"
 )
 
 const autocompleteLimit = 6
@@ -298,7 +300,7 @@ func analyzeAutocompleteContext(value string, cursor int) autocompleteContext {
 	}
 
 	start := cursor
-	for start > 0 && isIdentifierPart(runes[start-1]) {
+	for start > 0 && tui.IsIdentifierPart(runes[start-1]) {
 		start--
 	}
 	ctx.ReplaceStart = start
@@ -325,7 +327,7 @@ func analyzeAutocompleteContext(value string, cursor int) autocompleteContext {
 
 func scanIdentifierBackward(runes []rune, end int) string {
 	start := end
-	for start > 0 && isIdentifierPart(runes[start-1]) {
+	for start > 0 && tui.IsIdentifierPart(runes[start-1]) {
 		start--
 	}
 

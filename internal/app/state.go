@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/adwinying/sqlcery/internal/db"
+	"github.com/adwinying/sqlcery/internal/tui"
 )
 
 type Pane string
@@ -273,7 +274,7 @@ func (s *SharedAppState) ClearMarkedRows() {
 }
 
 func (s *SharedAppState) SetResultsPanePage(page int) {
-	s.Interaction.ResultsPanePage = clampResultsPanePage(page, resultsPaneRowCount(s.Interaction.LatestResult))
+	s.Interaction.ResultsPanePage = tui.ClampResultsPanePage(page, resultsPaneRowCount(s.Interaction.LatestResult))
 }
 
 func (s *SharedAppState) ChangeResultsPanePage(delta int) {
