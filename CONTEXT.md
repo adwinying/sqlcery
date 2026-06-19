@@ -68,3 +68,9 @@ The set of features that help a user write SQL with fewer keystrokes. Current fo
 
 ### Statement Expansion
 The act of SQLcery generating a SQL Statement and loading it into the Command Pane for the user to review and edit before submitting. Triggered either by a Slash Command (e.g. `/select users` expands a SELECT template) or by a row action in the Results Pane (e.g. `yy`/`cc`/`dd` expands an INSERT/UPDATE/DELETE from the selected row's values).
+
+### Widget
+A type in `internal/tui` that carries only cosmetic state — scroll offsets, suggestion-selection indices, transcript buffers — and exposes a `View(*ViewContext)` method for rendering. A widget never reads or writes `InteractionState`; all application data arrives through its View Context.
+
+### View Context
+A narrow struct defined alongside each widget in `internal/tui` (e.g. `EditorViewContext`, `ResultsPaneViewContext`). `internal/app` constructs one from `InteractionState` immediately before calling the widget's `View` method, then discards it. View contexts flow one way: from `internal/app` into `internal/tui`. They make widget rendering deterministic and isolate widgets from application-state types.
