@@ -1,4 +1,4 @@
-package app
+package tui
 
 import (
 	"strings"
@@ -8,18 +8,18 @@ import (
 )
 
 const (
-	modalMinWidth  = 30
-	modalMaxWidth  = 64
-	modalFixedRows = 16 // fixed inner height: content is padded or clipped to this many rows
+	ModalMinWidth  = 30
+	ModalMaxWidth  = 64
+	ModalFixedRows = 16 // fixed inner height: content is padded or clipped to this many rows
 )
 
-// renderModal wraps content in a rounded-border modal box with a fixed inner
+// RenderModal wraps content in a rounded-border modal box with a fixed inner
 // height of modalFixedRows rows and a fixed inner width derived from maxOuterWidth.
 // Content lines are padded or truncated to fit the inner width.
 // If there are fewer content lines than modalFixedRows, blank lines are added.
 // If there are more, excess lines are silently dropped (the modal acts like a
 // fixed-size viewport — callers are responsible for pre-scrolling the slice).
-func renderModal(content string, maxOuterWidth int) string {
+func RenderModal(content string, maxOuterWidth int) string {
 	lines := strings.Split(content, "\n")
 
 	// Inner width accounts for left and right border chars (│ = 1 char each).
@@ -28,13 +28,13 @@ func renderModal(content string, maxOuterWidth int) string {
 		innerWidth = 1
 	}
 
-	// Pad or clip to exactly modalFixedRows rows.
-	for len(lines) < modalFixedRows {
+	// Pad or clip to exactly ModalFixedRows rows.
+	for len(lines) < ModalFixedRows {
 		lines = append(lines, "")
 	}
-	lines = lines[:modalFixedRows]
+	lines = lines[:ModalFixedRows]
 
-	bs := lipgloss.NewStyle().Foreground(appTheme.modalBorder.GetForeground())
+	bs := lipgloss.NewStyle().Foreground(AppTheme.ModalBorder.GetForeground())
 	topLine := bs.Render("╭" + strings.Repeat("─", innerWidth) + "╮")
 	bottomLine := bs.Render("╰" + strings.Repeat("─", innerWidth) + "╯")
 
@@ -57,11 +57,11 @@ func renderModal(content string, maxOuterWidth int) string {
 	return strings.Join(result, "\n")
 }
 
-// overlayCenter composites modal centered over bg.
+// OverlayCenter composites modal centered over bg.
 // bgW and bgH are the visual dimensions of bg (width in columns, height in rows).
 // If the terminal is too small to fit the modal with at least one column of
 // margin on each side, bg is returned unchanged as a fallback.
-func overlayCenter(bg, modal string, bgW, bgH int) string {
+func OverlayCenter(bg, modal string, bgW, bgH int) string {
 	modalLines := strings.Split(modal, "\n")
 	modalH := len(modalLines)
 
@@ -94,16 +94,16 @@ func overlayCenter(bg, modal string, bgW, bgH int) string {
 		if targetRow < 0 || targetRow >= len(result) {
 			continue
 		}
-		result[targetRow] = overlayLine(result[targetRow], modalLine, startX, bgW)
+		result[targetRow] = OverlayLine(result[targetRow], modalLine, startX, bgW)
 	}
 
 	return strings.Join(result, "\n")
 }
 
-// overlayLine composites fg onto bg at visual column xOffset within bgW columns.
+// OverlayLine composites fg onto bg at visual column xOffset within bgW columns.
 // The left background content (columns 0..xOffset-1) and right background content
 // (columns xOffset+fgWidth..bgW-1) are preserved from bg; fg replaces the middle.
-func overlayLine(bg, fg string, xOffset, bgW int) string {
+func OverlayLine(bg, fg string, xOffset, bgW int) string {
 	fgW := ansi.StringWidth(fg)
 	left := ansi.Cut(bg, 0, xOffset)
 	right := ansi.Cut(bg, xOffset+fgW, bgW)

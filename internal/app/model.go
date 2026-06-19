@@ -14,6 +14,7 @@ import (
 
 	"github.com/adwinying/sqlcery/internal/db"
 	apphistory "github.com/adwinying/sqlcery/internal/history"
+	"github.com/adwinying/sqlcery/internal/tui"
 )
 
 type Model struct {
@@ -471,35 +472,35 @@ func (m Model) View() tea.View {
 	switch m.state.App.Current {
 	case StateStartup:
 		content = strings.Join([]string{
-			appTheme.panelTitle.Render("[ startup ]"),
-			appTheme.panelText.Render("Preparing command mode..."),
-			appTheme.panelMuted.Render(m.state.Status),
+			tui.AppTheme.PanelTitle.Render("[ startup ]"),
+			tui.AppTheme.PanelText.Render("Preparing command mode..."),
+			tui.AppTheme.PanelMuted.Render(m.state.Status),
 		}, "\n")
 	case StateReconnect:
 		lines := []string{
-			appTheme.panelTitle.Render("[ reconnect ]"),
-			appTheme.panelText.Render("Connection recovery in progress."),
-			appTheme.panelMuted.Render(m.state.Status),
+			tui.AppTheme.PanelTitle.Render("[ reconnect ]"),
+			tui.AppTheme.PanelText.Render("Connection recovery in progress."),
+			tui.AppTheme.PanelMuted.Render(m.state.Status),
 		}
 		if reconnect := m.state.App.Reconnect; reconnect != nil {
 			if reconnect.Attempt > 0 {
-				lines = append(lines, appTheme.panelText.Render(fmt.Sprintf("Attempt %d", reconnect.Attempt)))
+				lines = append(lines, tui.AppTheme.PanelText.Render(fmt.Sprintf("Attempt %d", reconnect.Attempt)))
 			}
 			if reason := strings.TrimSpace(reconnect.Reason); reason != "" {
-				lines = append(lines, appTheme.panelText.Render(fmt.Sprintf("Reason: %s", reason)))
+				lines = append(lines, tui.AppTheme.PanelText.Render(fmt.Sprintf("Reason: %s", reason)))
 			}
 			if lastError := strings.TrimSpace(reconnect.LastError); lastError != "" {
-				lines = append(lines, appTheme.panelText.Render(fmt.Sprintf("Last error: %s", lastError)))
+				lines = append(lines, tui.AppTheme.PanelText.Render(fmt.Sprintf("Last error: %s", lastError)))
 			}
 		}
 		content = strings.Join(lines, "\n")
 	case StateError:
 		lines := []string{
-			appTheme.errorNotice.Render("[ error ]"),
-			appTheme.panelText.Render(m.state.Status),
+			tui.AppTheme.ErrorNotice.Render("[ error ]"),
+			tui.AppTheme.PanelText.Render(m.state.Status),
 		}
 		if appError := strings.TrimSpace(m.state.App.Error); appError != "" {
-			lines = append(lines, appTheme.errorNotice.Render(appError))
+			lines = append(lines, tui.AppTheme.ErrorNotice.Render(appError))
 		}
 		content = strings.Join(lines, "\n")
 	case StateReady:
@@ -552,9 +553,9 @@ func (m *Model) syncPaneSizes() {
 
 // renderBorderedPane wraps content in a rounded border with an optional title; active pane gets accent colour.
 func (m Model) renderBorderedPane(content string, title string, active bool, outerWidth, innerHeight int) string {
-	borderColor := appTheme.paneBorderInactive.GetForeground()
+	borderColor := tui.AppTheme.PaneBorderInactive.GetForeground()
 	if active {
-		borderColor = appTheme.paneBorderActive.GetForeground()
+		borderColor = tui.AppTheme.PaneBorderActive.GetForeground()
 	}
 	innerWidth := outerWidth - 2
 	if innerWidth < 1 {
@@ -569,7 +570,7 @@ func (m Model) renderBorderedPane(content string, title string, active bool, out
 	// Top line with optional title
 	var topLine string
 	if title != "" {
-		titleRendered := appTheme.panelTitle.Render(title)
+		titleRendered := tui.AppTheme.PanelTitle.Render(title)
 		titleVisualWidth := ansi.StringWidth(title)
 		dashesAfter := innerWidth - 1 - titleVisualWidth - 1 // "─" + title + " " + dashes
 		if dashesAfter < 0 {
@@ -659,10 +660,10 @@ func (m Model) readyStateView(totalHeight int) string {
 		modalContent = m.modal.Render(interaction)
 	}
 	if modalContent != "" {
-		maxW := min(modalMaxWidth, w-4)
-		if maxW >= modalMinWidth {
-			modal := renderModal(modalContent, maxW)
-			base = overlayCenter(base, modal, w, baseH)
+		maxW := min(tui.ModalMaxWidth, w-4)
+		if maxW >= tui.ModalMinWidth {
+			modal := tui.RenderModal(modalContent, maxW)
+			base = tui.OverlayCenter(base, modal, w, baseH)
 		}
 	}
 
@@ -681,7 +682,7 @@ func (m Model) statusBarView() string {
 	// Connection name
 	if name := strings.TrimSpace(m.session.ConnectionName); name != "" {
 		if color := strings.TrimSpace(m.session.ConnectionColor); color != "" {
-			name = lipgloss.NewStyle().Foreground(resolveColor(color)).Render(name)
+			name = lipgloss.NewStyle().Foreground(tui.ResolveColor(color)).Render(name)
 		}
 		parts = append(parts, name)
 	}
@@ -700,7 +701,7 @@ func (m Model) statusBarView() string {
 		bar = padOrTruncate(bar, m.width)
 	}
 
-	return appTheme.footer.Render(bar)
+	return tui.AppTheme.Footer.Render(bar)
 }
 
 func (m Model) statusDescriptionView() string {
@@ -714,7 +715,7 @@ func (m Model) statusDescriptionView() string {
 		line = padOrTruncate(line, m.width)
 	}
 
-	return appTheme.metaLine.Render(line)
+	return tui.AppTheme.MetaLine.Render(line)
 }
 
 func padOrTruncate(s string, width int) string {
@@ -1660,9 +1661,9 @@ func renderHelpSurface(st InteractionState) string {
 			continue
 		}
 		lines := make([]string, 0, len(section.Lines)+1)
-		lines = append(lines, appTheme.panelTitle.Render(section.Title+":"))
+		lines = append(lines, tui.AppTheme.PanelTitle.Render(section.Title+":"))
 		for _, line := range section.Lines {
-			lines = append(lines, appTheme.panelText.Render("  "+line))
+			lines = append(lines, tui.AppTheme.PanelText.Render("  "+line))
 		}
 		parts = append(parts, strings.Join(lines, "\n"))
 	}

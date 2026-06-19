@@ -8,6 +8,8 @@ import (
 	"github.com/adwinying/sqlcery/internal/db"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/adwinying/sqlcery/internal/tui"
 )
 
 const (
@@ -106,7 +108,7 @@ func (m *resultsPaneModeModel) renderEmptyState(subtitle string) string {
 	}
 	padStr := strings.Repeat(" ", leftPad)
 	for _, line := range logoLines {
-		centeredLogoLines = append(centeredLogoLines, padStr+appTheme.resultsPaneEmptyLogo.Render(line))
+		centeredLogoLines = append(centeredLogoLines, padStr+tui.AppTheme.ResultsPaneEmptyLogo.Render(line))
 	}
 
 	// Center the subtitle horizontally
@@ -115,7 +117,7 @@ func (m *resultsPaneModeModel) renderEmptyState(subtitle string) string {
 	if subLeftPad < 0 {
 		subLeftPad = 0
 	}
-	styledSubtitle := strings.Repeat(" ", subLeftPad) + appTheme.resultsPaneEmptySubtitle.Render(subtitle)
+	styledSubtitle := strings.Repeat(" ", subLeftPad) + tui.AppTheme.ResultsPaneEmptySubtitle.Render(subtitle)
 
 	// Build content block: logo + blank line + subtitle
 	contentLines := append(centeredLogoLines, "", styledSubtitle)
@@ -157,23 +159,23 @@ func (m *resultsPaneModeModel) View(interaction InteractionState) string {
 			ColScrollOffset: m.colScrollOffset,
 		})
 		if body == "" {
-			body = appTheme.resultsPaneEmpty.Render("(no visible rows)")
+			body = tui.AppTheme.ResultsPaneEmpty.Render("(no visible rows)")
 		}
 		return body
 	}
 
 	page := resultsPanePageContextFor(interaction.ResultsPanePage, len(result.Rows))
 	header := []string{
-		appTheme.resultsPaneTitle.Render("Results Pane"),
-		appTheme.resultsPaneMeta.Render(fmt.Sprintf("Query: %s", summarizeResultsPaneStatement(latest.Statement, m.width))),
-		appTheme.resultsPaneMeta.Render(fmt.Sprintf("Rows: %d  Columns: %d", len(result.Rows), len(result.Columns))),
-		appTheme.resultsPaneMeta.Render(fmt.Sprintf("Page: %d/%d  Showing rows %s", page.Number, page.TotalPages, formatResultsPaneRowRange(page))),
+		tui.AppTheme.ResultsPaneTitle.Render("Results Pane"),
+		tui.AppTheme.ResultsPaneMeta.Render(fmt.Sprintf("Query: %s", summarizeResultsPaneStatement(latest.Statement, m.width))),
+		tui.AppTheme.ResultsPaneMeta.Render(fmt.Sprintf("Rows: %d  Columns: %d", len(result.Rows), len(result.Columns))),
+		tui.AppTheme.ResultsPaneMeta.Render(fmt.Sprintf("Page: %d/%d  Showing rows %s", page.Number, page.TotalPages, formatResultsPaneRowRange(page))),
 	}
 	if m.pendingAction == resultsPanePendingActionExport {
-		header = append(header, appTheme.warningNotice.Render(fmt.Sprintf("Command: %s", m.exportBuffer)))
+		header = append(header, tui.AppTheme.WarningNotice.Render(fmt.Sprintf("Command: %s", m.exportBuffer)))
 	}
 	if selectedCount := len(interaction.MarkedRows); selectedCount > 0 {
-		header = append(header, appTheme.resultsPaneSelection.Render(fmt.Sprintf("Selected: %d", selectedCount)))
+		header = append(header, tui.AppTheme.ResultsPaneSelection.Render(fmt.Sprintf("Selected: %d", selectedCount)))
 	}
 
 	preparedPage := m.preparePage(result, interaction.ResultsPanePage, len(interaction.MarkedRows) > 0)
@@ -183,7 +185,7 @@ func (m *resultsPaneModeModel) View(interaction InteractionState) string {
 		ColScrollOffset: m.colScrollOffset,
 	})
 	if body == "" {
-		body = appTheme.resultsPaneEmpty.Render("(no visible rows)")
+		body = tui.AppTheme.ResultsPaneEmpty.Render("(no visible rows)")
 	}
 
 	return strings.Join(append(header, "", body), "\n")
@@ -230,7 +232,7 @@ func (m resultsPaneModeModel) Footer(connectionName, dialect string, interaction
 		parts = append(parts, ":w [file] export", "enter save", "esc cancel")
 	}
 	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit")
-	return appTheme.footer.Render(strings.Join(parts, " | "))
+	return tui.AppTheme.Footer.Render(strings.Join(parts, " | "))
 }
 
 func (m *resultsPaneModeModel) syncSelection(interaction InteractionState) {
@@ -359,7 +361,7 @@ func renderPreparedResultsPanePage(prepared *resultsPanePreparedPage, width, hei
 	}
 
 	if len(prepared.Rows) == 0 {
-		lines = append(lines, appTheme.resultsPaneEmpty.Render("(no rows)"))
+		lines = append(lines, tui.AppTheme.ResultsPaneEmpty.Render("(no rows)"))
 		return trimRenderedWidth(strings.Join(lines, "\n"), width)
 	}
 
@@ -371,7 +373,7 @@ func renderPreparedResultsPanePage(prepared *resultsPanePreparedPage, width, hei
 		for columnIndex := range values {
 			absoluteColumnIndex := colOffset + columnIndex
 			if absoluteColumnIndex == 0 && rowIndexSelectedSet(state.SelectedRows, absoluteRowIndex) {
-				values[columnIndex] = appTheme.selectedRowMarker.Render("* ") + values[columnIndex]
+				values[columnIndex] = tui.AppTheme.SelectedRowMarker.Render("* ") + values[columnIndex]
 			}
 			if isActiveRow {
 				values[columnIndex] = renderResultsPaneActiveRowCell(values[columnIndex])
@@ -381,7 +383,7 @@ func renderPreparedResultsPanePage(prepared *resultsPanePreparedPage, width, hei
 	}
 
 	ctx := prepared.Context
-	lines = append(lines, appTheme.panelHint.Render(fmt.Sprintf("Showing rows %s of %d", formatResultsPaneRowRange(ctx), ctx.TotalRows)))
+	lines = append(lines, tui.AppTheme.PanelHint.Render(fmt.Sprintf("Showing rows %s of %d", formatResultsPaneRowRange(ctx), ctx.TotalRows)))
 
 	return trimRenderedWidth(strings.Join(lines, "\n"), width)
 }

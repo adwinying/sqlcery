@@ -7,9 +7,11 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/adwinying/sqlcery/internal/tui"
 )
 
-const historySearchPreviewRows = modalFixedRows - 4 // 4 = title + query + match-count + hint
+const historySearchPreviewRows = tui.ModalFixedRows - 4 // 4 = title + query + match-count + hint
 
 // historySearchModal implements Modal for the reverse-history search overlay.
 // It owns the filter text and selection index; History entries are read from
@@ -60,22 +62,22 @@ func (h *historySearchModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) Mo
 func (h *historySearchModal) Render(interaction InteractionState) string {
 	matches := filterHistorySearchEntries(interaction.History, h.filter)
 	lines := []string{
-		appTheme.panelTitle.Render("Reverse search:"),
-		appTheme.panelText.Render(fmt.Sprintf("query> %s", defaultHistorySearchQuery(h.filter))),
+		tui.AppTheme.PanelTitle.Render("Reverse search:"),
+		tui.AppTheme.PanelText.Render(fmt.Sprintf("query> %s", defaultHistorySearchQuery(h.filter))),
 	}
 
 	if len(interaction.History) == 0 {
-		lines = append(lines, appTheme.panelMuted.Render("No history yet."), appTheme.panelHint.Render("esc close"))
+		lines = append(lines, tui.AppTheme.PanelMuted.Render("No history yet."), tui.AppTheme.PanelHint.Render("esc close"))
 		return strings.Join(lines, "\n")
 	}
 
 	if len(matches) == 0 {
-		lines = append(lines, appTheme.panelMuted.Render("No fuzzy matches."), appTheme.panelHint.Render("ctrl+r keep searching | esc close"))
+		lines = append(lines, tui.AppTheme.PanelMuted.Render("No fuzzy matches."), tui.AppTheme.PanelHint.Render("ctrl+r keep searching | esc close"))
 		return strings.Join(lines, "\n")
 	}
 
 	selected := wrapHistorySearchIndex(h.selectedIndex, len(matches))
-	lines = append(lines, appTheme.panelMuted.Render(fmt.Sprintf("%d match(es); newest first.", len(matches))))
+	lines = append(lines, tui.AppTheme.PanelMuted.Render(fmt.Sprintf("%d match(es); newest first.", len(matches))))
 
 	scrollOffset := max(0, selected-historySearchPreviewRows+1)
 	viewEnd := min(len(matches), scrollOffset+historySearchPreviewRows)
@@ -83,13 +85,13 @@ func (h *historySearchModal) Render(interaction InteractionState) string {
 		display := historySearchDisplaySQL(matches[i].Statement)
 		var line string
 		if i == selected {
-			line = appTheme.panelSelected.Render("> " + display)
+			line = tui.AppTheme.PanelSelected.Render("> " + display)
 		} else {
-			line = appTheme.panelText.Render("  " + display)
+			line = tui.AppTheme.PanelText.Render("  " + display)
 		}
 		lines = append(lines, line)
 	}
-	lines = append(lines, appTheme.panelHint.Render("enter restore | ctrl+r older | ctrl+n newer | esc close"))
+	lines = append(lines, tui.AppTheme.PanelHint.Render("enter restore | ctrl+r older | ctrl+n newer | esc close"))
 
 	return strings.Join(lines, "\n")
 }

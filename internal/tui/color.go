@@ -1,4 +1,4 @@
-package app
+package tui
 
 import (
 	"strings"
@@ -43,12 +43,12 @@ var namedColors = map[string]string{
 	"brown":       "130",
 }
 
-// resolveColor converts a color string to a lipgloss.Color.
+// ResolveColor converts a color string to a lipgloss.Color.
 // It accepts:
 //   - Named colors: "red", "bright-blue", etc.
 //   - ANSI color numbers: "1", "196", etc.
 //   - Hex color codes: "#FF0000", etc.
-func resolveColor(color string) lipgloss.Color {
+func ResolveColor(color string) lipgloss.Color {
 	normalized := strings.ToLower(strings.TrimSpace(color))
 	if ansi, ok := namedColors[normalized]; ok {
 		return lipgloss.Color(ansi)

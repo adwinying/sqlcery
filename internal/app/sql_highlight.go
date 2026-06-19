@@ -6,6 +6,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	rw "github.com/mattn/go-runewidth"
+
+	"github.com/adwinying/sqlcery/internal/tui"
 )
 
 type sqlTokenKind int
@@ -59,20 +61,20 @@ type renderedEditorLine struct {
 
 func newSQLSyntaxHighlighter() sqlSyntaxHighlighter {
 	return sqlSyntaxHighlighter{
-		keywordStyle:          appTheme.keywordStyle,
-		stringStyle:           appTheme.stringStyle,
-		numberStyle:           appTheme.numberStyle,
-		commentStyle:          appTheme.commentStyle,
-		quotedIdentifierStyle: appTheme.quotedIdentifierStyle,
-		parameterStyle:        appTheme.parameterStyle,
-		operatorStyle:         appTheme.operatorStyle,
-		promptStyle:           appTheme.promptStyle,
-		lineNumberStyle:       appTheme.lineNumberStyle,
-		cursorLineNumberStyle: appTheme.cursorLineNumberStyle,
-		placeholderStyle:      appTheme.placeholderStyle,
-		cursorLineStyle:       appTheme.cursorLineStyle,
-		cursorStyle:           appTheme.cursorStyle,
-		ghostTextStyle:        appTheme.ghostTextStyle,
+		keywordStyle:          tui.AppTheme.KeywordStyle,
+		stringStyle:           tui.AppTheme.StringStyle,
+		numberStyle:           tui.AppTheme.NumberStyle,
+		commentStyle:          tui.AppTheme.CommentStyle,
+		quotedIdentifierStyle: tui.AppTheme.QuotedIdentifierStyle,
+		parameterStyle:        tui.AppTheme.ParameterStyle,
+		operatorStyle:         tui.AppTheme.OperatorStyle,
+		promptStyle:           tui.AppTheme.PromptStyle,
+		lineNumberStyle:       tui.AppTheme.LineNumberStyle,
+		cursorLineNumberStyle: tui.AppTheme.CursorLineNumberStyle,
+		placeholderStyle:      tui.AppTheme.PlaceholderStyle,
+		cursorLineStyle:       tui.AppTheme.CursorLineStyle,
+		cursorStyle:           tui.AppTheme.CursorStyle,
+		ghostTextStyle:        tui.AppTheme.GhostTextStyle,
 	}
 }
 

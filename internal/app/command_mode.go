@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/adwinying/sqlcery/internal/db"
+	"github.com/adwinying/sqlcery/internal/tui"
 )
 
 const (
@@ -317,7 +318,7 @@ func (m commandModeModel) Footer(connectionName, dialect string, interaction Int
 	}
 	parts = append(parts, "ctrl+c quit")
 
-	return appTheme.footer.Render(strings.Join(parts, " | "))
+	return tui.AppTheme.Footer.Render(strings.Join(parts, " | "))
 }
 
 func (m *commandModeModel) AppendReplEntry(prompt, sql, output string) {
@@ -489,15 +490,15 @@ func (m commandModeModel) renderReplTranscriptLines() []string {
 		sqlLines := strings.Split(strings.TrimRight(entry.SQL, "\n"), "\n")
 		for i, sl := range sqlLines {
 			if i == 0 {
-				lines = append(lines, appTheme.promptStyle.Render(prompt)+appTheme.panelText.Render(sl))
+				lines = append(lines, tui.AppTheme.PromptStyle.Render(prompt)+tui.AppTheme.PanelText.Render(sl))
 			} else {
 				continuation := strings.Repeat(" ", len([]rune(prompt)))
-				lines = append(lines, appTheme.panelMuted.Render(continuation+sl))
+				lines = append(lines, tui.AppTheme.PanelMuted.Render(continuation+sl))
 			}
 		}
 		if entry.Output != "" {
 			for _, ol := range strings.Split(strings.TrimRight(entry.Output, "\n"), "\n") {
-				lines = append(lines, appTheme.panelMuted.Render(ol))
+				lines = append(lines, tui.AppTheme.PanelMuted.Render(ol))
 			}
 		}
 	}
@@ -527,9 +528,9 @@ func (m commandModeModel) ghostText(interaction InteractionState) string {
 func renderGeneratedStatementWarning(sql string) string {
 	switch leadingSQLKeyword(sql) {
 	case "DELETE":
-		return appTheme.warningNotice.Render("Warning: generated DELETE statement. Review carefully before submitting.")
+		return tui.AppTheme.WarningNotice.Render("Warning: generated DELETE statement. Review carefully before submitting.")
 	case "DROP":
-		return appTheme.warningNotice.Render("Warning: generated DROP statement. Review carefully before submitting.")
+		return tui.AppTheme.WarningNotice.Render("Warning: generated DROP statement. Review carefully before submitting.")
 	default:
 		return ""
 	}
@@ -630,7 +631,7 @@ func (m commandModeModel) renderAllEditorLines(lines []renderedEditorLine, ghost
 }
 
 func (m commandModeModel) renderLine(line renderedEditorLine, ghostText string) string {
-	lineStyle := appTheme.panelText
+	lineStyle := tui.AppTheme.PanelText
 	lineNumberStyle := m.highlighter.lineNumberStyle
 	content := m.highlighter.renderLineContentWithGhost(line.runes, line.cursorCol, m.editor.Width(), false, ghostText)
 
@@ -776,9 +777,9 @@ func (m commandModeModel) renderAutocompletePanel(interaction InteractionState) 
 
 	lines := make([]string, 0, autocompletePanelRows+1)
 	if len(suggestions) > 0 {
-		lines = append(lines, appTheme.panelTitle.Render("Suggestions:"))
+		lines = append(lines, tui.AppTheme.PanelTitle.Render("Suggestions:"))
 	} else {
-		lines = append(lines, appTheme.panelMuted.Render("Suggestions:"))
+		lines = append(lines, tui.AppTheme.PanelMuted.Render("Suggestions:"))
 	}
 
 	for i := start; i < start+autocompletePanelRows; i++ {
@@ -789,9 +790,9 @@ func (m commandModeModel) renderAutocompletePanel(interaction InteractionState) 
 				line += " - " + detail
 			}
 			if i == selected {
-				lines = append(lines, appTheme.panelSelected.Render("> "+strings.TrimPrefix(line, "  ")))
+				lines = append(lines, tui.AppTheme.PanelSelected.Render("> "+strings.TrimPrefix(line, "  ")))
 			} else {
-				lines = append(lines, appTheme.panelText.Render(line))
+				lines = append(lines, tui.AppTheme.PanelText.Render(line))
 			}
 		} else {
 			// Empty row to preserve fixed height
@@ -826,9 +827,9 @@ func (m commandModeModel) renderAutocompleteDropdown(interaction InteractionStat
 			line += " - " + detail
 		}
 		if i == selected {
-			lines = append(lines, appTheme.panelSelected.Render(line))
+			lines = append(lines, tui.AppTheme.PanelSelected.Render(line))
 		} else {
-			lines = append(lines, appTheme.panelText.Render(line))
+			lines = append(lines, tui.AppTheme.PanelText.Render(line))
 		}
 	}
 
@@ -895,30 +896,30 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext) string {
 		return ""
 	}
 
-	lines := []string{appTheme.panelTitle.Render("Command wizard:")}
+	lines := []string{tui.AppTheme.PanelTitle.Render("Command wizard:")}
 	switch wizard.Step {
 	case SlashCommandWizardStepTarget:
 		selectedCommand, _ := slashWizardCommandByIndex(wizard)
 		headerLines := 1 // title already added
 		if wizard.DirectInvocation {
 			lines = append(lines,
-				appTheme.panelText.Render(fmt.Sprintf("Choose a table for %s:", selectedCommand.DisplayName)),
+				tui.AppTheme.PanelText.Render(fmt.Sprintf("Choose a table for %s:", selectedCommand.DisplayName)),
 			)
 			headerLines++
 		} else {
 			lines = append(lines,
-				appTheme.panelMuted.Render(fmt.Sprintf("Step 1/2 complete: %s", selectedCommand.DisplayName)),
-				appTheme.panelText.Render(fmt.Sprintf("Step 2/2: choose a table for %s", selectedCommand.DisplayName)),
+				tui.AppTheme.PanelMuted.Render(fmt.Sprintf("Step 1/2 complete: %s", selectedCommand.DisplayName)),
+				tui.AppTheme.PanelText.Render(fmt.Sprintf("Step 2/2: choose a table for %s", selectedCommand.DisplayName)),
 			)
 			headerLines += 2
 		}
 		// Filter input row
-		lines = append(lines, appTheme.panelText.Render(fmt.Sprintf("filter> %s", defaultWizardFilter(wizard.TargetFilter))))
+		lines = append(lines, tui.AppTheme.PanelText.Render(fmt.Sprintf("filter> %s", defaultWizardFilter(wizard.TargetFilter))))
 		headerLines++
 
 		filteredTargets := filterWizardTargets(wizard.Targets, wizard.TargetFilter)
 		const footerLines = 1
-		listViewport := modalFixedRows - headerLines - footerLines
+		listViewport := tui.ModalFixedRows - headerLines - footerLines
 		if listViewport < 1 {
 			listViewport = 1
 		}
@@ -927,27 +928,27 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext) string {
 		viewEnd := min(len(filteredTargets), scrollOffset+listViewport)
 
 		if len(filteredTargets) == 0 {
-			lines = append(lines, appTheme.panelMuted.Render("No matching tables."))
+			lines = append(lines, tui.AppTheme.PanelMuted.Render("No matching tables."))
 		} else {
 			for i := scrollOffset; i < viewEnd; i++ {
 				target := filteredTargets[i]
 				if i == selected {
-					lines = append(lines, appTheme.panelSelected.Render("> "+target.Display))
+					lines = append(lines, tui.AppTheme.PanelSelected.Render("> "+target.Display))
 				} else {
-					lines = append(lines, appTheme.panelText.Render("  "+target.Display))
+					lines = append(lines, tui.AppTheme.PanelText.Render("  "+target.Display))
 				}
 			}
 		}
 		if wizard.DirectInvocation {
-			lines = append(lines, appTheme.panelHint.Render("enter confirm | ctrl+n next | ctrl+p prev | esc close"))
+			lines = append(lines, tui.AppTheme.PanelHint.Render("enter confirm | ctrl+n next | ctrl+p prev | esc close"))
 		} else {
-			lines = append(lines, appTheme.panelHint.Render("enter confirm | ctrl+n next | ctrl+p prev | esc back"))
+			lines = append(lines, tui.AppTheme.PanelHint.Render("enter confirm | ctrl+n next | ctrl+p prev | esc back"))
 		}
 	default:
-		lines = append(lines, appTheme.panelText.Render("Step 1/2: choose a slash command"))
+		lines = append(lines, tui.AppTheme.PanelText.Render("Step 1/2: choose a slash command"))
 		const headerLines = 2 // title + step description
 		const footerLines = 1
-		listViewport := modalFixedRows - headerLines - footerLines
+		listViewport := tui.ModalFixedRows - headerLines - footerLines
 		if listViewport < 1 {
 			listViewport = 1
 		}
@@ -961,12 +962,12 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext) string {
 				line += " (choose table next)"
 			}
 			if i == selected {
-				lines = append(lines, appTheme.panelSelected.Render("> "+strings.TrimPrefix(line, "  ")))
+				lines = append(lines, tui.AppTheme.PanelSelected.Render("> "+strings.TrimPrefix(line, "  ")))
 			} else {
-				lines = append(lines, appTheme.panelText.Render(line))
+				lines = append(lines, tui.AppTheme.PanelText.Render(line))
 			}
 		}
-		lines = append(lines, appTheme.panelHint.Render("enter confirm | ctrl+n next | ctrl+p prev | esc close"))
+		lines = append(lines, tui.AppTheme.PanelHint.Render("enter confirm | ctrl+n next | ctrl+p prev | esc close"))
 	}
 
 	return strings.Join(lines, "\n")
@@ -983,18 +984,18 @@ func clampWizardIndex(index, size int) int {
 }
 
 func renderInlineExecResult(latest *LatestResultContext) string {
-	parts := []string{appTheme.resultTitle.Render("Results:")}
+	parts := []string{tui.AppTheme.ResultTitle.Render("Results:")}
 	if latest.RowsAffected != nil {
 		label := "rows"
 		if *latest.RowsAffected == 1 {
 			label = "row"
 		}
-		parts = append(parts, appTheme.resultSummary.Render(fmt.Sprintf("%d %s affected", *latest.RowsAffected, label)))
+		parts = append(parts, tui.AppTheme.ResultSummary.Render(fmt.Sprintf("%d %s affected", *latest.RowsAffected, label)))
 	} else {
-		parts = append(parts, appTheme.resultSummary.Render("Statement executed successfully"))
+		parts = append(parts, tui.AppTheme.ResultSummary.Render("Statement executed successfully"))
 	}
 	if latest.LastInsertID != nil && *latest.LastInsertID != 0 {
-		parts = append(parts, appTheme.resultSummary.Render(fmt.Sprintf("last insert id %d", *latest.LastInsertID)))
+		parts = append(parts, tui.AppTheme.ResultSummary.Render(fmt.Sprintf("last insert id %d", *latest.LastInsertID)))
 	}
 	return strings.Join(parts, "\n")
 }
@@ -1022,8 +1023,8 @@ func renderInlineQueryResult(latest *LatestResultContext) string {
 		}
 	}
 
-	headerLine := appTheme.resultHeader.Render(renderInlineResultLine(columns, widths))
-	lines := []string{appTheme.resultTitle.Render("Results:"), headerLine, renderInlineSeparator(widths)}
+	headerLine := tui.AppTheme.ResultHeader.Render(renderInlineResultLine(columns, widths))
+	lines := []string{tui.AppTheme.ResultTitle.Render("Results:"), headerLine, renderInlineSeparator(widths)}
 	for _, row := range result.Rows {
 		values := make([]string, len(row.Values))
 		for i, value := range row.Values {
@@ -1033,19 +1034,19 @@ func renderInlineQueryResult(latest *LatestResultContext) string {
 	}
 
 	if len(result.Rows) == 0 {
-		lines = append(lines, appTheme.resultsPaneEmpty.Render("(no rows)"))
+		lines = append(lines, tui.AppTheme.ResultsPaneEmpty.Render("(no rows)"))
 	}
 
 	rowCount := len(result.Rows)
 	if latest.InlineRowsTruncated && latest.PreservedResult != nil {
-		lines = append(lines, appTheme.panelHint.Render(fmt.Sprintf("Showing first %d of %d rows.", rowCount, len(latest.PreservedResult.Rows))))
+		lines = append(lines, tui.AppTheme.PanelHint.Render(fmt.Sprintf("Showing first %d of %d rows.", rowCount, len(latest.PreservedResult.Rows))))
 		return strings.Join(lines, "\n")
 	}
 
 	if rowCount == 1 {
-		lines = append(lines, appTheme.resultSummary.Render("1 row."))
+		lines = append(lines, tui.AppTheme.ResultSummary.Render("1 row."))
 	} else {
-		lines = append(lines, appTheme.resultSummary.Render(fmt.Sprintf("%d rows.", rowCount)))
+		lines = append(lines, tui.AppTheme.ResultSummary.Render(fmt.Sprintf("%d rows.", rowCount)))
 	}
 
 	return strings.Join(lines, "\n")
@@ -1065,7 +1066,7 @@ func renderInlineSeparator(widths []int) string {
 	for _, width := range widths {
 		parts = append(parts, strings.Repeat("-", max(3, width)))
 	}
-	return appTheme.resultSeparator.Render(strings.Join(parts, "-+-"))
+	return tui.AppTheme.ResultSeparator.Render(strings.Join(parts, "-+-"))
 }
 
 func formatInlineResultValue(value db.ResultValue) string {
