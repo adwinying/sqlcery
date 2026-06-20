@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/adwinying/sqlcery/internal/tui"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestRenderModal_fixedHeight(t *testing.T) {
@@ -54,6 +55,44 @@ func TestOverlayLine_overlaysAtOffset(t *testing.T) {
 	// columns 5-9 preserved
 	if !strings.HasSuffix(got, "56789") {
 		t.Fatalf("OverlayLine did not preserve right side, got: %q", got)
+	}
+}
+
+// TestOverlayLine_wideCharAtLeftBoundary covers the case where a 2-wide CJK
+// character straddles xOffset. ansi.Truncate clips it without padding, which
+// would make the output line 1 column short; the fix pads with a space.
+func TestOverlayLine_wideCharAtLeftBoundary(t *testing.T) {
+	// "0123" (4 cols) + "東" (2 cols) + "789" (3 cols) = 9 visual cols
+	bg := "0123東789"
+	fg := "XY"
+	bgW := 9
+	// xOffset=5: "東" occupies cols 4-5, so it straddles the left boundary.
+	xOffset := 5
+	got := tui.OverlayLine(bg, fg, xOffset, bgW)
+	if gotW := ansi.StringWidth(got); gotW != bgW {
+		t.Fatalf("OverlayLine width = %d, want %d (wide char at left boundary); result: %q", gotW, bgW, got)
+	}
+	if !strings.Contains(got, fg) {
+		t.Fatalf("OverlayLine result does not contain fg %q: %q", fg, got)
+	}
+}
+
+// TestOverlayLine_wideCharAtRightBoundary covers the case where a 2-wide CJK
+// character straddles xOffset+fgWidth. ansi.TruncateLeft includes it, making
+// the output line 1 column too wide; the fix replaces it with a space.
+func TestOverlayLine_wideCharAtRightBoundary(t *testing.T) {
+	// "012" (3 cols) + "東" (2 cols) + "56789" (5 cols) = 10 visual cols
+	bg := "012東56789"
+	fg := "XY"
+	bgW := 10
+	// xOffset=2: rightStart=4; "東" occupies cols 3-4, straddling the right boundary.
+	xOffset := 2
+	got := tui.OverlayLine(bg, fg, xOffset, bgW)
+	if gotW := ansi.StringWidth(got); gotW != bgW {
+		t.Fatalf("OverlayLine width = %d, want %d (wide char at right boundary); result: %q", gotW, bgW, got)
+	}
+	if !strings.Contains(got, fg) {
+		t.Fatalf("OverlayLine result does not contain fg %q: %q", fg, got)
 	}
 }
 

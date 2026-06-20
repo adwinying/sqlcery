@@ -156,9 +156,28 @@ func OverlayCenter(bg, modal string, bgW, bgH int) string {
 // OverlayLine composites fg onto bg at visual column xOffset within bgW columns.
 // The left background content (columns 0..xOffset-1) and right background content
 // (columns xOffset+fgWidth..bgW-1) are preserved from bg; fg replaces the middle.
+// Wide (e.g. CJK) characters that straddle a boundary are replaced with a space
+// so that the total line width stays exactly bgW columns.
 func OverlayLine(bg, fg string, xOffset, bgW int) string {
 	fgW := ansi.StringWidth(fg)
+	rightStart := xOffset + fgW
+
 	left := ansi.Cut(bg, 0, xOffset)
-	right := ansi.Cut(bg, xOffset+fgW, bgW)
+	// ansi.Truncate clips a wide char that straddles xOffset without padding.
+	// Pad to the expected column so the modal doesn't shift left on those rows.
+	if leftW := ansi.StringWidth(left); leftW < xOffset {
+		left += strings.Repeat(" ", xOffset-leftW)
+	}
+
+	right := ansi.Cut(bg, rightStart, bgW)
+	rightWidth := max(0, bgW-rightStart)
+	if ansi.StringWidth(right) > rightWidth {
+		// ansi.TruncateLeft included a wide char that starts 1 column before
+		// rightStart. Skip it by cutting from rightStart+1 and pad with a space
+		// to represent the consumed right-half of that character.
+		right = " " + ansi.Cut(bg, rightStart+1, bgW)
+		right = ansi.Truncate(right, rightWidth, "") // safety: trim if still wide
+	}
+
 	return left + fg + right
 }

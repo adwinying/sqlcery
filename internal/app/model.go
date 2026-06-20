@@ -548,15 +548,14 @@ func (m *Model) syncPaneSizes() {
 
 	switch m.state.Interaction.Layout {
 	case LayoutSplit:
-		resultsPaneOuterH := int(float64(contentHeight) * m.splitRatio)
-		if resultsPaneOuterH < 3 {
-			resultsPaneOuterH = 3
+		resultsPaneOuterH := max(3, int(float64(contentHeight)*m.splitRatio))
+		commandOuterH := max(3, contentHeight-resultsPaneOuterH)
+		// If both minimum guards fired, their sum exceeds contentHeight.
+		// Re-derive resultsPaneOuterH so the total stays exactly contentHeight.
+		if resultsPaneOuterH+commandOuterH > contentHeight {
+			resultsPaneOuterH = contentHeight - commandOuterH
 		}
-		commandOuterH := contentHeight - resultsPaneOuterH
-		if commandOuterH < 3 {
-			commandOuterH = 3
-		}
-		m.resultsPane.SetSize(innerWidth, resultsPaneOuterH-2)
+		m.resultsPane.SetSize(innerWidth, max(0, resultsPaneOuterH-2))
 		m.command.SetSize(innerWidth, commandOuterH-2)
 	case LayoutResultsOnly:
 		m.resultsPane.SetSize(innerWidth, contentHeight-2)
@@ -641,13 +640,12 @@ func (m Model) readyStateView(totalHeight int) string {
 	var base string
 	switch interaction.Layout {
 	case LayoutSplit:
-		resultsPaneOuterH := int(float64(totalHeight) * m.splitRatio)
-		if resultsPaneOuterH < 3 {
-			resultsPaneOuterH = 3
-		}
-		commandOuterH := totalHeight - resultsPaneOuterH
-		if commandOuterH < 3 {
-			commandOuterH = 3
+		resultsPaneOuterH := max(3, int(float64(totalHeight)*m.splitRatio))
+		commandOuterH := max(3, totalHeight-resultsPaneOuterH)
+		// If both minimum guards fired, their sum exceeds totalHeight.
+		// Re-derive resultsPaneOuterH so the total stays exactly totalHeight.
+		if resultsPaneOuterH+commandOuterH > totalHeight {
+			resultsPaneOuterH = totalHeight - commandOuterH
 		}
 		resultsPaneContent := m.resultsPane.View(m.resultsPane.buildViewContext(interaction))
 		commandContent := m.command.View(interaction)
