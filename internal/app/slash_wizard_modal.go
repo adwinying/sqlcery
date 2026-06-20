@@ -18,6 +18,21 @@ type slashWizardModal struct {
 
 func (s *slashWizardModal) Name() AppModal { return ModalSlashWizard }
 
+func (s *slashWizardModal) FooterHints(_ InteractionState) string {
+	keys := defaultCommandModeKeys()
+	escHint := "esc close"
+	if s.wizard.Step == SlashCommandWizardStepTarget && !s.wizard.DirectInvocation {
+		escHint = "esc back"
+	}
+	return strings.Join([]string{
+		"enter confirm",
+		"ctrl+n next",
+		"ctrl+p prev",
+		escHint,
+		bindingSummary(keys.Help),
+	}, " | ")
+}
+
 func (s *slashWizardModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) ModalResult {
 	keys := defaultCommandModeKeys()
 

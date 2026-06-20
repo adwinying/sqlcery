@@ -26,7 +26,7 @@ type Model struct {
 	state           SharedAppState
 	schema          *AutocompleteSchemaContext
 	loader          autocompleteSchemaLoader
-	modal           Modal
+	modals          []Modal
 	width           int
 	height          int
 	splitRatio      float64
@@ -153,12 +153,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case slashCommandExecutedMsg:
 		return m.handleSlashCommandExecuted(msg)
 	case toggleHelpIntentMsg:
-		visible := !m.state.Interaction.HelpVisible
-		m.state.SetHelpVisible(visible)
-		if visible {
-			m.state.SetPendingIntent(IntentNone, "help", "Opened help for keybindings and slash commands.")
+		if m.currentModal() != nil && m.currentModal().Name() == ModalKeybindings {
+			m.popModal()
+			m.state.SetPendingIntent(IntentNone, "help", "Closed keybindings.")
 		} else {
-			m.state.SetPendingIntent(IntentNone, "help", "Closed help.")
+			m.pushModal(&helpModal{contextModal: m.state.Interaction.ActiveModal})
+			m.state.SetPendingIntent(IntentNone, "help", "Opened keybindings.")
 		}
 		return m, nil
 	case clearInputIntentMsg:
@@ -175,8 +175,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state.SetLayout(LayoutSplit)
 		}
 		h := &historySearchModal{}
-		m.modal = h
-		m.state.SetActiveModal(ModalHistorySearch)
+		m.pushModal(h)
 		m.state.SetPendingIntent(IntentHistory, "history", h.status(m.state.Interaction))
 		return m, nil
 	case switchPaneIntentMsg:
@@ -258,11 +257,11 @@ func (m Model) handleKeyPressMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if m.modal != nil {
+	if modal := m.currentModal(); modal != nil {
 		if msg.String() != "ctrl+c" {
 			m.pendingQuit = false
 		}
-		result := m.modal.HandleKey(msg, ModalContext{
+		result := modal.HandleKey(msg, ModalContext{
 			Interaction: m.state.Interaction.snapshot(),
 			Session:     m.session,
 			Dialect:     m.adapterDialect(),
@@ -434,8 +433,7 @@ func (m Model) handleSlashCommandExecuted(msg slashCommandExecutedMsg) (tea.Mode
 	}
 
 	if msg.Result.Wizard != nil {
-		m.modal = &slashWizardModal{wizard: *msg.Result.Wizard}
-		m.state.SetActiveModal(ModalSlashWizard)
+		m.pushModal(&slashWizardModal{wizard: *msg.Result.Wizard})
 	}
 
 	if msg.Result.ShouldReplace {
@@ -622,8 +620,6 @@ func (m Model) readyStateView(totalHeight int) string {
 		w = 4
 	}
 
-	helpOverlay := renderHelpSurface(interaction)
-
 	var base string
 	switch interaction.Layout {
 	case LayoutSplit:
@@ -649,21 +645,14 @@ func (m Model) readyStateView(totalHeight int) string {
 		base = m.renderBorderedPane(commandContent, "[2] Commands", true, w, totalHeight-2)
 	}
 
-	baseH := totalHeight
-	if helpOverlay != "" {
-		base = helpOverlay + "\n" + base
-		baseH = strings.Count(base, "\n") + 1
-	}
-
-	var modalContent string
-	if m.modal != nil {
-		modalContent = m.modal.Render(interaction)
-	}
-	if modalContent != "" {
-		maxW := min(tui.ModalMaxWidth, w-4)
-		if maxW >= tui.ModalMinWidth {
-			modal := tui.RenderModal(modalContent, maxW)
-			base = tui.OverlayCenter(base, modal, w, baseH)
+	if modal := m.currentModal(); modal != nil {
+		modalContent := modal.Render(interaction)
+		if modalContent != "" {
+			maxW := min(tui.ModalMaxWidth, w-4)
+			if maxW >= tui.ModalMinWidth {
+				rendered := tui.RenderModal(modalContent, maxW)
+				base = tui.OverlayCenter(base, rendered, w, totalHeight)
+			}
 		}
 	}
 
@@ -689,7 +678,11 @@ func (m Model) statusBarView() string {
 
 	// Keybind hints
 	if m.state.App.Current == StateReady {
-		parts = append(parts, m.command.FooterHints(interaction))
+		if modal := m.currentModal(); modal != nil {
+			parts = append(parts, modal.FooterHints(interaction))
+		} else {
+			parts = append(parts, m.command.FooterHints(interaction))
+		}
 	} else {
 		parts = append(parts, "ctrl+c quit")
 	}
@@ -1189,15 +1182,14 @@ func (m *Model) openTableSelectionForCommand(parsed *slashCommand) (Model, tea.C
 		return *m, nil
 	}
 
-	m.modal = &slashWizardModal{wizard: SlashCommandWizardContext{
+	m.pushModal(&slashWizardModal{wizard: SlashCommandWizardContext{
 		Step:             SlashCommandWizardStepTarget,
 		Commands:         commands,
 		SelectedCommand:  selectedIdx,
 		Targets:          targets,
 		SelectedTarget:   0,
 		DirectInvocation: true,
-	}}
-	m.state.SetActiveModal(ModalSlashWizard)
+	}})
 	m.state.SetReady(fmt.Sprintf("Choose a table for %s and press enter.", parsed.DisplayName))
 	return *m, nil
 }
@@ -1208,11 +1200,10 @@ func (m *Model) openCommandWizard() (Model, tea.Cmd) {
 		m.state.SetReady("/commands: no slash commands available.")
 		return *m, nil
 	}
-	m.modal = &slashWizardModal{wizard: SlashCommandWizardContext{
+	m.pushModal(&slashWizardModal{wizard: SlashCommandWizardContext{
 		Step:     SlashCommandWizardStepCommand,
 		Commands: commands,
-	}}
-	m.state.SetActiveModal(ModalSlashWizard)
+	}})
 	m.state.SetReady("Choose a slash command and press enter.")
 	return *m, nil
 }
@@ -1583,92 +1574,6 @@ func (m *Model) handleToggleZoom() {
 		m.command.Blur()
 		m.state.SetPendingIntent(IntentNone, "zoom", "Returned to split layout.")
 	}
-}
-
-func renderHelpSurface(st InteractionState) string {
-	if !st.HelpVisible {
-		return ""
-	}
-
-	sections := []helpSection{{
-		Title: "Help",
-		Lines: []string{
-			"alt+h toggle help",
-			"ctrl+c quit",
-		},
-	}}
-
-	commandLines := []string{
-		"enter submit SQL or slash command",
-		"ctrl+r open history search",
-		"ctrl+y accept suggestion; ctrl+n/ctrl+p move suggestion",
-		"ctrl+x switch focus; ctrl+z zoom; ctrl+1 focus results; ctrl+2 focus command; ctrl+3 command layout",
-	}
-	if st.ActiveModal == ModalHistorySearch {
-		commandLines = append(commandLines, "history search: enter restore; ctrl+r older; ctrl+n newer; esc close")
-	}
-	sections = append(sections, helpSection{Title: "Command mode", Lines: commandLines})
-
-	resultsPaneLines := []string{
-		"arrows/hjkl move cell; space toggle selected row",
-		"yy/cc/dd load INSERT/UPDATE/DELETE into command mode",
-		":w [file] export selected rows or current result rows",
-		"ctrl+u/ctrl+d scroll; ctrl+p/ctrl+n page; ctrl+x focus command",
-	}
-	if st.ActiveModal == ModalSlashWizard {
-		resultsPaneLines = append(resultsPaneLines, "slash wizard: enter confirm; ctrl+n/ctrl+p move; esc back or close")
-	}
-	sections = append(sections, helpSection{Title: "Results Pane", Lines: resultsPaneLines})
-
-	if st.Layout == LayoutSplit {
-		var layoutLines []string
-		if st.ActivePane == PaneResults {
-			layoutLines = []string{"Results Pane [active]", "Command line"}
-		} else {
-			layoutLines = []string{"Results Pane", "Command line [active]"}
-		}
-		sections = append(sections, helpSection{Title: "Layout", Lines: layoutLines})
-	}
-
-	if st.ActiveModal == ModalHistorySearch {
-		sections = append(sections, helpSection{Title: "History search", Lines: []string{
-			"type to filter recent commands; enter restore selected entry",
-			"ctrl+r or up select older match; ctrl+n or down select newer match",
-			"esc close history search",
-		}})
-	}
-
-	if st.ActiveModal == ModalSlashWizard {
-		sections = append(sections, helpSection{Title: "Command wizard", Lines: []string{
-			"/commands opens the guided slash command wizard",
-			"enter confirm selection; ctrl+n/ctrl+p move selection",
-			"esc closes command selection or steps back from table selection",
-		}})
-	}
-
-	slashLines := []string{
-		"/help lists slash commands; /commands opens the guided wizard",
-		"/tables and /columns inspect database metadata",
-		"/select, /insert, /update, /delete expand SQL templates for review",
-		"/create and /drop expand DDL templates for review",
-	}
-	slashLines = append(slashLines, slashCommandHelpLines()...)
-	sections = append(sections, helpSection{Title: "Slash commands", Lines: slashLines})
-
-	parts := make([]string, 0, len(sections))
-	for _, section := range sections {
-		if len(section.Lines) == 0 {
-			continue
-		}
-		lines := make([]string, 0, len(section.Lines)+1)
-		lines = append(lines, tui.AppTheme.PanelTitle.Render(section.Title+":"))
-		for _, line := range section.Lines {
-			lines = append(lines, tui.AppTheme.PanelText.Render("  "+line))
-		}
-		parts = append(parts, strings.Join(lines, "\n"))
-	}
-
-	return strings.Join(parts, "\n\n")
 }
 
 func layoutShowsCommand(layout AppLayout) bool {

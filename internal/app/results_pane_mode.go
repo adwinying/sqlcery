@@ -182,7 +182,7 @@ func (m resultsPaneModeModel) FooterHints(interaction InteractionState) string {
 	if m.pendingAction == resultsPanePendingActionExport {
 		parts = append(parts, ":w [file] export", "enter save", "esc cancel")
 	}
-	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit")
+	parts = append(parts, "arrows/hjkl navigate", "space toggle row", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit", "ctrl+e keybindings")
 	return strings.Join(parts, " | ")
 }
 
@@ -207,7 +207,7 @@ func (m resultsPaneModeModel) Footer(connectionName, dialect string, interaction
 	if m.pendingAction == resultsPanePendingActionExport {
 		parts = append(parts, ":w [file] export", "enter save", "esc cancel")
 	}
-	parts = append(parts, "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit")
+	parts = append(parts, "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit", "ctrl+e keybindings")
 	return tui.AppTheme.Footer.Render(strings.Join(parts, " | "))
 }
 

@@ -1045,16 +1045,16 @@ func TestModelUpdateHistorySetsPendingIntent(t *testing.T) {
 	if got, want := model.state.Interaction.ActiveModal, ModalHistorySearch; got != want {
 		t.Fatalf("state.Interaction.ActiveModal = %q, want %q", got, want)
 	}
-	if model.modal == nil {
-		t.Fatal("model.modal = nil, want history search modal open")
+	if model.currentModal() == nil {
+		t.Fatal("model.currentModal() = nil, want history search modal open")
 	}
 
 	if got, want := model.state.Status, "History search matched 2 entries; selected \"/tables\"."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
-	h, _ := model.modal.(*historySearchModal)
+	h, _ := model.currentModal().(*historySearchModal)
 	if h == nil {
-		t.Fatal("model.modal is not *historySearchModal")
+		t.Fatal("model.currentModal() is not *historySearchModal")
 	}
 	matches := filterHistorySearchEntries(model.state.Interaction.History, h.filter)
 	if len(matches) == 0 {
@@ -1078,8 +1078,8 @@ func TestModelUpdateHistoryHandlesEmptyHistory(t *testing.T) {
 	if got, want := model.state.Interaction.ActiveModal, ModalHistorySearch; got != want {
 		t.Fatalf("state.Interaction.ActiveModal = %q, want %q", got, want)
 	}
-	if model.modal == nil {
-		t.Fatal("model.modal = nil, want history search modal open")
+	if model.currentModal() == nil {
+		t.Fatal("model.currentModal() = nil, want history search modal open")
 	}
 }
 
@@ -1094,9 +1094,9 @@ func TestModelUpdateHistorySearchFiltersAndCyclesEntries(t *testing.T) {
 	next, _ = model.Update(tea.KeyPressMsg{Text: "su"})
 	model = next.(Model)
 
-	h, _ := model.modal.(*historySearchModal)
+	h, _ := model.currentModal().(*historySearchModal)
 	if h == nil {
-		t.Fatal("model.modal is not *historySearchModal")
+		t.Fatal("model.currentModal() is not *historySearchModal")
 	}
 	if got, want := h.filter, "su"; got != want {
 		t.Fatalf("historySearchModal.filter = %q, want %q", got, want)
@@ -1114,7 +1114,7 @@ func TestModelUpdateHistorySearchFiltersAndCyclesEntries(t *testing.T) {
 
 	next, _ = model.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
 	model = next.(Model)
-	h, _ = model.modal.(*historySearchModal)
+	h, _ = model.currentModal().(*historySearchModal)
 
 	if got, want := selectedEntry(), "select * from users"; got != want {
 		t.Fatalf("selected history entry = %q, want %q", got, want)
@@ -1138,8 +1138,8 @@ func TestModelUpdateHistorySearchCancelReturnsToCommandMode(t *testing.T) {
 	if got, want := model.state.Interaction.ActivePane, PaneCommand; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
-	if model.modal != nil {
-		t.Fatalf("model.modal = %#v, want nil after cancel", model.modal)
+	if model.currentModal() != nil {
+		t.Fatalf("model.currentModal() = %#v, want nil after cancel", model.currentModal())
 	}
 	if got, want := model.state.Interaction.PendingIntent, IntentNone; got != want {
 		t.Fatalf("state.Interaction.PendingIntent = %q, want %q", got, want)
@@ -1175,8 +1175,8 @@ func TestModelUpdateHistorySearchRestoreLoadsEditorAndClosesSearch(t *testing.T)
 	if got, want := model.state.Interaction.ActivePane, PaneCommand; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
-	if model.modal != nil {
-		t.Fatalf("model.modal = %#v, want nil after restore", model.modal)
+	if model.currentModal() != nil {
+		t.Fatalf("model.currentModal() = %#v, want nil after restore", model.currentModal())
 	}
 	if got, want := model.state.Interaction.PendingIntent, IntentNone; got != want {
 		t.Fatalf("state.Interaction.PendingIntent = %q, want %q", got, want)
@@ -1483,8 +1483,7 @@ func TestModelUpdateCtrlDDoesNotPageDuringHistorySearch(t *testing.T) {
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
 	h := &historySearchModal{filter: "sel"}
-	model.modal = h
-	model.state.SetActiveModal(ModalHistorySearch)
+	model.pushModal(h)
 	model.state.SetLatestResultContext(&LatestResultContext{
 		Statement: "select id from widgets order by id",
 		PreservedResult: &db.ResultSet{
@@ -1506,9 +1505,9 @@ func TestModelUpdateCtrlDDoesNotPageDuringHistorySearch(t *testing.T) {
 	if got, want := model.state.Interaction.ActiveModal, ModalHistorySearch; got != want {
 		t.Fatalf("state.Interaction.ActiveModal = %q, want %q", got, want)
 	}
-	hAfter, _ := model.modal.(*historySearchModal)
+	hAfter, _ := model.currentModal().(*historySearchModal)
 	if hAfter == nil || hAfter.filter != "sel" {
-		t.Fatalf("model.modal = %#v, want history search with filter preserved", model.modal)
+		t.Fatalf("model.currentModal() = %#v, want history search with filter preserved", model.currentModal())
 	}
 }
 
@@ -1774,8 +1773,8 @@ func TestModelUpdateFocusResultsPaneFromHistorySearchClosesHistorySearch(t *test
 	if got, want := model.state.Interaction.ActivePane, PaneResults; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
-	if model.modal != nil {
-		t.Fatalf("model.modal = %#v, want nil after pane focus", model.modal)
+	if model.currentModal() != nil {
+		t.Fatalf("model.currentModal() = %#v, want nil after pane focus", model.currentModal())
 	}
 }
 
@@ -1796,8 +1795,8 @@ func TestModelUpdateLayoutSwitchesToResultsPaneOnlyAndClosesHistorySearch(t *tes
 	if got, want := model.state.Interaction.ActivePane, PaneResults; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
-	if model.modal != nil {
-		t.Fatalf("model.modal = %#v, want nil after layout switch", model.modal)
+	if model.currentModal() != nil {
+		t.Fatalf("model.currentModal() = %#v, want nil after layout switch", model.currentModal())
 	}
 	if got, want := model.state.Status, "Switched to results pane only. Run a query that returns rows to populate the Results Pane."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -2370,25 +2369,25 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("")
 
-	next, cmd := model.Update(tea.KeyPressMsg{Code: 'h', Mod: tea.ModAlt})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 	if cmd == nil {
-		t.Fatal("Update(alt+h) cmd = nil, want toggle help intent")
+		t.Fatal("Update(ctrl+e) cmd = nil, want toggle help intent")
 	}
 	model = next.(Model)
 
 	next, _ = model.Update(cmd())
 	model = next.(Model)
 
-	if !model.state.Interaction.HelpVisible {
-		t.Fatal("state.Interaction.HelpVisible = false, want true")
+	if model.currentModal() == nil || model.currentModal().Name() != ModalKeybindings {
+		t.Fatal("currentModal() is not keybindings modal, want keybindings modal open")
 	}
-	if got, want := model.state.Status, "Opened help for keybindings and slash commands."; got != want {
+	if got, want := model.state.Status, "Opened keybindings."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
-	view := renderHelpSurface(model.state.Interaction)
+	view := renderKeybindingsContent(model.state.Interaction)
 	for _, want := range []string{
 		"Help:",
-		"alt+h toggle help",
+		"ctrl+e toggle keybindings",
 		"Command mode:",
 		"enter submit SQL or slash command",
 		"Results Pane:",
@@ -2398,21 +2397,17 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 		"/select - compose a SELECT statement (/select <table>)",
 	} {
 		if !strings.Contains(view, want) {
-			t.Fatalf("renderHelpSurface() = %q, want to contain %q", view, want)
+			t.Fatalf("renderKeybindingsContent() = %q, want to contain %q", view, want)
 		}
 	}
 
-	next, cmd = model.Update(tea.KeyPressMsg{Code: 'h', Mod: tea.ModAlt})
-	if cmd == nil {
-		t.Fatal("Update(second alt+h) cmd = nil, want toggle help intent")
-	}
+	// Second ctrl+e is handled directly by the helpModal; no cmd returned.
+	next, _ = model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 	model = next.(Model)
-	next, _ = model.Update(cmd())
-	model = next.(Model)
-	if model.state.Interaction.HelpVisible {
-		t.Fatal("state.Interaction.HelpVisible = true, want false")
+	if model.currentModal() != nil && model.currentModal().Name() == ModalKeybindings {
+		t.Fatal("currentModal() is still keybindings, want closed")
 	}
-	if got, want := model.state.Status, "Closed help."; got != want {
+	if got, want := model.state.Status, "Closed keybindings."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
@@ -2422,7 +2417,7 @@ func TestModelToggleHelpShowsSplitAndWizardSpecificGuidance(t *testing.T) {
 	model.state.SetReady("")
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetActivePane(PaneResults)
-	model.modal = &slashWizardModal{wizard: SlashCommandWizardContext{
+	model.pushModal(&slashWizardModal{wizard: SlashCommandWizardContext{
 		Step: SlashCommandWizardStepTarget,
 		Commands: []SlashCommandWizardCommand{{
 			Name:        "select",
@@ -2432,18 +2427,22 @@ func TestModelToggleHelpShowsSplitAndWizardSpecificGuidance(t *testing.T) {
 			NeedsTarget: true,
 		}},
 		Targets: []SlashCommandWizardTarget{{Value: "widgets", Display: "widgets"}},
-	}}
-	model.state.SetActiveModal(ModalSlashWizard)
-	model.state.SetHelpVisible(true)
+	}})
+	// Simulate opening the keybindings modal on top of the wizard.
+	model.pushModal(&helpModal{contextModal: model.state.Interaction.ActiveModal})
 
-	view := renderHelpSurface(model.state.Interaction)
+	view := renderKeybindingsContent(InteractionState{
+		Layout:      LayoutSplit,
+		ActivePane:  PaneResults,
+		ActiveModal: ModalSlashWizard,
+	})
 	for _, want := range []string{
 		"slash wizard: enter confirm; ctrl+n/ctrl+p move; esc back or close",
 		"Results Pane [active]",
 		"Command line",
 	} {
 		if !strings.Contains(view, want) {
-			t.Fatalf("renderHelpSurface() = %q, want to contain %q", view, want)
+			t.Fatalf("renderKeybindingsContent() = %q, want to contain %q", view, want)
 		}
 	}
 }
@@ -2451,26 +2450,32 @@ func TestModelToggleHelpShowsSplitAndWizardSpecificGuidance(t *testing.T) {
 func TestModelToggleHelpShowsHistorySearchGuidance(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("")
-	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select 1"}})
+	model.state.SetHistory([]HistoryEntryContext{{Statement: "select 1"}})
 	next, _ := model.Update(historyIntentMsg{})
 	model = next.(Model)
 
-	next, cmd := model.Update(tea.KeyPressMsg{Code: 'h', Mod: tea.ModAlt})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 	if cmd == nil {
-		t.Fatal("Update(alt+h) cmd = nil, want toggle help intent")
+		t.Fatal("Update(ctrl+e) cmd = nil, want toggle help intent")
 	}
 	model = next.(Model)
 	next, _ = model.Update(cmd())
 	model = next.(Model)
 
-	view := renderHelpSurface(model.state.Interaction)
+	// helpModal captures the context modal (ModalHistorySearch) so Render
+	// shows history-search-specific sections even though ModalKeybindings is on top.
+	hm, _ := model.currentModal().(*helpModal)
+	if hm == nil {
+		t.Fatal("currentModal() is not *helpModal")
+	}
+	view := renderKeybindingsContent(InteractionState{ActiveModal: hm.contextModal})
 	for _, want := range []string{
 		"History search:",
 		"type to filter recent commands; enter restore selected entry",
 		"ctrl+r or up select older match; ctrl+n or down select newer match",
 	} {
 		if !strings.Contains(view, want) {
-			t.Fatalf("renderHelpSurface() = %q, want to contain %q", view, want)
+			t.Fatalf("renderKeybindingsContent() = %q, want to contain %q", view, want)
 		}
 	}
 }

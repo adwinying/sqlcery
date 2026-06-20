@@ -39,6 +39,12 @@ The bottom pane of the TUI. Where the user types and edits SQL Statements or Sla
 ### Active Pane
 Which pane — Results Pane or Command Pane — currently has keyboard focus. Determines which keybindings apply.
 
+### Hints Bar
+The persistent single-line strip at the bottom of the TUI (above the Status Line) that shows the key bindings available in the current context. Its content changes based on which pane or modal is focused. Implemented as `statusBarView()` / `tui.AppTheme.Footer`.
+
+### Status Line
+The single-line strip at the very bottom of the TUI that shows transient feedback from the last action (e.g. "Executed in 23ms", error text, modal status updates). Replaced on each new action. Distinct from the Hints Bar above it. Implemented as `statusDescriptionView()` / `tui.AppTheme.MetaLine`.
+
 ### Modal
 An overlay dialog rendered on top of both panes. Does not replace pane focus permanently. Current modals: History Search, Slash Command Wizard, Export Wizard (planned).
 

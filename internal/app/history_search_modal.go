@@ -11,7 +11,7 @@ import (
 	"github.com/adwinying/sqlcery/internal/tui"
 )
 
-const historySearchPreviewRows = tui.ModalFixedRows - 4 // 4 = title + query + match-count + hint
+const historySearchPreviewRows = tui.ModalFixedRows - 3 // 3 = title + query + match-count
 
 // historySearchModal implements Modal for the reverse-history search overlay.
 // It owns the filter text and selection index; History entries are read from
@@ -22,6 +22,19 @@ type historySearchModal struct {
 }
 
 func (h *historySearchModal) Name() AppModal { return ModalHistorySearch }
+
+func (h *historySearchModal) FooterHints(interaction InteractionState) string {
+	keys := defaultCommandModeKeys()
+	matches := filterHistorySearchEntries(interaction.History, h.filter)
+	switch {
+	case len(interaction.History) == 0:
+		return strings.Join([]string{"esc close", bindingSummary(keys.Help)}, " | ")
+	case len(matches) == 0:
+		return strings.Join([]string{"ctrl+r keep searching", "esc close", bindingSummary(keys.Help)}, " | ")
+	default:
+		return strings.Join([]string{"enter restore", "ctrl+r older", "ctrl+n newer", "esc close", bindingSummary(keys.Help)}, " | ")
+	}
+}
 
 func (h *historySearchModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) ModalResult {
 	keys := defaultCommandModeKeys()
@@ -67,12 +80,12 @@ func (h *historySearchModal) Render(interaction InteractionState) string {
 	}
 
 	if len(interaction.History) == 0 {
-		lines = append(lines, tui.AppTheme.PanelMuted.Render("No history yet."), tui.AppTheme.PanelHint.Render("esc close"))
+		lines = append(lines, tui.AppTheme.PanelMuted.Render("No history yet."))
 		return strings.Join(lines, "\n")
 	}
 
 	if len(matches) == 0 {
-		lines = append(lines, tui.AppTheme.PanelMuted.Render("No fuzzy matches."), tui.AppTheme.PanelHint.Render("ctrl+r keep searching | esc close"))
+		lines = append(lines, tui.AppTheme.PanelMuted.Render("No fuzzy matches."))
 		return strings.Join(lines, "\n")
 	}
 
@@ -91,7 +104,6 @@ func (h *historySearchModal) Render(interaction InteractionState) string {
 		}
 		lines = append(lines, line)
 	}
-	lines = append(lines, tui.AppTheme.PanelHint.Render("enter restore | ctrl+r older | ctrl+n newer | esc close"))
 
 	return strings.Join(lines, "\n")
 }

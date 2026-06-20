@@ -23,6 +23,7 @@ const (
 	ModalNone          AppModal = ""
 	ModalHistorySearch AppModal = "history-search"
 	ModalSlashWizard   AppModal = "slash-wizard"
+	ModalKeybindings   AppModal = "keybindings"
 )
 
 type AppLayout string
@@ -75,7 +76,6 @@ type InteractionState struct {
 	LastSubmittedSQL   string
 	PendingIntent      PendingIntent
 	LastAction         string
-	HelpVisible        bool
 	Running            *RunningStatementContext
 	Layout             AppLayout
 	ActivePane         Pane
@@ -283,10 +283,6 @@ func (s *SharedAppState) ChangeResultsPanePage(delta int) {
 
 func (s *SharedAppState) SetPendingPaneSwitch(context *PaneSwitchContext) {
 	s.Interaction.PendingPaneSwitch = clonePaneSwitchContext(context)
-}
-
-func (s *SharedAppState) SetHelpVisible(visible bool) {
-	s.Interaction.HelpVisible = visible
 }
 
 func (s *SharedAppState) SetAutocompleteSchema(schema *AutocompleteSchemaContext) {

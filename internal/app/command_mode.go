@@ -57,7 +57,7 @@ func defaultCommandModeKeys() commandModeKeyMap {
 	return commandModeKeyMap{
 		Submit:               key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit")),
 		Cancel:               key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
-		Help:                 key.NewBinding(key.WithKeys("alt+h"), key.WithHelp("alt+h", "help")),
+		Help:                 key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "keybindings")),
 		History:              key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "history")),
 		RestoreHistory:       key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restore")),
 		SwitchMode:           key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "focus")),
@@ -240,7 +240,7 @@ func (m commandModeModel) FooterHints(interaction InteractionState) string {
 	if running := formatRunningIndicator(interaction.Running); running != "" {
 		parts = append(parts, "esc cancel query")
 	}
-	parts = append(parts, "ctrl+c quit")
+	parts = append(parts, "ctrl+c quit", bindingSummary(m.keys.Help))
 	return strings.Join(parts, " | ")
 }
 
@@ -264,7 +264,7 @@ func (m commandModeModel) Footer(connectionName, dialect string, interaction Int
 	}
 
 	parts = append(parts, fmt.Sprintf("line %d col %d", m.editor.Line()+1, m.editor.LineInfo().ColumnOffset+1))
-	parts = append(parts, bindingSummary(m.keys.Submit), bindingSummary(m.keys.Cancel), bindingSummary(m.keys.Help), bindingSummary(m.keys.History), bindingSummary(m.keys.SwitchMode), bindingSummary(m.keys.LayoutCommandOnly))
+	parts = append(parts, bindingSummary(m.keys.Submit), bindingSummary(m.keys.Cancel), bindingSummary(m.keys.History), bindingSummary(m.keys.SwitchMode), bindingSummary(m.keys.LayoutCommandOnly), bindingSummary(m.keys.Help))
 	if interaction.ActivePane == PaneResults {
 		parts = append(parts, "ctrl+u scroll up", "ctrl+d scroll down")
 	}
@@ -507,8 +507,7 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext) string {
 		headerLines++
 
 		filteredTargets := filterWizardTargets(wizard.Targets, wizard.TargetFilter)
-		const footerLines = 1
-		listViewport := tui.ModalFixedRows - headerLines - footerLines
+		listViewport := tui.ModalFixedRows - headerLines
 		if listViewport < 1 {
 			listViewport = 1
 		}
@@ -528,16 +527,10 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext) string {
 				}
 			}
 		}
-		if wizard.DirectInvocation {
-			lines = append(lines, tui.AppTheme.PanelHint.Render("enter confirm | ctrl+n next | ctrl+p prev | esc close"))
-		} else {
-			lines = append(lines, tui.AppTheme.PanelHint.Render("enter confirm | ctrl+n next | ctrl+p prev | esc back"))
-		}
 	default:
 		lines = append(lines, tui.AppTheme.PanelText.Render("Step 1/2: choose a slash command"))
 		const headerLines = 2
-		const footerLines = 1
-		listViewport := tui.ModalFixedRows - headerLines - footerLines
+		listViewport := tui.ModalFixedRows - headerLines
 		if listViewport < 1 {
 			listViewport = 1
 		}
@@ -556,7 +549,6 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext) string {
 				lines = append(lines, tui.AppTheme.PanelText.Render(line))
 			}
 		}
-		lines = append(lines, tui.AppTheme.PanelHint.Render("enter confirm | ctrl+n next | ctrl+p prev | esc close"))
 	}
 
 	return strings.Join(lines, "\n")

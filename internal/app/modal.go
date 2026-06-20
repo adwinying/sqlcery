@@ -74,18 +74,44 @@ type Modal interface {
 	HandleKey(msg tea.KeyPressMsg, ctx ModalContext) ModalResult
 	// Render returns the modal content string for overlayCenter.
 	Render(interaction InteractionState) string
+	// FooterHints returns a pipe-separated hint string for the Hints Bar,
+	// state-conditional on the modal's own state and interaction.
+	FooterHints(interaction InteractionState) string
 	// Name returns the AppModal tag, kept on InteractionState so sub-models
-	// (footer, help surface) can read which modal is open.
+	// can read which modal is on top of the stack.
 	Name() AppModal
 }
 
-// closeModal closes whatever modal is currently open.
-func (m *Model) closeModal() {
-	if m.modal == nil {
+// currentModal returns the topmost modal, or nil if the stack is empty.
+func (m *Model) currentModal() Modal {
+	if len(m.modals) == 0 {
+		return nil
+	}
+	return m.modals[len(m.modals)-1]
+}
+
+// pushModal pushes a modal onto the stack and updates ActiveModal.
+func (m *Model) pushModal(modal Modal) {
+	m.modals = append(m.modals, modal)
+	m.state.SetActiveModal(modal.Name())
+}
+
+// popModal pops the topmost modal and updates ActiveModal to the new top.
+func (m *Model) popModal() {
+	if len(m.modals) == 0 {
 		return
 	}
-	m.modal = nil
-	m.state.SetActiveModal(ModalNone)
+	m.modals = m.modals[:len(m.modals)-1]
+	if len(m.modals) == 0 {
+		m.state.SetActiveModal(ModalNone)
+	} else {
+		m.state.SetActiveModal(m.modals[len(m.modals)-1].Name())
+	}
+}
+
+// closeModal pops the topmost modal (alias kept for call sites that dismiss a single modal).
+func (m *Model) closeModal() {
+	m.popModal()
 }
 
 // applyModalResult dispatches the result of Modal.HandleKey onto the model.

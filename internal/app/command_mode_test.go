@@ -257,9 +257,15 @@ func TestCommandModeViewRendersSlashWizard(t *testing.T) {
 	}}
 	modal := m.Render(InteractionState{})
 
-	for _, want := range []string{"Command wizard:", "Step 1/2: choose a slash command", "> /tables - list tables in the current database", "enter confirm | ctrl+n next | ctrl+p prev | esc close"} {
+	for _, want := range []string{"Command wizard:", "Step 1/2: choose a slash command", "> /tables - list tables in the current database"} {
 		if !strings.Contains(modal, want) {
 			t.Fatalf("slashWizardModal.Render() = %q, want to contain %q", modal, want)
+		}
+	}
+	hints := m.FooterHints(InteractionState{})
+	for _, want := range []string{"enter confirm", "ctrl+n next", "ctrl+p prev", "esc close", "ctrl+e keybindings"} {
+		if !strings.Contains(hints, want) {
+			t.Fatalf("slashWizardModal.FooterHints() = %q, want to contain %q", hints, want)
 		}
 	}
 }
@@ -272,9 +278,15 @@ func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 	}
 	modal := h.Render(interaction)
 
-	for _, want := range []string{"Reverse search:", "query> su", "2 match(es); newest first.", "> select * from users", "enter restore | ctrl+r older | ctrl+n newer | esc close"} {
+	for _, want := range []string{"Reverse search:", "query> su", "2 match(es); newest first.", "> select * from users"} {
 		if !strings.Contains(modal, want) {
 			t.Fatalf("historySearchModal.Render() = %q, want to contain %q", modal, want)
+		}
+	}
+	hints := h.FooterHints(interaction)
+	for _, want := range []string{"enter restore", "ctrl+r older", "ctrl+n newer", "esc close", "ctrl+e keybindings"} {
+		if !strings.Contains(hints, want) {
+			t.Fatalf("historySearchModal.FooterHints() = %q, want to contain %q", hints, want)
 		}
 	}
 }
@@ -339,7 +351,7 @@ func TestCommandModeFooterShowsRunningIndicator(t *testing.T) {
 		Running: &RunningStatementContext{Label: "SQL", Elapsed: 1500 * time.Millisecond},
 	})
 
-	for _, want := range []string{"Command mode", "layout command only", "connection local", "sqlite", "alt+h help", "ctrl+3 command", "- SQL 1.5s", "esc cancel query"} {
+	for _, want := range []string{"Command mode", "layout command only", "connection local", "sqlite", "ctrl+e keybindings", "ctrl+3 command", "- SQL 1.5s", "esc cancel query"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
 		}
@@ -354,7 +366,7 @@ func TestCommandModeFooterShowsResultsPanePagingWhenResultsPaneFocusedInSplit(t 
 		ActivePane: PaneResults,
 	})
 
-	for _, want := range []string{"Command line hidden focus", "layout split", "alt+h help", "ctrl+u scroll up", "ctrl+d scroll down"} {
+	for _, want := range []string{"Command line hidden focus", "layout split", "ctrl+e keybindings", "ctrl+u scroll up", "ctrl+d scroll down"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
 		}

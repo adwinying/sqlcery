@@ -158,7 +158,7 @@ func TestResultsPaneModeFooterIncludesModeDetails(t *testing.T) {
 		Running:      &RunningStatementContext{Label: "/tables", Elapsed: 2*time.Second + 300*time.Millisecond},
 	})
 
-	for _, want := range []string{"Results Pane", "layout results pane only", "connection local", "sqlite", "2 rows", "page 1/1", "1 selected", "- /tables 2.3s", "alt+h help", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit"} {
+	for _, want := range []string{"Results Pane", "layout results pane only", "connection local", "sqlite", "2 rows", "page 1/1", "1 selected", "- /tables 2.3s", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit", "ctrl+e keybindings"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
 		}
