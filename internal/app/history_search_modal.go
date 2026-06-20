@@ -85,7 +85,7 @@ func (h *historySearchModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) Mo
 func (h *historySearchModal) Render(interaction InteractionState, innerWidth int) string {
 	matches := filterHistorySearchEntries(interaction.History, h.filter)
 	lines := []string{
-		tui.AppTheme.PanelTitle.Render("Reverse search:"),
+		tui.AppTheme.PanelTitle.Render("Command History"),
 		tui.AppTheme.PanelText.Render(fmt.Sprintf("query> %s", defaultHistorySearchQuery(h.filter))),
 	}
 
