@@ -771,6 +771,9 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return nopCmd
 	case key.Matches(msg, keys.History):
+		if m.state.Interaction.ActivePane != PaneCommand {
+			return nil
+		}
 		return func() tea.Msg { return historyIntentMsg{} }
 	case key.Matches(msg, keys.Help):
 		return func() tea.Msg { return toggleHelpIntentMsg{} }

@@ -1065,6 +1065,31 @@ func TestModelUpdateHistorySetsPendingIntent(t *testing.T) {
 	}
 }
 
+func TestModelUpdateHistoryCtrlRIgnoredWhenResultsPaneFocused(t *testing.T) {
+	model := NewModel(Session{})
+	model.state.SetReady("")
+	model.state.SetHistory([]HistoryEntryContext{{Statement: "select 1"}})
+
+	next, _ := model.Update(focusPaneIntentMsg{Pane: PaneResults})
+	model = next.(Model)
+
+	if got, want := model.state.Interaction.ActivePane, PaneResults; got != want {
+		t.Fatalf("precondition: ActivePane = %q, want %q", got, want)
+	}
+
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	model = next.(Model)
+	if cmd != nil {
+		msg := cmd()
+		if _, ok := msg.(historyIntentMsg); ok {
+			t.Fatal("ctrl+r dispatched historyIntentMsg with results pane focused, want no-op")
+		}
+	}
+	if got := model.state.Interaction.ActiveModal; got == ModalHistorySearch {
+		t.Fatal("history search modal opened with results pane focused, want no-op")
+	}
+}
+
 func TestModelUpdateHistoryHandlesEmptyHistory(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("")
