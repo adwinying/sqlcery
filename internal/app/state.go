@@ -100,29 +100,39 @@ type SlashCommandWizardStep string
 const (
 	SlashCommandWizardStepCommand SlashCommandWizardStep = "command"
 	SlashCommandWizardStepTarget  SlashCommandWizardStep = "target"
+	SlashCommandWizardStepColumn  SlashCommandWizardStep = "column"
 )
 
 type SlashCommandWizardContext struct {
-	Step             SlashCommandWizardStep
-	Commands         []SlashCommandWizardCommand
-	Targets          []SlashCommandWizardTarget
-	SelectedCommand  int
-	SelectedTarget   int
-	DirectInvocation bool
-	TargetFilter     string
+	Step                 SlashCommandWizardStep
+	Commands             []SlashCommandWizardCommand
+	Targets              []SlashCommandWizardTarget
+	Columns              []SlashCommandWizardColumn
+	SelectedCommand      int
+	SelectedTarget       int
+	SelectedColumnCursor int
+	DirectInvocation     bool
+	TargetFilter         string
 }
 
 type SlashCommandWizardCommand struct {
-	Name        string
-	DisplayName string
-	Summary     string
-	Usage       string
-	NeedsTarget bool
+	Name         string
+	DisplayName  string
+	Summary      string
+	Usage        string
+	NeedsTarget  bool
+	NeedsColumns bool
 }
 
 type SlashCommandWizardTarget struct {
 	Value   string
 	Display string
+}
+
+type SlashCommandWizardColumn struct {
+	Name     string
+	Type     string
+	Selected bool
 }
 
 type AutocompleteSchemaContext struct {

@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/adwinying/sqlcery/internal/db"
 )
 
@@ -38,11 +40,12 @@ type slashCommandResult struct {
 type slashCommandHandler func(context.Context, slashCommandContext, slashCommand) (slashCommandResult, error)
 
 type slashCommandSpec struct {
-	Name        string
-	Summary     string
-	Usage       string
-	Handler     slashCommandHandler
-	NeedsTarget bool
+	Name         string
+	Summary      string
+	Usage        string
+	Handler      slashCommandHandler
+	NeedsTarget  bool
+	NeedsColumns bool
 }
 
 type slashCommandRegistry struct {
@@ -63,7 +66,7 @@ func slashCommandSpecs() []slashCommandSpec {
 		{Name: "tables", Summary: "list tables in the current database", Usage: "/tables", Handler: handleSlashTables},
 		{Name: "columns", Summary: "list columns for a table", Usage: "/columns <table>", Handler: handleSlashColumns, NeedsTarget: true},
 		{Name: "indices", Summary: "list indices for a table", Usage: "/indices <table>", Handler: handleSlashIndices, NeedsTarget: true},
-		{Name: "select", Summary: "compose a SELECT statement", Usage: "/select <table>", Handler: handleSlashSelect, NeedsTarget: true},
+		{Name: "select", Summary: "compose a SELECT statement", Usage: "/select <table>", Handler: handleSlashSelect, NeedsTarget: true, NeedsColumns: true},
 		{Name: "insert", Summary: "compose an INSERT statement", Usage: "/insert <table>", Handler: handleSlashInsert, NeedsTarget: true},
 		{Name: "update", Summary: "compose an UPDATE statement", Usage: "/update <table>", Handler: handleSlashUpdate, NeedsTarget: true},
 		{Name: "delete", Summary: "compose a DELETE statement", Usage: "/delete <table>", Handler: handleSlashDelete, NeedsTarget: true},
@@ -330,31 +333,41 @@ func slashIndicesSQL(dialect db.Dialect, table db.TableRef) string {
 	}
 }
 
-func handleSlashSelect(ctx context.Context, command slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
+func handleSlashSelect(_ context.Context, command slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
 	table, err := slashTargetTable(parsed)
 	if err != nil {
 		return slashCommandResult{}, err
 	}
 
-	columns, _ := loadSlashColumns(ctx, command.Session.Adapter, table)
 	quotedTable := quoteSlashTableRef(command.Dialect, table)
-
-	var selectList string
-	if len(columns) == 0 {
-		selectList = "  *"
-	} else {
-		parts := make([]string, 0, len(columns))
-		for _, column := range columns {
-			parts = append(parts, "  "+quoteSlashIdentifier(command.Dialect, column.Name))
-		}
-		selectList = strings.Join(parts, ",\n")
-	}
-
 	return slashCommandResult{
 		Status:        slashTemplateStatus(parsed.DisplayName, displaySlashTableRef(table)),
-		ReplaceEditor: fmt.Sprintf("SELECT\n%s\nFROM %s;", selectList, quotedTable),
+		ReplaceEditor: fmt.Sprintf("SELECT * FROM %s;", quotedTable),
 		ShouldReplace: true,
 	}, nil
+}
+
+func buildSelectSQL(dialect db.Dialect, table db.TableRef, columns []SlashCommandWizardColumn) string {
+	quotedTable := quoteSlashTableRef(dialect, table)
+
+	allSelected := true
+	for _, col := range columns {
+		if !col.Selected {
+			allSelected = false
+			break
+		}
+	}
+	if len(columns) == 0 || allSelected {
+		return fmt.Sprintf("SELECT * FROM %s;", quotedTable)
+	}
+
+	parts := make([]string, 0, len(columns))
+	for _, col := range columns {
+		if col.Selected {
+			parts = append(parts, "  "+quoteSlashIdentifier(dialect, col.Name))
+		}
+	}
+	return fmt.Sprintf("SELECT\n%s\nFROM %s;", strings.Join(parts, ",\n"), quotedTable)
 }
 
 func handleSlashInsert(ctx context.Context, command slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
@@ -513,11 +526,12 @@ func buildSlashWizardCommands() []SlashCommandWizardCommand {
 			continue
 		}
 		commands = append(commands, SlashCommandWizardCommand{
-			Name:        spec.Name,
-			DisplayName: "/" + spec.Name,
-			Summary:     spec.Summary,
-			Usage:       spec.Usage,
-			NeedsTarget: spec.NeedsTarget,
+			Name:         spec.Name,
+			DisplayName:  "/" + spec.Name,
+			Summary:      spec.Summary,
+			Usage:        spec.Usage,
+			NeedsTarget:  spec.NeedsTarget,
+			NeedsColumns: spec.NeedsColumns,
 		})
 	}
 	return commands
@@ -581,6 +595,47 @@ func buildSlashWizardFromCommand(ctx context.Context, command slashCommandContex
 		Targets:         targets,
 		SelectedTarget:  0,
 	}, nil
+}
+
+func buildSlashWizardColumnStep(ctx context.Context, command slashCommandContext, wizard SlashCommandWizardContext, target SlashCommandWizardTarget) (*SlashCommandWizardContext, error) {
+	table := parseSlashTableRef(target.Value)
+	cols := buildSlashWizardColumnsFromSchema(command.Query.AutocompleteSchema, table)
+	if len(cols) == 0 {
+		dbCols, err := loadSlashColumns(ctx, command.Session.Adapter, table)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range dbCols {
+			cols = append(cols, SlashCommandWizardColumn{Name: c.Name, Selected: true})
+		}
+	}
+
+	next := wizard
+	next.Step = SlashCommandWizardStepColumn
+	next.Columns = cols
+	next.SelectedColumnCursor = 0
+	return &next, nil
+}
+
+func buildSlashWizardColumnsFromSchema(schema *AutocompleteSchemaContext, table db.TableRef) []SlashCommandWizardColumn {
+	if schema == nil {
+		return nil
+	}
+	for _, t := range schema.Tables {
+		if !strings.EqualFold(t.Name, table.Name) {
+			continue
+		}
+		if table.Namespace != "" && !strings.EqualFold(t.Namespace, table.Namespace) {
+			continue
+		}
+		cols := make([]SlashCommandWizardColumn, 0, len(t.Columns))
+		for _, name := range t.Columns {
+			colType := t.ColumnTypes[strings.ToLower(name)]
+			cols = append(cols, SlashCommandWizardColumn{Name: name, Type: colType, Selected: true})
+		}
+		return cols
+	}
+	return nil
 }
 
 func slashWizardTargetsFromSchema(schema *AutocompleteSchemaContext) []SlashCommandWizardTarget {
@@ -819,6 +874,18 @@ func slashCreateColumnDefinitions(dialect db.Dialect) []string {
 		return []string{
 			"  id INTEGER PRIMARY KEY",
 			"  name TEXT",
+		}
+	}
+}
+
+func replaceEditorCmd(result slashCommandResult) func(context.Context, time.Time) tea.Cmd {
+	return func(_ context.Context, _ time.Time) tea.Cmd {
+		return func() tea.Msg {
+			return slashCommandExecutedMsg{
+				Command:       slashCommand{DisplayName: result.Action},
+				Result:        result,
+				ResultSummary: result.Status,
+			}
 		}
 	}
 }

@@ -81,7 +81,7 @@ func TestDispatchSlashCommandSelectBuildsTemplate(t *testing.T) {
 	if !result.ShouldReplace {
 		t.Fatal("result.ShouldReplace = false, want true")
 	}
-	for _, want := range []string{"SELECT", `FROM "users";`, `"id"`, `"name"`, `"email"`} {
+	for _, want := range []string{"SELECT", `*`, `FROM "users";`} {
 		if got := result.ReplaceEditor; !containsLine(got, want) {
 			t.Fatalf("ReplaceEditor = %q, want to contain %q", got, want)
 		}
@@ -150,17 +150,17 @@ func TestDispatchSlashCommandSelectBuildsDialectAwareTemplateWithoutMetadata(t *
 		{
 			name:    "sqlite",
 			dialect: db.SQLiteDialect(),
-			want:    []string{"SELECT", `FROM "users";`, "  *"},
+			want:    []string{`SELECT * FROM "users";`},
 		},
 		{
 			name:    "postgres",
 			dialect: db.PostgresDialect(),
-			want:    []string{"SELECT", `FROM "users";`, "  *"},
+			want:    []string{`SELECT * FROM "users";`},
 		},
 		{
 			name:    "mysql",
 			dialect: db.MySQLDialect(),
-			want:    []string{"SELECT", "FROM `users`;", "  *"},
+			want:    []string{"SELECT * FROM `users`;"},
 		},
 	}
 
@@ -458,7 +458,7 @@ func TestModelSubmitDispatchesSlashSelectIntoEditor(t *testing.T) {
 	if got, want := model.state.Status, "Expanded /select for widgets into command mode. Review it, then press enter to run."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
-	for _, want := range []string{"SELECT", `FROM "widgets";`, `"id"`, `"name"`} {
+	for _, want := range []string{"SELECT", `*`, `FROM "widgets";`} {
 		if got := model.command.editor.Value(); !containsLine(got, want) {
 			t.Fatalf("editor.Value() = %q, want to contain %q", got, want)
 		}
@@ -591,7 +591,7 @@ func TestModelSubmitCommandsWizardLoadsTargetedTemplate(t *testing.T) {
 	if model.state.Interaction.Running != nil {
 		t.Fatalf("state.Query.Running = %#v, want nil", model.state.Interaction.Running)
 	}
-	if got, want := model.command.editor.Value(), "SELECT\n  *\nFROM \"widgets\";"; got != want {
+	if got, want := model.command.editor.Value(), `SELECT * FROM "widgets";`; got != want {
 		t.Fatalf("editor.Value() = %q, want %q", got, want)
 	}
 	if model.currentModal() != nil {
@@ -842,10 +842,21 @@ func TestModelSubmitNeedsTargetCommandWithoutArgConfirmDispatchesCommand(t *test
 		t.Fatal("wizard not opened after /select without args")
 	}
 
-	// Confirm with the pre-selected table via Enter key
+	// Confirm with the pre-selected table via Enter key (transitions to column picker)
 	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd != nil {
+		t.Fatal("Update(enter) cmd != nil after confirming table, want column step transition")
+	}
+	model = next.(Model)
+
+	if model.currentModal() == nil {
+		t.Fatal("column picker not opened after confirming table")
+	}
+
+	// Confirm with all columns selected (all selected by default → SELECT *)
+	next, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
-		t.Fatal("Update(enter) cmd = nil after confirming table, want dispatch command")
+		t.Fatal("Update(enter) cmd = nil after confirming columns, want dispatch command")
 	}
 	model = next.(Model)
 	if got, want := model.state.Interaction.Running.Label, "/select"; got != want {

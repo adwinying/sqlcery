@@ -21,18 +21,31 @@ func (s *slashWizardModal) Name() AppModal { return ModalSlashWizard }
 
 func (s *slashWizardModal) FooterHints(_ InteractionState) string {
 	keys := defaultCommandModeKeys()
-	escHint := "esc close"
-	if s.wizard.Step == SlashCommandWizardStepTarget && !s.wizard.DirectInvocation {
-		escHint = "esc back"
+	switch s.wizard.Step {
+	case SlashCommandWizardStepColumn:
+		return strings.Join([]string{
+			"enter confirm",
+			"ctrl+n next",
+			"ctrl+p prev",
+			"space toggle",
+			"a toggle all",
+			"esc back",
+			bindingSummary(keys.Help),
+		}, " | ")
+	default:
+		escHint := "esc close"
+		if s.wizard.Step == SlashCommandWizardStepTarget && !s.wizard.DirectInvocation {
+			escHint = "esc back"
+		}
+		return strings.Join([]string{
+			"enter confirm",
+			"ctrl+n next",
+			"ctrl+p prev",
+			"alt+← → scroll",
+			escHint,
+			bindingSummary(keys.Help),
+		}, " | ")
 	}
-	return strings.Join([]string{
-		"enter confirm",
-		"ctrl+n next",
-		"ctrl+p prev",
-		"alt+← → scroll",
-		escHint,
-		bindingSummary(keys.Help),
-	}, " | ")
 }
 
 func (s *slashWizardModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) ModalResult {
@@ -49,6 +62,10 @@ func (s *slashWizardModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) Moda
 		return s.move(ctx, 1)
 	case key.Matches(msg, keys.PrevSuggestion), msg.String() == "ctrl+p":
 		return s.move(ctx, -1)
+	case s.wizard.Step == SlashCommandWizardStepColumn && msg.String() == "space":
+		return s.toggleColumn()
+	case s.wizard.Step == SlashCommandWizardStepColumn && msg.String() == "a":
+		return s.toggleAllColumns()
 	case msg.String() == "alt+right":
 		s.hScrollOffset += 8
 		return modalResultNone{}
@@ -73,7 +90,14 @@ func (s *slashWizardModal) Render(_ InteractionState, innerWidth int) string {
 }
 
 func (s *slashWizardModal) handleEsc(ctx ModalContext) ModalResult {
-	if s.wizard.Step == SlashCommandWizardStepTarget {
+	switch s.wizard.Step {
+	case SlashCommandWizardStepColumn:
+		s.wizard.Step = SlashCommandWizardStepTarget
+		s.wizard.Columns = nil
+		s.wizard.SelectedColumnCursor = 0
+		selectedCommand, _ := slashWizardCommandByIndex(&s.wizard)
+		return modalResultReady{status: fmt.Sprintf("Choose a table for %s and press enter.", selectedCommand.DisplayName)}
+	case SlashCommandWizardStepTarget:
 		if strings.TrimSpace(s.wizard.TargetFilter) != "" {
 			return s.updateFilter(ctx, "")
 		}
@@ -85,14 +109,19 @@ func (s *slashWizardModal) handleEsc(ctx ModalContext) ModalResult {
 		s.wizard.SelectedTarget = 0
 		selectedCommand, _ := slashWizardCommandByIndex(&s.wizard)
 		return modalResultReady{status: fmt.Sprintf("Choose a command. %s is selected.", selectedCommand.DisplayName)}
+	default:
+		return modalResultReady{status: "Closed the slash command wizard.", dismiss: true}
 	}
-	return modalResultReady{status: "Closed the slash command wizard.", dismiss: true}
 }
 
 func (s *slashWizardModal) submit(ctx ModalContext) ModalResult {
 	selectedCommand, ok := slashWizardCommandByIndex(&s.wizard)
 	if !ok {
 		return modalResultReady{status: "Slash command wizard is empty.", dismiss: true}
+	}
+
+	if s.wizard.Step == SlashCommandWizardStepColumn {
+		return s.submitColumnStep(ctx, selectedCommand)
 	}
 
 	if selectedCommand.NeedsTarget {
@@ -124,19 +153,64 @@ func (s *slashWizardModal) submit(ctx ModalContext) ModalResult {
 			return modalResultReady{status: fmt.Sprintf("/commands: choose a table for %s.", selectedCommand.DisplayName)}
 		}
 
-		parsed := buildSlashWizardCommand(selectedCommand, &selectedTarget)
-		return modalResultExecute{
-			label:  parsed.DisplayName,
-			status: fmt.Sprintf("Dispatching %s from wizard.", parsed.DisplayName),
-			execute: executeSlashCommandCmd(slashCommandContext{
+		if selectedCommand.NeedsColumns {
+			nextWizard, err := buildSlashWizardColumnStep(context.Background(), slashCommandContext{
 				Session: ctx.Session,
 				Dialect: ctx.Dialect,
 				Query:   ctx.Interaction,
-			}, parsed),
+			}, s.wizard, selectedTarget)
+			if err != nil {
+				return modalResultReady{
+					status:  fmt.Sprintf("/commands failed loading columns: %v", err),
+					dismiss: true,
+				}
+			}
+			if nextWizard == nil || len(nextWizard.Columns) == 0 {
+				parsed := buildSlashWizardCommand(selectedCommand, &selectedTarget)
+				return s.executeCommand(ctx, parsed)
+			}
+			s.wizard = *nextWizard
+			return modalResultReady{status: fmt.Sprintf("Choose columns for %s. All selected by default.", selectedTarget.Display)}
 		}
+
+		parsed := buildSlashWizardCommand(selectedCommand, &selectedTarget)
+		return s.executeCommand(ctx, parsed)
 	}
 
 	parsed := buildSlashWizardCommand(selectedCommand, nil)
+	return s.executeCommand(ctx, parsed)
+}
+
+func (s *slashWizardModal) submitColumnStep(ctx ModalContext, selectedCommand SlashCommandWizardCommand) ModalResult {
+	selectedCount := 0
+	for _, col := range s.wizard.Columns {
+		if col.Selected {
+			selectedCount++
+		}
+	}
+	if selectedCount == 0 {
+		return modalResultReady{status: "Select at least one column."}
+	}
+
+	selectedTarget, ok := slashWizardFilteredTargetByIndex(&s.wizard)
+	if !ok {
+		return modalResultReady{status: "No table selected.", dismiss: true}
+	}
+
+	table := parseSlashTableRef(selectedTarget.Value)
+	sql := buildSelectSQL(ctx.Dialect, table, s.wizard.Columns)
+	return modalResultExecute{
+		label:  selectedCommand.DisplayName,
+		status: fmt.Sprintf("Dispatching %s from wizard.", selectedCommand.DisplayName),
+		execute: replaceEditorCmd(slashCommandResult{
+			Status:        slashTemplateStatus(selectedCommand.DisplayName, selectedTarget.Display),
+			ReplaceEditor: sql,
+			ShouldReplace: true,
+		}),
+	}
+}
+
+func (s *slashWizardModal) executeCommand(ctx ModalContext, parsed slashCommand) ModalResult {
 	return modalResultExecute{
 		label:  parsed.DisplayName,
 		status: fmt.Sprintf("Dispatching %s from wizard.", parsed.DisplayName),
@@ -151,6 +225,12 @@ func (s *slashWizardModal) submit(ctx ModalContext) ModalResult {
 func (s *slashWizardModal) move(_ ModalContext, delta int) ModalResult {
 	s.hScrollOffset = 0
 	switch s.wizard.Step {
+	case SlashCommandWizardStepColumn:
+		if len(s.wizard.Columns) == 0 {
+			return modalResultNone{}
+		}
+		s.wizard.SelectedColumnCursor = wrapSelection(s.wizard.SelectedColumnCursor+delta, len(s.wizard.Columns))
+		return modalResultReady{status: fmt.Sprintf("Column %s.", s.wizard.Columns[s.wizard.SelectedColumnCursor].Name)}
 	case SlashCommandWizardStepTarget:
 		filtered := filterWizardTargets(s.wizard.Targets, s.wizard.TargetFilter)
 		if len(filtered) == 0 {
@@ -166,6 +246,37 @@ func (s *slashWizardModal) move(_ ModalContext, delta int) ModalResult {
 		selectedCommand, _ := slashWizardCommandByIndex(&s.wizard)
 		return modalResultReady{status: fmt.Sprintf("Selected %s.", selectedCommand.DisplayName)}
 	}
+}
+
+func (s *slashWizardModal) toggleColumn() ModalResult {
+	if len(s.wizard.Columns) == 0 {
+		return modalResultNone{}
+	}
+	i := clampWizardIndex(s.wizard.SelectedColumnCursor, len(s.wizard.Columns))
+	s.wizard.Columns[i].Selected = !s.wizard.Columns[i].Selected
+	state := "deselected"
+	if s.wizard.Columns[i].Selected {
+		state = "selected"
+	}
+	return modalResultReady{status: fmt.Sprintf("Column %s %s.", s.wizard.Columns[i].Name, state)}
+}
+
+func (s *slashWizardModal) toggleAllColumns() ModalResult {
+	allSelected := true
+	for _, col := range s.wizard.Columns {
+		if !col.Selected {
+			allSelected = false
+			break
+		}
+	}
+	target := !allSelected
+	for i := range s.wizard.Columns {
+		s.wizard.Columns[i].Selected = target
+	}
+	if target {
+		return modalResultReady{status: "All columns selected."}
+	}
+	return modalResultReady{status: "All columns deselected."}
 }
 
 func (s *slashWizardModal) updateFilter(_ ModalContext, filter string) ModalResult {

@@ -488,8 +488,52 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext, hScrollOffset *
 
 	lines := []string{tui.AppTheme.PanelTitle.Render("Command wizard:")}
 	switch wizard.Step {
+	case SlashCommandWizardStepColumn:
+		selectedCommand, _ := slashWizardCommandByIndex(wizard)
+		selectedTarget, _ := slashWizardFilteredTargetByIndex(wizard)
+		lines = append(lines,
+			tui.AppTheme.PanelMuted.Render(fmt.Sprintf("Step 1/3 complete: %s", selectedCommand.DisplayName)),
+			tui.AppTheme.PanelMuted.Render(fmt.Sprintf("Step 2/3 complete: %s", selectedTarget.Display)),
+			tui.AppTheme.PanelText.Render(fmt.Sprintf("Step 3/3: choose columns for %s", selectedTarget.Display)),
+		)
+		const columnHeaderLines = 4
+		listViewport := tui.ModalFixedRows - columnHeaderLines
+		if listViewport < 1 {
+			listViewport = 1
+		}
+		selected := clampWizardIndex(wizard.SelectedColumnCursor, len(wizard.Columns))
+		scrollOffset := max(0, selected-listViewport+1)
+		viewEnd := min(len(wizard.Columns), scrollOffset+listViewport)
+
+		if len(wizard.Columns) == 0 {
+			lines = append(lines, tui.AppTheme.PanelMuted.Render("No columns available."))
+		} else {
+			for i := scrollOffset; i < viewEnd; i++ {
+				col := wizard.Columns[i]
+				check := "[ ]"
+				if col.Selected {
+					check = "[x]"
+				}
+				var content string
+				if col.Type != "" {
+					content = fmt.Sprintf("%s %s  %s", check, col.Name, col.Type)
+				} else {
+					content = fmt.Sprintf("%s %s", check, col.Name)
+				}
+				if i == selected {
+					*hScrollOffset = tui.ClampHScrollOffset(ansi.StringWidth("> "+content), *hScrollOffset, innerWidth)
+					lines = append(lines, tui.AppTheme.PanelSelected.Render(tui.ApplyHScroll("> "+content, *hScrollOffset, innerWidth)))
+				} else {
+					lines = append(lines, tui.AppTheme.PanelText.Render("  "+content))
+				}
+			}
+		}
 	case SlashCommandWizardStepTarget:
 		selectedCommand, _ := slashWizardCommandByIndex(wizard)
+		totalSteps := 2
+		if selectedCommand.NeedsColumns {
+			totalSteps = 3
+		}
 		headerLines := 1
 		if wizard.DirectInvocation {
 			lines = append(lines,
@@ -498,8 +542,8 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext, hScrollOffset *
 			headerLines++
 		} else {
 			lines = append(lines,
-				tui.AppTheme.PanelMuted.Render(fmt.Sprintf("Step 1/2 complete: %s", selectedCommand.DisplayName)),
-				tui.AppTheme.PanelText.Render(fmt.Sprintf("Step 2/2: choose a table for %s", selectedCommand.DisplayName)),
+				tui.AppTheme.PanelMuted.Render(fmt.Sprintf("Step 1/%d complete: %s", totalSteps, selectedCommand.DisplayName)),
+				tui.AppTheme.PanelText.Render(fmt.Sprintf("Step 2/%d: choose a table for %s", totalSteps, selectedCommand.DisplayName)),
 			)
 			headerLines += 2
 		}
@@ -530,7 +574,12 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext, hScrollOffset *
 			}
 		}
 	default:
-		lines = append(lines, tui.AppTheme.PanelText.Render("Step 1/2: choose a slash command"))
+		selectedCommand, _ := slashWizardCommandByIndex(wizard)
+		totalSteps := 2
+		if selectedCommand.NeedsColumns {
+			totalSteps = 3
+		}
+		lines = append(lines, tui.AppTheme.PanelText.Render(fmt.Sprintf("Step 1/%d: choose a slash command", totalSteps)))
 		const headerLines = 2
 		listViewport := tui.ModalFixedRows - headerLines
 		if listViewport < 1 {
