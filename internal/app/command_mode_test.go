@@ -257,7 +257,7 @@ func TestCommandModeViewRendersSlashWizard(t *testing.T) {
 	}}
 	modal := m.Render(InteractionState{}, 62)
 
-	for _, want := range []string{"Command wizard:", "Step 1/2: choose a slash command", "> /tables - list tables in the current database"} {
+	for _, want := range []string{"Slash command wizard:", "Step 1/2: choose a slash command", "> /tables - list tables in the current database"} {
 		if !strings.Contains(modal, want) {
 			t.Fatalf("slashWizardModal.Render() = %q, want to contain %q", modal, want)
 		}

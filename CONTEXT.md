@@ -46,7 +46,16 @@ The persistent single-line strip at the bottom of the TUI (above the Status Line
 The single-line strip at the very bottom of the TUI that shows transient feedback from the last action (e.g. "Executed in 23ms", error text, modal status updates). Replaced on each new action. Distinct from the Hints Bar above it. Implemented as `statusDescriptionView()` / `tui.AppTheme.MetaLine`.
 
 ### Modal
-An overlay dialog rendered on top of both panes. Does not replace pane focus permanently. Current modals: History Search, Slash Command Wizard, Export Wizard (planned).
+An overlay dialog rendered on top of both panes. Does not replace pane focus permanently. Current modals: History Search, Slash Command Wizard, Keybindings, Export Wizard (planned).
+
+### Slash Command Wizard
+A guided multi-step Modal for selecting and executing a Slash Command. Opened via `/commands` or by pressing Enter on a Slash Command row in the Keybindings Modal. Steps: choose a command → choose a target table (if required) → choose columns (if required). Distinct from typing a Slash Command directly into the Command Pane.
+
+### Keybindings Modal
+A Modal that serves as an interactive command launcher and keybindings reference. Displays a flat, context-sensitive list of Help Rows: one row per action, filtered to the active context (Command Pane, Results Pane, or the Modal currently on top of the stack), plus a small set of global rows always present (quit, toggle keybindings). Supports filtering by typing (same model as History Search) and row execution on Enter: keybinding rows synthesize their stored key back through the Update loop; Slash Command rows dispatch the command directly or open the Slash Command Wizard if a target is required.
+
+### Help Row
+A single selectable entry in the Keybindings Modal. Carries a display string and the action to execute on Enter — either a key to synthesize (for keybinding rows) or a Slash Command name (for slash command rows). The Keybindings Modal operates on a flat list of Help Rows with no section grouping.
 
 ### Export
 Writing a Result Set — or a selected subset of its rows — to an output destination. The user chooses a format (CSV, TSV, JSON, Markdown) and a destination: either a file path (relative or absolute) or the clipboard (when no path is given). Currently triggered via `:w [filename]` in the Results Pane; planned to become an Export Wizard modal.

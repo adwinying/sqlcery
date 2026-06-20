@@ -68,6 +68,10 @@ type focusPaneIntentMsg struct {
 
 type clearInputIntentMsg struct{}
 
+type composeResultsPaneIntentMsg struct {
+	action string // "insert", "update", "delete"
+}
+
 type statementExecutedMsg struct {
 	Statement     string
 	Result        *db.StatementResult
@@ -157,8 +161,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.popModal()
 			m.state.SetPendingIntent(IntentNone, "help", "Closed keybindings.")
 		} else {
-			m.pushModal(&helpModal{contextModal: m.state.Interaction.ActiveModal})
+			m.pushModal(&helpModal{
+				contextModal: m.state.Interaction.ActiveModal,
+				contextPane:  m.state.Interaction.ActivePane,
+			})
 			m.state.SetPendingIntent(IntentNone, "help", "Opened keybindings.")
+		}
+		return m, nil
+	case composeResultsPaneIntentMsg:
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
+		switch msg.action {
+		case "insert":
+			m.composeResultsPaneInsert()
+		case "update":
+			m.composeResultsPaneUpdate()
+		case "delete":
+			m.composeResultsPaneDelete()
 		}
 		return m, nil
 	case clearInputIntentMsg:
@@ -681,6 +699,8 @@ func (m Model) statusBarView() string {
 	if m.state.App.Current == StateReady {
 		if modal := m.currentModal(); modal != nil {
 			parts = append(parts, modal.FooterHints(interaction))
+		} else if interaction.ActivePane == PaneResults && interaction.Layout != LayoutCommandOnly {
+			parts = append(parts, m.resultsPane.FooterHints(interaction))
 		} else {
 			parts = append(parts, m.command.FooterHints(interaction))
 		}
@@ -1158,6 +1178,11 @@ func summarizeSlashCommandResult(command slashCommand, result slashCommandResult
 }
 
 func (m *Model) openTableSelectionForCommand(parsed *slashCommand) (Model, tea.Cmd) {
+	m.pushWizardForCommand(parsed.Name, fmt.Sprintf("Choose a table for %s and press enter.", parsed.DisplayName))
+	return *m, nil
+}
+
+func (m *Model) pushWizardForCommand(commandName, status string) tea.Cmd {
 	commandCtx := slashCommandContext{
 		Session: m.session,
 		Dialect: m.adapterDialect(),
@@ -1167,7 +1192,7 @@ func (m *Model) openTableSelectionForCommand(parsed *slashCommand) (Model, tea.C
 	commands := buildSlashWizardCommands()
 	selectedIdx := 0
 	for i, cmd := range commands {
-		if cmd.Name == parsed.Name {
+		if cmd.Name == commandName {
 			selectedIdx = i
 			break
 		}
@@ -1175,12 +1200,12 @@ func (m *Model) openTableSelectionForCommand(parsed *slashCommand) (Model, tea.C
 
 	targets, err := buildSlashWizardTargets(context.Background(), commandCtx)
 	if err != nil {
-		m.state.SetReady(fmt.Sprintf("%s failed: %v", parsed.DisplayName, err))
-		return *m, nil
+		m.state.SetReady(fmt.Sprintf("/%s failed: %v", commandName, err))
+		return nil
 	}
 	if len(targets) == 0 {
-		m.state.SetReady(fmt.Sprintf("%s: no tables available.", parsed.DisplayName))
-		return *m, nil
+		m.state.SetReady(fmt.Sprintf("/%s: no tables available.", commandName))
+		return nil
 	}
 
 	m.pushModal(&slashWizardModal{wizard: SlashCommandWizardContext{
@@ -1191,8 +1216,8 @@ func (m *Model) openTableSelectionForCommand(parsed *slashCommand) (Model, tea.C
 		SelectedTarget:   0,
 		DirectInvocation: true,
 	}})
-	m.state.SetReady(fmt.Sprintf("Choose a table for %s and press enter.", parsed.DisplayName))
-	return *m, nil
+	m.state.SetReady(defaultStatus(status, fmt.Sprintf("Choose a table for %s and press enter.", commands[selectedIdx].DisplayName)))
+	return nil
 }
 
 func (m *Model) openCommandWizard() (Model, tea.Cmd) {

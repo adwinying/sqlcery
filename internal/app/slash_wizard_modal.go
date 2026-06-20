@@ -54,6 +54,8 @@ func (s *slashWizardModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) Moda
 	switch {
 	case msg.String() == "ctrl+c":
 		return modalResultReady{status: "Closed the slash command wizard.", dismiss: true}
+	case key.Matches(msg, keys.Help):
+		return modalResultForward{cmd: func() tea.Msg { return toggleHelpIntentMsg{} }}
 	case key.Matches(msg, keys.Cancel):
 		return s.handleEsc(ctx)
 	case key.Matches(msg, keys.Submit), msg.String() == "enter":

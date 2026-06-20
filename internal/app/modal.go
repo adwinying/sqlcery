@@ -57,12 +57,28 @@ type modalResultForward struct {
 	cmd tea.Cmd
 }
 
+// modalResultRunHelpRow closes the Keybindings Modal and emits an intent
+// message derived from the selected Help Row's key. msgFn may be nil for
+// display-only rows, in which case only the modal is closed.
+type modalResultRunHelpRow struct {
+	msgFn func() tea.Msg
+}
+
+// modalResultOpenWizardFor closes the Keybindings Modal and opens the Slash
+// Command Wizard pre-seeded to the target-selection step for the named command.
+type modalResultOpenWizardFor struct {
+	commandName string
+	status      string
+}
+
 func (modalResultNone) isModalResult()           {}
 func (modalResultPendingStatus) isModalResult()  {}
 func (modalResultReady) isModalResult()          {}
 func (modalResultRestoreHistory) isModalResult() {}
 func (modalResultExecute) isModalResult()        {}
 func (modalResultForward) isModalResult()        {}
+func (modalResultRunHelpRow) isModalResult()     {}
+func (modalResultOpenWizardFor) isModalResult()  {}
 
 // Modal is the interface implemented by every overlay dialog.
 // When m.modal is non-nil, Update routes all key events to it — no
@@ -147,6 +163,16 @@ func (m *Model) applyModalResult(result ModalResult) tea.Cmd {
 		return m.startExecution(r.label, r.status, r.execute)
 	case modalResultForward:
 		return r.cmd
+	case modalResultRunHelpRow:
+		m.closeModal()
+		if r.msgFn == nil {
+			m.state.SetReady("Closed keybindings.")
+			return nil
+		}
+		return func() tea.Msg { return r.msgFn() }
+	case modalResultOpenWizardFor:
+		m.closeModal()
+		return m.pushWizardForCommand(r.commandName, r.status)
 	}
 	return nil
 }

@@ -486,7 +486,7 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext, hScrollOffset *
 		return ""
 	}
 
-	lines := []string{tui.AppTheme.PanelTitle.Render("Command wizard:")}
+	lines := []string{tui.AppTheme.PanelTitle.Render("Slash command wizard:")}
 	switch wizard.Step {
 	case SlashCommandWizardStepColumn:
 		selectedCommand, _ := slashWizardCommandByIndex(wizard)

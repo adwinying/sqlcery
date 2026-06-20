@@ -53,11 +53,6 @@ type slashCommandRegistry struct {
 	byName  map[string]slashCommandSpec
 }
 
-type helpSection struct {
-	Title string
-	Lines []string
-}
-
 var defaultSlashCommandRegistry = newSlashCommandRegistry()
 
 func slashCommandSpecs() []slashCommandSpec {
@@ -221,14 +216,6 @@ func dispatchSlashCommand(ctx context.Context, command slashCommandContext, pars
 	}
 
 	return result, nil
-}
-
-func slashCommandHelpLines() []string {
-	lines := make([]string, 0, len(defaultSlashCommandRegistry.ordered))
-	for _, spec := range defaultSlashCommandRegistry.ordered {
-		lines = append(lines, fmt.Sprintf("%s - %s (%s)", "/"+spec.Name, spec.Summary, spec.Usage))
-	}
-	return lines
 }
 
 func handleSlashCommands(_ context.Context, _ slashCommandContext, parsed slashCommand) (slashCommandResult, error) {

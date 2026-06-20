@@ -2384,24 +2384,37 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 	if got, want := model.state.Status, "Opened keybindings."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
-	view := renderKeybindingsContent(model.state.Interaction)
+
+	// Command pane context: global rows + command rows + slash command rows.
+	// Results pane rows must NOT appear in command pane context.
+	rows := buildHelpRows(PaneCommand, ModalNone)
+	displays := make([]string, len(rows))
+	for i, r := range rows {
+		displays[i] = r.display
+	}
+	combined := strings.Join(displays, "\n")
 	for _, want := range []string{
-		"Help:",
 		"ctrl+e toggle keybindings",
-		"Command mode:",
+		"ctrl+c quit",
 		"enter submit SQL or slash command",
-		"Results Pane:",
-		"yy/cc/dd load INSERT/UPDATE/DELETE into command mode",
-		"Slash commands:",
-		"/help lists slash commands; /commands opens the guided wizard",
-		"/select - compose a SELECT statement (/select <table>)",
+		"ctrl+r open history search",
+		"/select - compose a SELECT statement",
+		"/tables - list tables in the current database",
 	} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("renderKeybindingsContent() = %q, want to contain %q", view, want)
+		if !strings.Contains(combined, want) {
+			t.Fatalf("buildHelpRows(PaneCommand) missing %q\ngot:\n%s", want, combined)
+		}
+	}
+	for _, absent := range []string{
+		"yy load INSERT",
+		"cc load UPDATE",
+	} {
+		if strings.Contains(combined, absent) {
+			t.Fatalf("buildHelpRows(PaneCommand) should not contain results-pane row %q", absent)
 		}
 	}
 
-	// Second ctrl+e is handled directly by the helpModal; no cmd returned.
+	// Second ctrl+e closes the modal.
 	next, _ = model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 	model = next.(Model)
 	if model.currentModal() != nil && model.currentModal().Name() == ModalKeybindings {
@@ -2413,36 +2426,30 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 }
 
 func TestModelToggleHelpShowsSplitAndWizardSpecificGuidance(t *testing.T) {
-	model := NewModel(Session{})
-	model.state.SetReady("")
-	model.state.SetLayout(LayoutSplit)
-	model.state.SetActivePane(PaneResults)
-	model.pushModal(&slashWizardModal{wizard: SlashCommandWizardContext{
-		Step: SlashCommandWizardStepTarget,
-		Commands: []SlashCommandWizardCommand{{
-			Name:        "select",
-			DisplayName: "/select",
-			Summary:     "compose a SELECT statement",
-			Usage:       "/select <table>",
-			NeedsTarget: true,
-		}},
-		Targets: []SlashCommandWizardTarget{{Value: "widgets", Display: "widgets"}},
-	}})
-	// Simulate opening the keybindings modal on top of the wizard.
-	model.pushModal(&helpModal{contextModal: model.state.Interaction.ActiveModal})
-
-	view := renderKeybindingsContent(InteractionState{
-		Layout:      LayoutSplit,
-		ActivePane:  PaneResults,
-		ActiveModal: ModalSlashWizard,
-	})
+	// Slash wizard context: wizard-specific rows only (+ global). No slash commands.
+	rows := buildHelpRows(PaneResults, ModalSlashWizard)
+	displays := make([]string, len(rows))
+	for i, r := range rows {
+		displays[i] = r.display
+	}
+	combined := strings.Join(displays, "\n")
 	for _, want := range []string{
-		"slash wizard: enter confirm; ctrl+n/ctrl+p move; esc back or close",
-		"Results Pane [active]",
-		"Command line",
+		"ctrl+e toggle keybindings",
+		"enter confirm selection",
+		"ctrl+n next item",
+		"esc back or close",
 	} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("renderKeybindingsContent() = %q, want to contain %q", view, want)
+		if !strings.Contains(combined, want) {
+			t.Fatalf("buildHelpRows(PaneResults, ModalSlashWizard) missing %q\ngot:\n%s", want, combined)
+		}
+	}
+	for _, absent := range []string{
+		"/select",
+		"enter submit SQL",
+		"yy load INSERT",
+	} {
+		if strings.Contains(combined, absent) {
+			t.Fatalf("buildHelpRows wizard context should not contain %q", absent)
 		}
 	}
 }
@@ -2462,20 +2469,38 @@ func TestModelToggleHelpShowsHistorySearchGuidance(t *testing.T) {
 	next, _ = model.Update(cmd())
 	model = next.(Model)
 
-	// helpModal captures the context modal (ModalHistorySearch) so Render
-	// shows history-search-specific sections even though ModalKeybindings is on top.
+	// helpModal captures contextModal = ModalHistorySearch at push time.
 	hm, _ := model.currentModal().(*helpModal)
 	if hm == nil {
 		t.Fatal("currentModal() is not *helpModal")
 	}
-	view := renderKeybindingsContent(InteractionState{ActiveModal: hm.contextModal})
+	if hm.contextModal != ModalHistorySearch {
+		t.Fatalf("helpModal.contextModal = %q, want %q", hm.contextModal, ModalHistorySearch)
+	}
+
+	// History search context: history-specific rows + global. No slash commands.
+	rows := buildHelpRows(hm.contextPane, hm.contextModal)
+	displays := make([]string, len(rows))
+	for i, r := range rows {
+		displays[i] = r.display
+	}
+	combined := strings.Join(displays, "\n")
 	for _, want := range []string{
-		"History search:",
-		"type to filter recent commands; enter restore selected entry",
-		"ctrl+r or up select older match; ctrl+n or down select newer match",
+		"ctrl+e toggle keybindings",
+		"enter restore selected entry",
+		"ctrl+r or up select older match",
+		"esc close history search",
 	} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("renderKeybindingsContent() = %q, want to contain %q", view, want)
+		if !strings.Contains(combined, want) {
+			t.Fatalf("buildHelpRows history context missing %q\ngot:\n%s", want, combined)
+		}
+	}
+	for _, absent := range []string{
+		"/select",
+		"enter submit SQL",
+	} {
+		if strings.Contains(combined, absent) {
+			t.Fatalf("buildHelpRows history context should not contain %q", absent)
 		}
 	}
 }
