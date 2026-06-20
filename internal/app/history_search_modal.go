@@ -20,7 +20,6 @@ const historySearchPreviewRows = tui.ModalFixedRows - 3 // 3 = title + query + m
 type historySearchModal struct {
 	filter        string
 	selectedIndex int
-	hScrollOffset int
 }
 
 func (h *historySearchModal) Name() AppModal { return ModalHistorySearch }
@@ -32,9 +31,9 @@ func (h *historySearchModal) FooterHints(interaction InteractionState) string {
 	case len(interaction.History) == 0:
 		return strings.Join([]string{"esc close", bindingSummary(keys.Help)}, " | ")
 	case len(matches) == 0:
-		return strings.Join([]string{"ctrl+r keep searching", "esc close", bindingSummary(keys.Help)}, " | ")
+		return strings.Join([]string{"esc close", bindingSummary(keys.Help)}, " | ")
 	default:
-		return strings.Join([]string{"enter restore", "ctrl+r older", "ctrl+n newer", "alt+← → scroll", "esc close", bindingSummary(keys.Help)}, " | ")
+		return strings.Join([]string{"enter restore", "ctrl+p older", "ctrl+n newer", "esc close", bindingSummary(keys.Help)}, " | ")
 	}
 }
 
@@ -50,16 +49,10 @@ func (h *historySearchModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) Mo
 		return h.restore(ctx)
 	case key.Matches(msg, keys.Cancel):
 		return modalResultPendingStatus{intent: IntentNone, action: "history", status: "Exited history search.", dismiss: true}
-	case key.Matches(msg, keys.History), key.Matches(msg, keys.NextSuggestion), msg.String() == "up":
+	case key.Matches(msg, keys.PrevSuggestion), msg.String() == "up":
 		return h.cycle(ctx, 1)
-	case key.Matches(msg, keys.PrevSuggestion), msg.String() == "down":
+	case key.Matches(msg, keys.NextSuggestion), msg.String() == "down":
 		return h.cycle(ctx, -1)
-	case msg.String() == "alt+right":
-		h.hScrollOffset += 8
-		return modalResultNone{}
-	case msg.String() == "alt+left":
-		h.hScrollOffset = max(0, h.hScrollOffset-8)
-		return modalResultNone{}
 	case msg.String() == "backspace" || msg.String() == "ctrl+h" || msg.String() == "delete":
 		return h.updateFilter(ctx, trimLastRune(h.filter))
 	case msg.String() == "space":
@@ -100,21 +93,63 @@ func (h *historySearchModal) Render(interaction InteractionState, innerWidth int
 	selected := wrapHistorySearchIndex(h.selectedIndex, len(matches))
 	lines = append(lines, tui.AppTheme.PanelMuted.Render(fmt.Sprintf("%d match(es); newest first.", len(matches))))
 
-	scrollOffset := max(0, selected-historySearchPreviewRows+1)
-	viewEnd := min(len(matches), scrollOffset+historySearchPreviewRows)
-	for i := scrollOffset; i < viewEnd; i++ {
-		display := historySearchDisplaySQL(matches[i].Statement)
-		var line string
-		if i == selected {
-			content := "> " + display
-			h.hScrollOffset = tui.ClampHScrollOffset(ansi.StringWidth(content), h.hScrollOffset, innerWidth)
-			line = tui.AppTheme.PanelSelected.Render(tui.ApplyHScroll(content, h.hScrollOffset, innerWidth))
-		} else {
-			line = tui.AppTheme.PanelText.Render("  " + display)
+	// contentW is the display columns available for SQL text after the 2-char prefix.
+	contentW := max(1, innerWidth-2)
+
+	// Build wrapped display rows for every entry. Each entry is capped at
+	// historySearchPreviewRows lines; if clipped, the last line ends with '…'.
+	type entryBlock struct {
+		lines    []string
+		rowStart int
+	}
+	blocks := make([]entryBlock, len(matches))
+	cumRow := 0
+	for i, m := range matches {
+		wrapped := wrapTextAt(historySearchDisplaySQL(m.Statement), contentW)
+		if len(wrapped) > historySearchPreviewRows {
+			wrapped = wrapped[:historySearchPreviewRows]
+			last := wrapped[len(wrapped)-1]
+			wrapped[len(wrapped)-1] = ansi.Truncate(last, contentW-1, "") + "…"
 		}
-		lines = append(lines, line)
+		blocks[i] = entryBlock{lines: wrapped, rowStart: cumRow}
+		cumRow += len(wrapped)
 	}
 
+	// Viewport: scroll just enough so the selected entry is at the bottom edge.
+	selBlock := blocks[selected]
+	selEnd := selBlock.rowStart + len(selBlock.lines)
+	vpStart := max(0, selEnd-historySearchPreviewRows)
+	vpEnd := vpStart + historySearchPreviewRows
+
+	displayLines := make([]string, 0, historySearchPreviewRows)
+	for i, block := range blocks {
+		if block.rowStart >= vpEnd {
+			break
+		}
+		for j, text := range block.lines {
+			rowIdx := block.rowStart + j
+			if rowIdx < vpStart {
+				continue
+			}
+			if rowIdx >= vpEnd {
+				break
+			}
+			isSelected := i == selected
+			prefix := "  "
+			if isSelected && j == 0 {
+				prefix = "> "
+			}
+			var rendered string
+			if isSelected {
+				rendered = tui.AppTheme.PanelSelected.Render(prefix + text)
+			} else {
+				rendered = tui.AppTheme.PanelText.Render(prefix + text)
+			}
+			displayLines = append(displayLines, rendered)
+		}
+	}
+
+	lines = append(lines, displayLines...)
 	return strings.Join(lines, "\n")
 }
 
@@ -136,14 +171,12 @@ func (h *historySearchModal) cycle(ctx ModalContext, delta int) ModalResult {
 		return modalResultPendingStatus{intent: IntentHistory, action: "history", status: h.status(ctx.Interaction)}
 	}
 	h.selectedIndex = wrapHistorySearchIndex(h.selectedIndex+delta, len(matches))
-	h.hScrollOffset = 0
 	return modalResultPendingStatus{intent: IntentHistory, action: "history", status: h.status(ctx.Interaction)}
 }
 
 func (h *historySearchModal) updateFilter(ctx ModalContext, filter string) ModalResult {
 	h.filter = filter
 	h.selectedIndex = 0
-	h.hScrollOffset = 0
 	return modalResultPendingStatus{intent: IntentHistory, action: "history", status: h.status(ctx.Interaction)}
 }
 
@@ -159,7 +192,7 @@ func (h *historySearchModal) status(interaction InteractionState) string {
 	return fmt.Sprintf("History search matched %d entries; selected %q.", len(matches), historySearchDisplaySQL(matches[idx].Statement))
 }
 
-// --- pure helpers (unchanged) ---
+// --- pure helpers ---
 
 func filterHistorySearchEntries(entries []HistoryEntryContext, filter string) []HistoryEntryContext {
 	matches := rankHistorySearchEntries(entries, filter)
@@ -282,4 +315,21 @@ func defaultHistorySearchQuery(value string) string {
 
 func historySearchDisplaySQL(sql string) string {
 	return strings.Join(strings.Fields(sql), " ")
+}
+
+// wrapTextAt breaks s into lines of at most width display columns at rune boundaries.
+func wrapTextAt(s string, width int) []string {
+	if width <= 0 || s == "" {
+		return []string{s}
+	}
+	var lines []string
+	for {
+		w := ansi.StringWidth(s)
+		if w <= width {
+			lines = append(lines, s)
+			return lines
+		}
+		lines = append(lines, ansi.Cut(s, 0, width))
+		s = ansi.Cut(s, width, w)
+	}
 }

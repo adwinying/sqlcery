@@ -284,7 +284,7 @@ func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 		}
 	}
 	hints := h.FooterHints(interaction)
-	for _, want := range []string{"enter restore", "ctrl+r older", "ctrl+n newer", "esc close", "ctrl+e keybindings"} {
+	for _, want := range []string{"enter restore", "ctrl+p older", "ctrl+n newer", "esc close", "ctrl+e keybindings"} {
 		if !strings.Contains(hints, want) {
 			t.Fatalf("historySearchModal.FooterHints() = %q, want to contain %q", hints, want)
 		}

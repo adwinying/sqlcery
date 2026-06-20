@@ -1112,7 +1112,7 @@ func TestModelUpdateHistorySearchFiltersAndCyclesEntries(t *testing.T) {
 		t.Fatalf("selected history entry = %q, want %q", got, want)
 	}
 
-	next, _ = model.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	next, _ = model.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl})
 	model = next.(Model)
 	h, _ = model.currentModal().(*historySearchModal)
 
