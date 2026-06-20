@@ -49,6 +49,36 @@ type submitIntentMsg struct{}
 
 type cancelRunningIntentMsg struct{}
 
+type notificationClearMsg struct {
+	createdAt time.Time
+}
+
+func notificationClearCmd(createdAt time.Time) tea.Cmd {
+	return tea.Tick(3*time.Second, func(time.Time) tea.Msg {
+		return notificationClearMsg{createdAt: createdAt}
+	})
+}
+
+// notificationClearCmdIfSet returns a 3-second clear timer if the current
+// notification is non-empty. Call after any SetReady/SetPendingIntent call.
+func (m Model) notificationClearCmdIfSet() tea.Cmd {
+	if m.state.Notification.Text == "" {
+		return nil
+	}
+	return notificationClearCmd(m.state.Notification.CreatedAt)
+}
+
+// newNotificationClearCmdIfChanged returns a clear cmd only when the
+// notification was replaced since prevCreatedAt. Use this at bool-handler
+// call sites where the notification is set inside the handler.
+func (m Model) newNotificationClearCmdIfChanged(prevCreatedAt time.Time) tea.Cmd {
+	n := m.state.Notification
+	if n.Text == "" || n.CreatedAt == prevCreatedAt {
+		return nil
+	}
+	return notificationClearCmd(n.CreatedAt)
+}
+
 type historyIntentMsg struct{}
 
 type toggleHelpIntentMsg struct{}
@@ -159,15 +189,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case toggleHelpIntentMsg:
 		if m.currentModal() != nil && m.currentModal().Name() == ModalKeybindings {
 			m.popModal()
-			m.state.SetPendingIntent(IntentNone, "help", "Closed keybindings.")
+			m.state.SetPendingIntent(IntentNone, "help", "", NotificationNone)
 		} else {
 			m.pushModal(&helpModal{
 				contextModal: m.state.Interaction.ActiveModal,
 				contextPane:  m.state.Interaction.ActivePane,
 			})
-			m.state.SetPendingIntent(IntentNone, "help", "Opened keybindings.")
+			m.state.SetPendingIntent(IntentNone, "help", "", NotificationNone)
 		}
-		return m, nil
+		return m, m.notificationClearCmdIfSet()
 	case composeResultsPaneIntentMsg:
 		m.resultsPane.pendingAction = resultsPanePendingActionNone
 		switch msg.action {
@@ -183,19 +213,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.closeModal()
 		m.command.Clear()
 		m.syncCurrentSQL()
-		m.state.SetReady("")
-		m.state.SetPendingIntent(IntentClearCommandPane, "clear", "Cleared current input.")
-		return m, nil
+		m.state.SetReady("", NotificationNone)
+		m.state.SetPendingIntent(IntentClearCommandPane, "clear", "", NotificationNone)
+		return m, m.notificationClearCmdIfSet()
 	case historyIntentMsg:
 		m.syncCurrentSQL()
-		m.state.SetReady("")
+		m.state.SetReady("", NotificationNone)
 		if !layoutShowsCommand(m.state.Interaction.Layout) {
 			m.state.SetLayout(LayoutSplit)
 		}
 		h := &historySearchModal{}
 		m.pushModal(h)
-		m.state.SetPendingIntent(IntentHistory, "history", h.status(m.state.Interaction))
-		return m, nil
+		m.state.SetPendingIntent(IntentHistory, "history", "", NotificationNone)
+		return m, m.notificationClearCmdIfSet()
 	case switchPaneIntentMsg:
 		m.syncCurrentSQL()
 		switchContext := buildPaneSwitchContext(m.state.Interaction.Layout, nextLayoutForModeIntent(m.state.Interaction.Layout, m.state.Interaction.ActivePane), m.state.Interaction.ActivePane, nextModeForIntent(m.state.Interaction.ActivePane), m.state.Interaction.LatestResult)
@@ -218,7 +248,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncPaneSizes()
 		return m, nil
 	case startupCompleteMsg:
-		m.state.SetReady("")
+		m.state.SetReady("", NotificationNone)
 		return m, tea.Batch(m.command.Init(), m.refreshAutocompleteSchemaCmd())
 	case autocompleteSchemaLoadedMsg:
 		if msg.Err == nil {
@@ -237,6 +267,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.state.SetRunningStatementContext(nil)
 		m.state.SetError(message, msg.Status)
+		return m, nil
+	case notificationClearMsg:
+		if m.state.Notification.CreatedAt.Equal(msg.createdAt) {
+			m.state.Notification = Notification{}
+		}
 		return m, nil
 	case runningTickMsg:
 		running := m.state.Interaction.Running
@@ -294,17 +329,18 @@ func (m Model) handleKeyPressMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.handleResultsPaneNavigationKey(msg) {
 		return m, nil
 	}
+	prevCreatedAt := m.state.Notification.CreatedAt
 	if m.handleResultsPaneExportKey(msg) {
-		return m, nil
+		return m, m.newNotificationClearCmdIfChanged(prevCreatedAt)
 	}
 	if m.handleResultsPaneSelectionKey(msg) {
-		return m, nil
+		return m, m.newNotificationClearCmdIfChanged(prevCreatedAt)
 	}
 	if m.handleResultsPaneComposeKey(msg) {
-		return m, nil
+		return m, m.newNotificationClearCmdIfChanged(prevCreatedAt)
 	}
 	if m.handleResultsPanePagingKey(msg) {
-		return m, nil
+		return m, m.newNotificationClearCmdIfChanged(prevCreatedAt)
 	}
 	if cmd := m.handleKey(msg); cmd != nil {
 		return m, cmd
@@ -320,8 +356,8 @@ func (m Model) handleKeyPressMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		m.pendingQuit = true
-		m.state.SetPendingIntent(IntentNone, "quit", "Press ctrl+c again to exit.")
-		return m, nil
+		m.state.SetPendingIntent(IntentNone, "quit", "Press ctrl+c again to exit.", NotificationInfo)
+		return m, m.notificationClearCmdIfSet()
 	case "q":
 		if !m.command.Focused() {
 			return m, tea.Quit
@@ -340,27 +376,27 @@ func (m Model) handleKeyPressMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleSubmitIntent() (tea.Model, tea.Cmd) {
 	if running := m.state.Interaction.Running; running != nil {
-		m.state.SetPendingIntent(IntentSubmit, "submit", fmt.Sprintf("%s is still running. Press esc to cancel; timeout after %s.", runningLabel(running), formatExecutionTimeout(defaultInteractiveExecutionTimeout)))
-		return m, nil
+		m.state.SetPendingIntent(IntentSubmit, "submit", fmt.Sprintf("%s is still running. Press esc to cancel; timeout after %s.", runningLabel(running), formatExecutionTimeout(defaultInteractiveExecutionTimeout)), NotificationInfo)
+		return m, m.notificationClearCmdIfSet()
 	}
 
 	m.syncCurrentSQL()
 	submittedSQL := m.state.Interaction.CurrentSQL
 	if strings.TrimSpace(submittedSQL) == "" {
 		m.state.SetRunningStatementContext(nil)
-		m.state.SetReady("")
-		m.state.SetPendingIntent(IntentSubmit, "submit", "Submit requested with empty input.")
-		return m, nil
+		m.state.SetReady("", NotificationNone)
+		m.state.SetPendingIntent(IntentSubmit, "submit", "Submit requested with empty input.", NotificationInfo)
+		return m, m.notificationClearCmdIfSet()
 	}
 
 	parsedSlash, err := parseSlashCommand(submittedSQL)
 	if err != nil {
 		m.state.SetRunningStatementContext(nil)
-		m.state.SetReady("")
-		m.state.SetPendingIntent(IntentNone, "submit", fmt.Sprintf("Slash command parse failed: %v", err))
+		m.state.SetReady("", NotificationNone)
+		m.state.SetPendingIntent(IntentNone, "submit", fmt.Sprintf("Slash command parse failed: %v", err), NotificationError)
 		m.state.SetLatestResultContext(nil)
 		m.state.SetPendingPaneSwitch(nil)
-		return m, nil
+		return m, m.notificationClearCmdIfSet()
 	}
 	if parsedSlash != nil {
 		if spec, ok := defaultSlashCommandRegistry.byName[parsedSlash.Name]; ok && spec.NeedsTarget && len(parsedSlash.Args) == 0 {
@@ -369,7 +405,7 @@ func (m Model) handleSubmitIntent() (tea.Model, tea.Cmd) {
 		if parsedSlash.Name == "commands" {
 			return m.openCommandWizard()
 		}
-		return m, m.startExecution(parsedSlash.DisplayName, fmt.Sprintf("Dispatching %s.", parsedSlash.DisplayName), executeSlashCommandCmd(slashCommandContext{
+		return m, m.startExecution(parsedSlash.DisplayName, fmt.Sprintf("Dispatching %s.", parsedSlash.DisplayName), NotificationInfo, executeSlashCommandCmd(slashCommandContext{
 			Session: m.session,
 			Dialect: m.adapterDialect(),
 			Query:   m.state.Interaction.snapshot(),
@@ -378,12 +414,12 @@ func (m Model) handleSubmitIntent() (tea.Model, tea.Cmd) {
 
 	if !isCompleteSQLStatement(submittedSQL) {
 		m.state.SetRunningStatementContext(nil)
-		m.state.SetPendingIntent(IntentNone, "submit", "SQL is incomplete. End the statement with ';' to run it.")
-		return m, nil
+		m.state.SetPendingIntent(IntentNone, "submit", "SQL is incomplete. End the statement with ';' to run it.", NotificationInfo)
+		return m, m.notificationClearCmdIfSet()
 	}
 
 	m.state.SetLastSubmittedSQL(submittedSQL)
-	return m, m.startExecution("SQL", fmt.Sprintf("Executing %d characters of SQL.", len(submittedSQL)), executeStatementCmd(m.session.Adapter, submittedSQL))
+	return m, m.startExecution("SQL", fmt.Sprintf("Executing %d characters of SQL.", len(submittedSQL)), NotificationInfo, executeStatementCmd(m.session.Adapter, submittedSQL))
 }
 
 func (m Model) handleCancelRunningIntent() (tea.Model, tea.Cmd) {
@@ -391,9 +427,9 @@ func (m Model) handleCancelRunningIntent() (tea.Model, tea.Cmd) {
 		if m.executionCancel != nil {
 			m.executionCancel()
 		}
-		m.state.SetPendingIntent(IntentSubmit, "submit", fmt.Sprintf("Cancelling %s...", runningLabel(running)))
+		m.state.SetPendingIntent(IntentSubmit, "submit", fmt.Sprintf("Cancelling %s...", runningLabel(running)), NotificationInfo)
 	}
-	return m, nil
+	return m, m.notificationClearCmdIfSet()
 }
 
 func (m Model) handleStatementExecuted(msg statementExecutedMsg) (tea.Model, tea.Cmd) {
@@ -408,19 +444,19 @@ func (m Model) handleStatementExecuted(msg statementExecutedMsg) (tea.Model, tea
 		m.command.AppendReplEntry("> ", msg.Statement, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
 		m.command.Clear()
 		if status, ok := executionInterruptedStatus(running, msg.Err); ok {
-			m.state.SetReady(withHistoryWarning(status, historyErr))
+			m.state.SetReady(withHistoryWarning(status, historyErr), historyNotificationLevel(NotificationInfo, historyErr))
 			m.state.SetLatestResultContext(nil)
-			return m, nil
+			return m, m.notificationClearCmdIfSet()
 		}
-		m.state.SetReady(withHistoryWarning(formatOperationFailure("Execution failed.", msg.Err), historyErr))
+		m.state.SetReady(withHistoryWarning(formatOperationFailure("Execution failed.", msg.Err), historyErr), NotificationError)
 		m.state.SetLatestResultContext(nil)
-		return m, nil
+		return m, m.notificationClearCmdIfSet()
 	}
 	m.command.AppendReplEntry("> ", msg.Statement, "OK: "+formatReplStatementOutput(msg.Result, nil))
 	m.command.Clear()
-	m.state.SetReady(withHistoryWarning(describeStatementStatus(msg.Result), historyErr))
+	m.state.SetReady(withHistoryWarning(describeStatementStatus(msg.Result), historyErr), historyNotificationLevel(NotificationSuccess, historyErr))
 	m.state.SetLatestResultContext(buildLatestResultContext(msg.Statement, m.resultOriginPane(), msg.Result))
-	return m, nil
+	return m, m.notificationClearCmdIfSet()
 }
 
 func (m Model) handleSlashCommandExecuted(msg slashCommandExecutedMsg) (tea.Model, tea.Cmd) {
@@ -441,13 +477,13 @@ func (m Model) handleSlashCommandExecuted(msg slashCommandExecutedMsg) (tea.Mode
 		m.command.AppendReplEntry("> ", msg.Command.RawInput, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
 		m.command.Clear()
 		if status, ok := executionInterruptedStatus(running, msg.Err); ok {
-			m.state.SetReady(withHistoryWarning(status, historyErr))
+			m.state.SetReady(withHistoryWarning(status, historyErr), historyNotificationLevel(NotificationInfo, historyErr))
 			m.state.SetLatestResultContext(nil)
-			return m, nil
+			return m, m.notificationClearCmdIfSet()
 		}
-		m.state.SetReady(withHistoryWarning(formatOperationFailure(msg.Command.DisplayName+" failed", msg.Err), historyErr))
+		m.state.SetReady(withHistoryWarning(formatOperationFailure(msg.Command.DisplayName+" failed", msg.Err), historyErr), NotificationError)
 		m.state.SetLatestResultContext(nil)
-		return m, nil
+		return m, m.notificationClearCmdIfSet()
 	}
 
 	if msg.Result.Wizard != nil {
@@ -469,17 +505,16 @@ func (m Model) handleSlashCommandExecuted(msg slashCommandExecutedMsg) (tea.Mode
 		m.state.SetLatestResultContext(nil)
 	}
 
-	m.state.SetReady(withHistoryWarning(defaultStatus(msg.Result.Status, fmt.Sprintf("%s completed.", msg.Command.DisplayName)), historyErr))
-	return m, nil
+	m.state.SetReady(withHistoryWarning(defaultStatus(msg.Result.Status, fmt.Sprintf("%s completed.", msg.Command.DisplayName)), historyErr), historyNotificationLevel(NotificationSuccess, historyErr))
+	return m, m.notificationClearCmdIfSet()
 }
 
 func (m Model) View() tea.View {
-	// Status bar always occupies the last two lines
+	// Status bar occupies the last line
 	statusBar := m.statusBarView()
-	statusDesc := m.statusDescriptionView()
 
 	// Content area above the status bar
-	contentHeight := m.height - 2
+	contentHeight := m.height - 1
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
@@ -490,13 +525,13 @@ func (m Model) View() tea.View {
 		content = strings.Join([]string{
 			tui.AppTheme.PanelTitle.Render("[ startup ]"),
 			tui.AppTheme.PanelText.Render("Preparing command mode..."),
-			tui.AppTheme.PanelMuted.Render(m.state.Status),
+			tui.AppTheme.PanelMuted.Render(m.state.Notification.Text),
 		}, "\n")
 	case StateReconnect:
 		lines := []string{
 			tui.AppTheme.PanelTitle.Render("[ reconnect ]"),
 			tui.AppTheme.PanelText.Render("Connection recovery in progress."),
-			tui.AppTheme.PanelMuted.Render(m.state.Status),
+			tui.AppTheme.PanelMuted.Render(m.state.Notification.Text),
 		}
 		if reconnect := m.state.App.Reconnect; reconnect != nil {
 			if reconnect.Attempt > 0 {
@@ -513,7 +548,7 @@ func (m Model) View() tea.View {
 	case StateError:
 		lines := []string{
 			tui.AppTheme.ErrorNotice.Render("[ error ]"),
-			tui.AppTheme.PanelText.Render(m.state.Status),
+			tui.AppTheme.PanelText.Render(m.state.Notification.Text),
 		}
 		if appError := strings.TrimSpace(m.state.App.Error); appError != "" {
 			lines = append(lines, tui.AppTheme.ErrorNotice.Render(appError))
@@ -525,7 +560,7 @@ func (m Model) View() tea.View {
 		content = m.readyStateView(contentHeight)
 	}
 
-	v := tea.NewView(content + "\n" + statusBar + "\n" + statusDesc)
+	v := tea.NewView(content + "\n" + statusBar)
 	v.KeyboardEnhancements.ReportAllKeysAsEscapeCodes = true
 	return v
 }
@@ -534,7 +569,7 @@ func (m Model) View() tea.View {
 func (m *Model) syncPaneSizes() {
 	w := m.width
 	h := m.height
-	statusBarHeight := 2
+	statusBarHeight := 1
 	contentHeight := h - statusBarHeight
 	if contentHeight < 2 {
 		contentHeight = 2
@@ -678,56 +713,75 @@ func (m Model) readyStateView(totalHeight int) string {
 
 func (m Model) statusBarView() string {
 	interaction := m.state.Interaction
-	var parts []string
 
-	// Running indicator
+	// Left: notification slot — running indicator takes priority over timed notification
+	var notification string
 	if running := interaction.Running; running != nil {
-		parts = append(parts, formatRunningIndicator(running))
-	}
-
-	// Connection name
-	if name := strings.TrimSpace(m.session.ConnectionName); name != "" {
-		if color := strings.TrimSpace(m.session.ConnectionColor); color != "" {
-			name = lipgloss.NewStyle().Foreground(tui.ResolveColor(color)).Render(name)
+		notification = formatRunningIndicator(running)
+	} else if n := m.state.Notification; n.Text != "" {
+		switch n.Level {
+		case NotificationSuccess:
+			notification = tui.AppTheme.NotificationSuccess.Render(n.Text)
+		case NotificationInfo:
+			notification = tui.AppTheme.NotificationInfo.Render(n.Text)
+		case NotificationError:
+			notification = tui.AppTheme.NotificationError.Render(n.Text)
+		default:
+			notification = n.Text
 		}
-		parts = append(parts, name)
 	}
 
-	// Keybind hints
+	// Middle: keybind hints
+	var hints string
 	if m.state.App.Current == StateReady {
 		if modal := m.currentModal(); modal != nil {
-			parts = append(parts, modal.FooterHints(interaction))
+			hints = modal.FooterHints(interaction)
 		} else if interaction.ActivePane == PaneResults && interaction.Layout != LayoutCommandOnly {
-			parts = append(parts, m.resultsPane.FooterHints(interaction))
+			hints = m.resultsPane.FooterHints(interaction)
 		} else {
-			parts = append(parts, m.command.FooterHints(interaction))
+			hints = m.command.FooterHints(interaction)
 		}
 	} else {
-		parts = append(parts, "ctrl+c quit")
+		hints = "ctrl+c quit"
 	}
 
-	bar := strings.Join(parts, " | ")
+	// Right: connection name (coloured if configured)
+	var connectionName string
+	if name := strings.TrimSpace(m.session.ConnectionName); name != "" {
+		if color := strings.TrimSpace(m.session.ConnectionColor); color != "" {
+			connectionName = lipgloss.NewStyle().Foreground(tui.ResolveColor(color)).Render(name)
+		} else {
+			connectionName = name
+		}
+	}
 
-	// Pad/truncate to terminal width
+	// Compose: [notification |] hints <spacer> connection
+	left := hints
+	if notification != "" {
+		left = notification + " | " + hints
+	}
+
+	var bar string
+	if connectionName != "" && m.width > 0 {
+		leftWidth := ansi.StringWidth(left)
+		connWidth := ansi.StringWidth(connectionName)
+		spacer := m.width - leftWidth - connWidth
+		if spacer > 0 {
+			bar = left + strings.Repeat(" ", spacer) + connectionName
+		} else {
+			bar = left
+		}
+	} else if connectionName != "" {
+		bar = left + " | " + connectionName
+	} else {
+		bar = left
+	}
+
 	if m.width > 0 {
 		bar = padOrTruncate(bar, m.width)
 	}
 
 	return tui.AppTheme.Footer.Render(bar)
-}
-
-func (m Model) statusDescriptionView() string {
-	status := strings.TrimSpace(m.state.Status)
-	if status == "" {
-		status = " "
-	}
-
-	line := status
-	if m.width > 0 {
-		line = padOrTruncate(line, m.width)
-	}
-
-	return tui.AppTheme.MetaLine.Render(line)
 }
 
 func padOrTruncate(s string, width int) string {
@@ -805,7 +859,7 @@ func (m *Model) handleResultsPanePagingKey(msg tea.KeyPressMsg) bool {
 
 	latest := m.state.Interaction.LatestResult
 	if latest == nil || latest.PreservedResult == nil {
-		m.state.SetPendingIntent(IntentNone, "results-pane-page", "Results Pane has no rows to page.")
+		m.state.SetPendingIntent(IntentNone, "results-pane-page", "Results Pane has no rows to page.", NotificationInfo)
 		return true
 	}
 
@@ -843,14 +897,14 @@ func (m *Model) handleResultsPanePagingKey(msg tea.KeyPressMsg) bool {
 	page := tui.ResultsPanePageContextFor(m.state.Interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
 	if m.state.Interaction.ResultsPanePage == previous {
 		if previous == 0 {
-			m.state.SetPendingIntent(IntentNone, "results-pane-page", fmt.Sprintf("Already at the first Results Pane page (%s).", tui.ResultsPaneFormatRowRange(page)))
+			m.state.SetPendingIntent(IntentNone, "results-pane-page", fmt.Sprintf("Already at the first Results Pane page (%s).", tui.ResultsPaneFormatRowRange(page)), NotificationInfo)
 			return true
 		}
-		m.state.SetPendingIntent(IntentNone, "results-pane-page", fmt.Sprintf("Already at the last Results Pane page (%s).", tui.ResultsPaneFormatRowRange(page)))
+		m.state.SetPendingIntent(IntentNone, "results-pane-page", fmt.Sprintf("Already at the last Results Pane page (%s).", tui.ResultsPaneFormatRowRange(page)), NotificationInfo)
 		return true
 	}
 
-	m.state.SetPendingIntent(IntentNone, "results-pane-page", fmt.Sprintf("Showing Results Pane page %d/%d (%s).", page.Number, page.TotalPages, tui.ResultsPaneFormatRowRange(page)))
+	m.state.SetPendingIntent(IntentNone, "results-pane-page", fmt.Sprintf("Showing Results Pane page %d/%d (%s).", page.Number, page.TotalPages, tui.ResultsPaneFormatRowRange(page)), NotificationSuccess)
 	return true
 }
 
@@ -882,17 +936,17 @@ func (m *Model) handleResultsPaneSelectionKey(msg tea.KeyPressMsg) bool {
 
 	row, newMarked, selected, handled := m.resultsPane.ToggleSelectedRow(m.state.Interaction)
 	if !handled {
-		m.state.SetPendingIntent(IntentNone, "results-pane-select", "Results Pane has no rows to select.")
+		m.state.SetPendingIntent(IntentNone, "results-pane-select", "Results Pane has no rows to select.", NotificationInfo)
 		return true
 	}
 
 	m.state.SetMarkedRows(newMarked)
 	if selected {
-		m.state.SetPendingIntent(IntentNone, "results-pane-select", fmt.Sprintf("Selected row %d (%d total).", row+1, len(m.state.Interaction.MarkedRows)))
+		m.state.SetPendingIntent(IntentNone, "results-pane-select", fmt.Sprintf("Selected row %d (%d total).", row+1, len(m.state.Interaction.MarkedRows)), NotificationSuccess)
 		return true
 	}
 
-	m.state.SetPendingIntent(IntentNone, "results-pane-select", fmt.Sprintf("Unselected row %d (%d total).", row+1, len(m.state.Interaction.MarkedRows)))
+	m.state.SetPendingIntent(IntentNone, "results-pane-select", fmt.Sprintf("Unselected row %d (%d total).", row+1, len(m.state.Interaction.MarkedRows)), NotificationSuccess)
 	return true
 }
 
@@ -911,7 +965,7 @@ func (m *Model) handleResultsPaneComposeKey(msg tea.KeyPressMsg) bool {
 	case 'y':
 		if m.resultsPane.pendingAction != resultsPanePendingActionComposeInsert {
 			m.resultsPane.pendingAction = resultsPanePendingActionComposeInsert
-			m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Press y again to load INSERT for the selected row into command mode.")
+			m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Press y again to load INSERT for the selected row into command mode.", NotificationInfo)
 			return true
 		}
 		m.resultsPane.pendingAction = resultsPanePendingActionNone
@@ -926,7 +980,7 @@ func (m *Model) handleResultsPaneComposeKey(msg tea.KeyPressMsg) bool {
 	case 'd':
 		if m.resultsPane.pendingAction != resultsPanePendingActionComposeDelete {
 			m.resultsPane.pendingAction = resultsPanePendingActionComposeDelete
-			m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Press d again to load DELETE for the selected row into command mode.")
+			m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Press d again to load DELETE for the selected row into command mode.", NotificationInfo)
 			return true
 		}
 		m.resultsPane.pendingAction = resultsPanePendingActionNone
@@ -939,13 +993,13 @@ func (m *Model) handleResultsPaneComposeKey(msg tea.KeyPressMsg) bool {
 
 func (m *Model) composeResultsPaneInsert() bool {
 	if m.state.Interaction.LatestResult == nil || m.state.Interaction.LatestResult.PreservedResult == nil {
-		m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Results Pane has no rows to compose.")
+		m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Results Pane has no rows to compose.", NotificationInfo)
 		return true
 	}
 
 	result, err := composeResultsPaneInsertSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
 	if err != nil {
-		m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose INSERT: %v", err))
+		m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose INSERT: %v", err), NotificationError)
 		return true
 	}
 
@@ -956,20 +1010,20 @@ func (m *Model) composeResultsPaneInsert() bool {
 	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, PaneResults))
 	m.state.SetActivePane(PaneCommand)
 	m.state.SetPendingPaneSwitch(nil)
-	m.state.SetPendingIntent(IntentNone, "results-pane-compose", resultsPaneComposeStatus(result))
+	m.state.SetPendingIntent(IntentNone, "results-pane-compose", resultsPaneComposeStatus(result), NotificationSuccess)
 	m.syncPaneSizes()
 	return true
 }
 
 func (m *Model) composeResultsPaneUpdate() bool {
 	if m.state.Interaction.LatestResult == nil || m.state.Interaction.LatestResult.PreservedResult == nil {
-		m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Results Pane has no rows to compose.")
+		m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Results Pane has no rows to compose.", NotificationInfo)
 		return true
 	}
 
 	result, err := composeResultsPaneUpdateSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
 	if err != nil {
-		m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose UPDATE: %v", err))
+		m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose UPDATE: %v", err), NotificationError)
 		return true
 	}
 
@@ -980,20 +1034,20 @@ func (m *Model) composeResultsPaneUpdate() bool {
 	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, PaneResults))
 	m.state.SetActivePane(PaneCommand)
 	m.state.SetPendingPaneSwitch(nil)
-	m.state.SetPendingIntent(IntentNone, "results-pane-compose", resultsPaneComposeStatus(result))
+	m.state.SetPendingIntent(IntentNone, "results-pane-compose", resultsPaneComposeStatus(result), NotificationSuccess)
 	m.syncPaneSizes()
 	return true
 }
 
 func (m *Model) composeResultsPaneDelete() bool {
 	if m.state.Interaction.LatestResult == nil || m.state.Interaction.LatestResult.PreservedResult == nil {
-		m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Results Pane has no rows to compose.")
+		m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Results Pane has no rows to compose.", NotificationInfo)
 		return true
 	}
 
 	result, err := composeResultsPaneDeleteSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
 	if err != nil {
-		m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose DELETE: %v", err))
+		m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose DELETE: %v", err), NotificationError)
 		return true
 	}
 
@@ -1004,7 +1058,7 @@ func (m *Model) composeResultsPaneDelete() bool {
 	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, PaneResults))
 	m.state.SetActivePane(PaneCommand)
 	m.state.SetPendingPaneSwitch(nil)
-	m.state.SetPendingIntent(IntentNone, "results-pane-compose", resultsPaneComposeStatus(result))
+	m.state.SetPendingIntent(IntentNone, "results-pane-compose", resultsPaneComposeStatus(result), NotificationSuccess)
 	m.syncPaneSizes()
 	return true
 }
@@ -1054,6 +1108,13 @@ func withHistoryWarning(status string, err error) string {
 	return fmt.Sprintf("%s History was not persisted: %v", status, err)
 }
 
+func historyNotificationLevel(base NotificationLevel, historyErr error) NotificationLevel {
+	if historyErr != nil {
+		return NotificationError
+	}
+	return base
+}
+
 func latestHistoryEntry(entries []HistoryEntryContext) *HistoryEntryContext {
 	if len(entries) == 0 {
 		return nil
@@ -1093,7 +1154,7 @@ func loadAutocompleteSchemaCmd(adapter *db.SQLAdapter, loader autocompleteSchema
 	}
 }
 
-func (m *Model) startExecution(label, status string, execute func(context.Context, time.Time) tea.Cmd) tea.Cmd {
+func (m *Model) startExecution(label, status string, level NotificationLevel, execute func(context.Context, time.Time) tea.Cmd) tea.Cmd {
 	if execute == nil {
 		return nil
 	}
@@ -1105,9 +1166,9 @@ func (m *Model) startExecution(label, status string, execute func(context.Contex
 	ctx, cancel := context.WithTimeout(context.Background(), defaultInteractiveExecutionTimeout)
 	m.executionCancel = cancel
 	m.state.SetRunningStatementContext(newRunningStatementContext(label, startedAt))
-	m.state.SetReady("")
-	m.state.SetPendingIntent(IntentSubmit, "submit", executionStatus(status, defaultInteractiveExecutionTimeout))
-	return tea.Batch(execute(ctx, startedAt), runningTickCmd(startedAt))
+	m.state.SetReady("", NotificationNone)
+	m.state.SetPendingIntent(IntentSubmit, "submit", executionStatus(status, defaultInteractiveExecutionTimeout), level)
+	return tea.Batch(execute(ctx, startedAt), runningTickCmd(startedAt), m.notificationClearCmdIfSet())
 }
 
 func (m *Model) clearExecution() {
@@ -1179,11 +1240,11 @@ func summarizeSlashCommandResult(command slashCommand, result slashCommandResult
 }
 
 func (m *Model) openTableSelectionForCommand(parsed *slashCommand) (Model, tea.Cmd) {
-	m.pushWizardForCommand(parsed.Name, fmt.Sprintf("Choose a table for %s and press enter.", parsed.DisplayName))
-	return *m, nil
+	cmd := m.pushWizardForCommand(parsed.Name, fmt.Sprintf("Choose a table for %s and press enter.", parsed.DisplayName), NotificationInfo)
+	return *m, cmd
 }
 
-func (m *Model) pushWizardForCommand(commandName, status string) tea.Cmd {
+func (m *Model) pushWizardForCommand(commandName, status string, level NotificationLevel) tea.Cmd {
 	commandCtx := slashCommandContext{
 		Session: m.session,
 		Dialect: m.adapterDialect(),
@@ -1201,12 +1262,12 @@ func (m *Model) pushWizardForCommand(commandName, status string) tea.Cmd {
 
 	targets, err := buildSlashWizardTargets(context.Background(), commandCtx)
 	if err != nil {
-		m.state.SetReady(fmt.Sprintf("/%s failed: %v", commandName, err))
-		return nil
+		m.state.SetReady(fmt.Sprintf("/%s failed: %v", commandName, err), NotificationError)
+		return m.notificationClearCmdIfSet()
 	}
 	if len(targets) == 0 {
-		m.state.SetReady(fmt.Sprintf("/%s: no tables available.", commandName))
-		return nil
+		m.state.SetReady(fmt.Sprintf("/%s: no tables available.", commandName), NotificationError)
+		return m.notificationClearCmdIfSet()
 	}
 
 	m.pushModal(&slashWizardModal{wizard: SlashCommandWizardContext{
@@ -1217,22 +1278,22 @@ func (m *Model) pushWizardForCommand(commandName, status string) tea.Cmd {
 		SelectedTarget:   0,
 		DirectInvocation: true,
 	}})
-	m.state.SetReady(defaultStatus(status, fmt.Sprintf("Choose a table for %s and press enter.", commands[selectedIdx].DisplayName)))
-	return nil
+	m.state.SetReady(defaultStatus(status, fmt.Sprintf("Choose a table for %s and press enter.", commands[selectedIdx].DisplayName)), level)
+	return m.notificationClearCmdIfSet()
 }
 
 func (m *Model) openCommandWizard() (Model, tea.Cmd) {
 	commands := buildSlashWizardCommands()
 	if len(commands) == 0 {
-		m.state.SetReady("/commands: no slash commands available.")
-		return *m, nil
+		m.state.SetReady("/commands: no slash commands available.", NotificationError)
+		return *m, m.notificationClearCmdIfSet()
 	}
 	m.pushModal(&slashWizardModal{wizard: SlashCommandWizardContext{
 		Step:     SlashCommandWizardStepCommand,
 		Commands: commands,
 	}})
-	m.state.SetReady("Choose a slash command and press enter.")
-	return *m, nil
+	m.state.SetReady("Choose a slash command and press enter.", NotificationInfo)
+	return *m, m.notificationClearCmdIfSet()
 }
 
 func wrapSelection(index, size int) int {
@@ -1446,11 +1507,11 @@ func describeModeSwitchStatus(context *PaneSwitchContext) string {
 }
 
 func (m *Model) applyModeSwitch(context *PaneSwitchContext) {
-	m.state.SetReady("")
+	m.state.SetReady("", NotificationNone)
 	m.state.SetPendingPaneSwitch(context)
 
 	if context == nil {
-		m.state.SetPendingIntent(IntentSwitchPane, "switch-mode", describeModeSwitchStatus(nil))
+		m.state.SetPendingIntent(IntentSwitchPane, "switch-mode", "", NotificationNone)
 		return
 	}
 
@@ -1460,7 +1521,7 @@ func (m *Model) applyModeSwitch(context *PaneSwitchContext) {
 		m.state.SetLayout(context.ToLayout)
 		m.state.SetActivePane(PaneCommand)
 		m.state.SetPendingPaneSwitch(nil)
-		m.state.SetPendingIntent(IntentNone, "switch-mode", describeModeSwitchStatus(context))
+		m.state.SetPendingIntent(IntentNone, "switch-mode", "", NotificationNone)
 		return
 	}
 
@@ -1471,10 +1532,10 @@ func (m *Model) applyModeSwitch(context *PaneSwitchContext) {
 			m.state.SetLayout(context.ToLayout)
 			m.state.SetActivePane(context.ToPane)
 			m.state.SetPendingPaneSwitch(nil)
-			m.state.SetPendingIntent(IntentNone, "switch-mode", describeModeSwitchStatus(context))
+			m.state.SetPendingIntent(IntentNone, "switch-mode", "", NotificationNone)
 			return
 		}
-		m.state.SetPendingIntent(IntentSwitchPane, "switch-mode", describeModeSwitchStatus(context))
+		m.state.SetPendingIntent(IntentSwitchPane, "switch-mode", "", NotificationNone)
 		return
 	}
 	m.closeModal()
@@ -1482,7 +1543,7 @@ func (m *Model) applyModeSwitch(context *PaneSwitchContext) {
 	m.state.SetLayout(context.ToLayout)
 	m.state.SetActivePane(context.ToPane)
 	m.state.SetPendingPaneSwitch(nil)
-	m.state.SetPendingIntent(IntentNone, "switch-mode", describeModeSwitchStatus(context))
+	m.state.SetPendingIntent(IntentNone, "switch-mode", "", NotificationNone)
 }
 
 func (m *Model) applyLayoutSwitch(layout AppLayout) {
@@ -1493,11 +1554,11 @@ func (m *Model) applyLayoutSwitch(layout AppLayout) {
 	m.state.SetPendingPaneSwitch(nil)
 
 	if layout == current {
-		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Layout already set to %s.", layoutLabel(layout)))
+		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Layout already set to %s.", layoutLabel(layout)), NotificationInfo)
 		return
 	}
 
-	m.state.SetReady("")
+	m.state.SetReady("", NotificationNone)
 	m.state.SetLayout(layout)
 
 	switch layout {
@@ -1507,36 +1568,24 @@ func (m *Model) applyLayoutSwitch(layout AppLayout) {
 		}
 		m.command.Blur()
 		m.state.SetActivePane(PaneResults)
-		if latest := m.state.Interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
-			m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s with %d row(s) visible.", layoutLabel(layout), len(latest.PreservedResult.Rows)))
-			return
-		}
-		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s. Run a query that returns rows to populate the Results Pane.", layoutLabel(layout)))
 	case LayoutSplit:
 		if m.state.Interaction.ActivePane == PaneResults {
 			m.command.Blur()
 		} else {
 			m.command.Focus()
 		}
-		if m.state.Interaction.ActiveModal == ModalHistorySearch {
-			m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s. History search stays open in the command line.", layoutLabel(layout)))
-			return
-		}
-		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s.", layoutLabel(layout)))
 	case LayoutCommandOnly:
 		if m.state.Interaction.ActivePane == PaneResults {
 			m.state.SetActivePane(PaneCommand)
 		}
 		m.command.Focus()
-		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s.", layoutLabel(layout)))
 	default:
 		m.command.Focus()
-		m.state.SetPendingIntent(IntentNone, "layout", fmt.Sprintf("Switched to %s.", layoutLabel(m.state.Interaction.Layout)))
 	}
 }
 
 func (m *Model) handleFocusPane(pane Pane) {
-	m.state.SetReady("")
+	m.state.SetReady("", NotificationNone)
 	m.state.SetPendingPaneSwitch(nil)
 	switch pane {
 	case PaneResults:
@@ -1546,14 +1595,12 @@ func (m *Model) handleFocusPane(pane Pane) {
 			m.command.Blur()
 			m.state.SetLayout(LayoutSplit)
 			m.state.SetActivePane(PaneResults)
-			m.state.SetPendingIntent(IntentNone, "focus-pane", "Switched to split layout with results pane focused.")
 		case LayoutResultsOnly:
 			m.state.SetActivePane(PaneResults)
-			m.state.SetPendingIntent(IntentNone, "focus-pane", "Results pane is already focused.")
+			m.state.SetPendingIntent(IntentNone, "focus-pane", "Results pane is already focused.", NotificationInfo)
 		default: // LayoutSplit
 			m.command.Blur()
 			m.state.SetActivePane(PaneResults)
-			m.state.SetPendingIntent(IntentNone, "focus-pane", "Focused results pane.")
 		}
 	case PaneCommand:
 		m.closeModal()
@@ -1562,44 +1609,39 @@ func (m *Model) handleFocusPane(pane Pane) {
 			m.command.Focus()
 			m.state.SetLayout(LayoutSplit)
 			m.state.SetActivePane(PaneCommand)
-			m.state.SetPendingIntent(IntentNone, "focus-pane", "Switched to split layout with command pane focused.")
 		case LayoutCommandOnly:
 			m.command.Focus()
 			m.state.SetActivePane(PaneCommand)
-			m.state.SetPendingIntent(IntentNone, "focus-pane", "Command pane is already focused.")
+			m.state.SetPendingIntent(IntentNone, "focus-pane", "Command pane is already focused.", NotificationInfo)
 		default: // LayoutSplit
 			m.command.Focus()
 			m.state.SetActivePane(PaneCommand)
-			m.state.SetPendingIntent(IntentNone, "focus-pane", "Focused command pane.")
 		}
 	}
 }
 
 func (m *Model) handleToggleZoom() {
+	m.state.SetReady("", NotificationNone)
 	switch m.state.Interaction.Layout {
 	case LayoutSplit:
 		if m.state.Interaction.ActivePane == PaneResults {
 			m.command.Blur()
 			m.state.SetLayout(LayoutResultsOnly)
 			m.state.SetActivePane(PaneResults)
-			m.state.SetPendingIntent(IntentNone, "zoom", "Zoomed results pane.")
 		} else {
 			m.command.Focus()
 			m.state.SetLayout(LayoutCommandOnly)
 			m.state.SetActivePane(PaneCommand)
-			m.state.SetPendingIntent(IntentNone, "zoom", "Zoomed command pane.")
 		}
 	case LayoutCommandOnly:
 		m.command.Blur()
 		m.state.SetLayout(LayoutSplit)
 		m.state.SetActivePane(PaneCommand)
 		m.command.Focus()
-		m.state.SetPendingIntent(IntentNone, "zoom", "Returned to split layout.")
 	case LayoutResultsOnly:
 		m.state.SetLayout(LayoutSplit)
 		m.state.SetActivePane(PaneResults)
 		m.command.Blur()
-		m.state.SetPendingIntent(IntentNone, "zoom", "Returned to split layout.")
 	}
 }
 

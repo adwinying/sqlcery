@@ -23,7 +23,7 @@ func (m *Model) handleResultsPaneExportKey(msg tea.KeyPressMsg) bool {
 	if msg.String() == ":" {
 		m.resultsPane.pendingAction = resultsPanePendingActionExport
 		m.resultsPane.exportBuffer = ":"
-		m.state.SetPendingIntent(IntentNone, "results-pane-export", "Type :w [filename] to export selected rows or the current result rows.")
+		m.state.SetPendingIntent(IntentNone, "results-pane-export", "Type :w [filename] to export selected rows or the current result rows.", NotificationInfo)
 		return true
 	}
 
@@ -57,17 +57,17 @@ func (m *Model) updateResultsPaneExportPrompt(msg tea.KeyPressMsg) bool {
 func (m *Model) exportResultsPane(command string) bool {
 	filename, ok := parseResultsPaneExportCommand(command)
 	if !ok {
-		m.state.SetPendingIntent(IntentNone, "results-pane-export", "Use :w [filename] with .csv, .tsv, .json, or .md while Results Pane is focused.")
+		m.state.SetPendingIntent(IntentNone, "results-pane-export", "Use :w [filename] with .csv, .tsv, .json, or .md while Results Pane is focused.", NotificationInfo)
 		return true
 	}
 
 	latest := m.state.Interaction.LatestResult
 	if latest == nil || latest.PreservedResult == nil {
-		m.state.SetPendingIntent(IntentNone, "results-pane-export", "Results Pane has no rows to export.")
+		m.state.SetPendingIntent(IntentNone, "results-pane-export", "Results Pane has no rows to export.", NotificationInfo)
 		return true
 	}
 	if len(latest.PreservedResult.Rows) == 0 {
-		m.state.SetPendingIntent(IntentNone, "results-pane-export", "Results Pane has no rows to export.")
+		m.state.SetPendingIntent(IntentNone, "results-pane-export", "Results Pane has no rows to export.", NotificationInfo)
 		return true
 	}
 
@@ -80,7 +80,7 @@ func (m *Model) exportResultsPane(command string) bool {
 		RowIndices: rowIndices,
 	})
 	if err != nil {
-		m.state.SetPendingIntent(IntentNone, "results-pane-export", fmt.Sprintf("Could not export rows: %v", err))
+		m.state.SetPendingIntent(IntentNone, "results-pane-export", fmt.Sprintf("Could not export rows: %v", err), NotificationError)
 		return true
 	}
 
@@ -93,7 +93,7 @@ func (m *Model) exportResultsPane(command string) bool {
 	if usedSelectedRows {
 		scope = "selected rows"
 	}
-	m.state.SetPendingIntent(IntentNone, "results-pane-export", fmt.Sprintf("Exported %d row(s) as %s from %s to %s.", written.Rows, strings.ToLower(string(written.Format)), scope, path))
+	m.state.SetPendingIntent(IntentNone, "results-pane-export", fmt.Sprintf("Exported %d row(s) as %s from %s to %s.", written.Rows, strings.ToLower(string(written.Format)), scope, path), NotificationSuccess)
 	return true
 }
 

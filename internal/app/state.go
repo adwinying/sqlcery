@@ -53,10 +53,25 @@ const (
 	IntentClearCommandPane PendingIntent = "clear-command-pane"
 )
 
+type NotificationLevel int
+
+const (
+	NotificationNone    NotificationLevel = 0
+	NotificationSuccess NotificationLevel = 1
+	NotificationInfo    NotificationLevel = 2
+	NotificationError   NotificationLevel = 3
+)
+
+type Notification struct {
+	Text      string
+	Level     NotificationLevel
+	CreatedAt time.Time
+}
+
 type SharedAppState struct {
-	App    AppStateContext
+	App          AppStateContext
 	Interaction  InteractionState
-	Status string
+	Notification Notification
 }
 
 type AppStateContext struct {
@@ -181,7 +196,7 @@ func NewSharedAppState() SharedAppState {
 			ActivePane:      PaneCommand,
 			ResultsPanePage: 0,
 		},
-		Status: "Starting SQLcery.",
+		Notification: Notification{Text: "Starting SQLcery.", Level: NotificationInfo, CreatedAt: time.Now()},
 	}
 }
 
@@ -196,28 +211,36 @@ func (s *SharedAppState) SetStartup(status string) {
 	s.App.Current = StateStartup
 	s.App.Error = ""
 	s.App.Reconnect = nil
-	s.Status = defaultStatus(status, "Starting SQLcery.")
+	text := defaultStatus(status, "Starting SQLcery.")
+	s.Notification = Notification{Text: text, Level: NotificationInfo, CreatedAt: time.Now()}
 }
 
-func (s *SharedAppState) SetReady(status string) {
+func (s *SharedAppState) SetReady(status string, level NotificationLevel) {
 	s.App.Current = StateReady
 	s.App.Error = ""
 	s.App.Reconnect = nil
-	s.Status = defaultStatus(status, "Ready for SQL input.")
+	text := strings.TrimSpace(status)
+	if text == "" {
+		s.Notification = Notification{}
+	} else {
+		s.Notification = Notification{Text: text, Level: level, CreatedAt: time.Now()}
+	}
 }
 
 func (s *SharedAppState) SetReconnect(status string, reconnect *ReconnectContext) {
 	s.App.Current = StateReconnect
 	s.App.Error = ""
 	s.App.Reconnect = cloneReconnectContext(reconnect)
-	s.Status = defaultStatus(status, "Reconnect requested; retry flow not implemented yet.")
+	text := defaultStatus(status, "Reconnect requested; retry flow not implemented yet.")
+	s.Notification = Notification{Text: text, Level: NotificationInfo, CreatedAt: time.Now()}
 }
 
 func (s *SharedAppState) SetError(message, status string) {
 	s.App.Current = StateError
 	s.App.Error = defaultStatus(message, "An unexpected error occurred.")
 	s.App.Reconnect = nil
-	s.Status = defaultStatus(status, "The app is paused in an error state.")
+	text := defaultStatus(status, "The app is paused in an error state.")
+	s.Notification = Notification{Text: text, Level: NotificationError, CreatedAt: time.Now()}
 }
 
 func (s *SharedAppState) SetCurrentSQL(sql string) {
@@ -228,10 +251,13 @@ func (s *SharedAppState) SetLastSubmittedSQL(sql string) {
 	s.Interaction.LastSubmittedSQL = sql
 }
 
-func (s *SharedAppState) SetPendingIntent(intent PendingIntent, action, status string) {
+func (s *SharedAppState) SetPendingIntent(intent PendingIntent, action, status string, level NotificationLevel) {
 	s.Interaction.PendingIntent = intent
 	s.Interaction.LastAction = strings.TrimSpace(action)
-	s.Status = strings.TrimSpace(status)
+	text := strings.TrimSpace(status)
+	if text != "" {
+		s.Notification = Notification{Text: text, Level: level, CreatedAt: time.Now()}
+	}
 }
 
 func (s *SharedAppState) SetActivePane(pane Pane) {

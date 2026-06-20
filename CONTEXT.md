@@ -39,11 +39,11 @@ The bottom pane of the TUI. Where the user types and edits SQL Statements or Sla
 ### Active Pane
 Which pane — Results Pane or Command Pane — currently has keyboard focus. Determines which keybindings apply.
 
-### Hints Bar
-The persistent single-line strip at the bottom of the TUI (above the Status Line) that shows the key bindings available in the current context. Its content changes based on which pane or modal is focused. Implemented as `statusBarView()` / `tui.AppTheme.Footer`.
+### Status Bar
+The single-line strip at the very bottom of the TUI. Combines three elements: an optional Notification on the left, keybind hints in the middle, and the Connection name right-aligned. The hints section changes based on which pane or modal is focused. The Notification section is ephemeral — it auto-clears after 3 seconds of inactivity (timer resets on every new message). Previously split into two separate lines: the Hints Bar (hints + connection name) above the Status Line (transient feedback text).
 
-### Status Line
-The single-line strip at the very bottom of the TUI that shows transient feedback from the last action (e.g. "Executed in 23ms", error text, modal status updates). Replaced on each new action. Distinct from the Hints Bar above it. Implemented as `statusDescriptionView()` / `tui.AppTheme.MetaLine`.
+### Notification
+A transient message displayed in the left section of the Status Bar. Carries a severity level: Success (green), Info (yellow), or Error (red). All notifications auto-clear after 3 seconds; the timer resets whenever a new notification arrives. The running indicator occupies the Notification slot during statement execution but has no severity colour. Absent when no recent action has produced feedback.
 
 ### Modal
 An overlay dialog rendered on top of both panes. Does not replace pane focus permanently. Current modals: History Search, Slash Command Wizard, Keybindings, Export Wizard (planned).

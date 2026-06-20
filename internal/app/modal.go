@@ -28,6 +28,7 @@ type modalResultPendingStatus struct {
 	intent  PendingIntent
 	action  string
 	status  string
+	level   NotificationLevel
 	dismiss bool
 }
 
@@ -35,6 +36,7 @@ type modalResultPendingStatus struct {
 // or clears the latest result context.
 type modalResultReady struct {
 	status      string
+	level       NotificationLevel
 	dismiss     bool
 	clearResult bool
 }
@@ -43,12 +45,14 @@ type modalResultReady struct {
 type modalResultRestoreHistory struct {
 	sql    string
 	status string
+	level  NotificationLevel
 }
 
 // modalResultExecute closes the modal and starts an execution.
 type modalResultExecute struct {
 	label   string
 	status  string
+	level   NotificationLevel
 	execute func(context.Context, time.Time) tea.Cmd
 }
 
@@ -69,6 +73,7 @@ type modalResultRunHelpRow struct {
 type modalResultOpenWizardFor struct {
 	commandName string
 	status      string
+	level       NotificationLevel
 }
 
 func (modalResultNone) isModalResult()           {}
@@ -141,38 +146,38 @@ func (m *Model) applyModalResult(result ModalResult) tea.Cmd {
 		if r.dismiss {
 			m.closeModal()
 		}
-		m.state.SetPendingIntent(r.intent, r.action, r.status)
-		return nil
+		m.state.SetPendingIntent(r.intent, r.action, r.status, r.level)
+		return m.notificationClearCmdIfSet()
 	case modalResultReady:
 		if r.dismiss {
 			m.closeModal()
 		}
-		m.state.SetReady(r.status)
+		m.state.SetReady(r.status, r.level)
 		if r.clearResult {
 			m.state.SetLatestResultContext(nil)
 		}
-		return nil
+		return m.notificationClearCmdIfSet()
 	case modalResultRestoreHistory:
 		m.command.SetEditorValue(r.sql)
 		m.syncCurrentSQL()
 		m.closeModal()
-		m.state.SetPendingIntent(IntentNone, "history", r.status)
-		return nil
+		m.state.SetPendingIntent(IntentNone, "history", r.status, r.level)
+		return m.notificationClearCmdIfSet()
 	case modalResultExecute:
 		m.closeModal()
-		return m.startExecution(r.label, r.status, r.execute)
+		return m.startExecution(r.label, r.status, r.level, r.execute)
 	case modalResultForward:
 		return r.cmd
 	case modalResultRunHelpRow:
 		m.closeModal()
 		if r.msgFn == nil {
-			m.state.SetReady("Closed keybindings.")
-			return nil
+			m.state.SetReady("", NotificationNone)
+			return m.notificationClearCmdIfSet()
 		}
 		return func() tea.Msg { return r.msgFn() }
 	case modalResultOpenWizardFor:
 		m.closeModal()
-		return m.pushWizardForCommand(r.commandName, r.status)
+		return m.pushWizardForCommand(r.commandName, r.status, r.level)
 	}
 	return nil
 }

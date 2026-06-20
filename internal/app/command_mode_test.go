@@ -278,13 +278,13 @@ func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 	}
 	modal := h.Render(interaction, 62)
 
-	for _, want := range []string{"Reverse search:", "query> su", "2 match(es); newest first.", "> select * from users"} {
+	for _, want := range []string{"Command History", "query> su", "2 match(es); newest first.", "> select * from users"} {
 		if !strings.Contains(modal, want) {
 			t.Fatalf("historySearchModal.Render() = %q, want to contain %q", modal, want)
 		}
 	}
 	hints := h.FooterHints(interaction)
-	for _, want := range []string{"enter restore", "ctrl+p older", "ctrl+n newer", "esc close", "ctrl+e keybindings"} {
+	for _, want := range []string{"enter restore", "ctrl+p up", "ctrl+n down", "esc", "ctrl+e keybindings"} {
 		if !strings.Contains(hints, want) {
 			t.Fatalf("historySearchModal.FooterHints() = %q, want to contain %q", hints, want)
 		}

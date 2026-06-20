@@ -237,7 +237,7 @@ func (m commandModeModel) FooterHints(interaction InteractionState) string {
 		parts = append(parts, bindingSummary(m.keys.AcceptSuggestion), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
 	}
 	parts = append(parts, "enter submit", bindingSummary(m.keys.Cancel), bindingSummary(m.keys.History))
-	if running := formatRunningIndicator(interaction.Running); running != "" {
+	if interaction.Running != nil {
 		parts = append(parts, "esc cancel query")
 	}
 	parts = append(parts, "ctrl+c quit", bindingSummary(m.keys.Help))

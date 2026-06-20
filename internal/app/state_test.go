@@ -22,8 +22,8 @@ func TestNewSharedAppStateDefaultsToCommandMode(t *testing.T) {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
 
-	if got, want := state.Status, "Starting SQLcery."; got != want {
-		t.Fatalf("state.Status = %q, want %q", got, want)
+	if got, want := state.Notification.Text, "Starting SQLcery."; got != want {
+		t.Fatalf("state.Notification.Text = %q, want %q", got, want)
 	}
 }
 
@@ -37,7 +37,7 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 	})
 	state.SetCurrentSQL("select * from widgets")
 	state.SetLastSubmittedSQL("select * from widgets")
-	state.SetPendingIntent(IntentSubmit, "submit", "ready")
+	state.SetPendingIntent(IntentSubmit, "submit", "ready", NotificationInfo)
 	state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL", StartedAt: stamp, Elapsed: 1500 * time.Millisecond, SpinnerFrame: 2})
 	state.SetLayout(LayoutSplit)
 	state.SetActivePane(PaneResults)
@@ -214,14 +214,14 @@ func int64PointerForTest(value int64) *int64 {
 
 func TestSharedAppStateTransitions(t *testing.T) {
 	state := NewSharedAppState()
-	state.SetReady("")
+	state.SetReady("", NotificationNone)
 
 	if got, want := state.App.Current, StateReady; got != want {
 		t.Fatalf("state.App.Current = %q, want %q", got, want)
 	}
 
-	if got, want := state.Status, "Ready for SQL input."; got != want {
-		t.Fatalf("state.Status = %q, want %q", got, want)
+	if got, want := state.Notification.Text, ""; got != want {
+		t.Fatalf("state.Notification.Text = %q, want %q", got, want)
 	}
 
 	state.SetReconnect("", &ReconnectContext{Attempt: 1, Reason: "network lost", LastError: "io eof"})
@@ -229,8 +229,8 @@ func TestSharedAppStateTransitions(t *testing.T) {
 		t.Fatalf("state.App.Current = %q, want %q", got, want)
 	}
 
-	if got, want := state.Status, "Reconnect requested; retry flow not implemented yet."; got != want {
-		t.Fatalf("state.Status = %q, want %q", got, want)
+	if got, want := state.Notification.Text, "Reconnect requested; retry flow not implemented yet."; got != want {
+		t.Fatalf("state.Notification.Text = %q, want %q", got, want)
 	}
 
 	state.SetError("Network error while reaching the database. Check the host, port, SSH tunnel, or VPN. Details: dial tcp failed", "Connection failed.")
@@ -242,11 +242,11 @@ func TestSharedAppStateTransitions(t *testing.T) {
 		t.Fatalf("state.App.Error = %q, want %q", got, want)
 	}
 
-	if got, want := state.Status, "Connection failed."; got != want {
-		t.Fatalf("state.Status = %q, want %q", got, want)
+	if got, want := state.Notification.Text, "Connection failed."; got != want {
+		t.Fatalf("state.Notification.Text = %q, want %q", got, want)
 	}
 
-	state.SetReady("Recovered.")
+	state.SetReady("Recovered.", NotificationSuccess)
 	if got, want := state.App.Current, StateReady; got != want {
 		t.Fatalf("state.App.Current = %q, want %q", got, want)
 	}

@@ -40,18 +40,18 @@ func (h *helpModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) ModalResult
 
 	switch {
 	case msg.String() == "ctrl+c":
-		return modalResultReady{status: "Closed keybindings.", dismiss: true}
+		return modalResultReady{status: "", level: NotificationNone, dismiss: true}
 
 	case key.Matches(msg, keys.Help):
-		return modalResultReady{status: "Closed keybindings.", dismiss: true}
+		return modalResultReady{status: "", level: NotificationNone, dismiss: true}
 
 	case key.Matches(msg, keys.Cancel):
 		if strings.TrimSpace(h.filter) != "" {
 			h.filter = ""
 			h.selectedIndex = 0
-			return modalResultReady{status: "Cleared keybindings filter."}
+			return modalResultReady{status: "", level: NotificationNone}
 		}
-		return modalResultReady{status: "Closed keybindings.", dismiss: true}
+		return modalResultReady{status: "", level: NotificationNone, dismiss: true}
 
 	case key.Matches(msg, keys.PrevSuggestion), msg.String() == "up":
 		return h.cycle(rows, -1)
@@ -160,7 +160,7 @@ func (h *helpModal) cycle(rows []helpRow, delta int) ModalResult {
 		return modalResultNone{}
 	}
 	h.selectedIndex = wrapSelection(h.selectedIndex+delta, len(rows))
-	return modalResultReady{status: fmt.Sprintf("Selected: %s", rows[wrapSelection(h.selectedIndex, len(rows))].display)}
+	return modalResultNone{}
 }
 
 func (h *helpModal) updateFilter(filter string) ModalResult {
@@ -168,24 +168,21 @@ func (h *helpModal) updateFilter(filter string) ModalResult {
 	h.selectedIndex = 0
 	rows := h.filteredRows()
 	trimmed := strings.TrimSpace(filter)
-	if trimmed == "" {
-		return modalResultReady{status: fmt.Sprintf("Showing %d actions.", len(rows))}
+	if trimmed != "" && len(rows) == 0 {
+		return modalResultReady{status: fmt.Sprintf("No actions match %q.", filter), level: NotificationInfo}
 	}
-	if len(rows) == 0 {
-		return modalResultReady{status: fmt.Sprintf("No actions match %q.", filter)}
-	}
-	return modalResultReady{status: fmt.Sprintf("%d action(s) match filter.", len(rows))}
+	return modalResultNone{}
 }
 
 func (h *helpModal) execute(ctx ModalContext, rows []helpRow) ModalResult {
 	if len(rows) == 0 {
-		return modalResultReady{status: "Closed keybindings.", dismiss: true}
+		return modalResultReady{status: "", level: NotificationNone, dismiss: true}
 	}
 	idx := wrapSelection(h.selectedIndex, len(rows))
 	row := rows[idx]
 
 	if row.actionKey == "" {
-		return modalResultReady{status: "Closed keybindings.", dismiss: true}
+		return modalResultReady{status: "", level: NotificationNone, dismiss: true}
 	}
 
 	if strings.HasPrefix(row.actionKey, "/") {
@@ -194,12 +191,14 @@ func (h *helpModal) execute(ctx ModalContext, rows []helpRow) ModalResult {
 			return modalResultOpenWizardFor{
 				commandName: name,
 				status:      fmt.Sprintf("Choose a table for %s and press enter.", row.actionKey),
+				level:       NotificationInfo,
 			}
 		}
 		parsed := slashCommand{RawInput: row.actionKey, DisplayName: row.actionKey, Name: name}
 		return modalResultExecute{
 			label:  row.actionKey,
 			status: fmt.Sprintf("Dispatching %s.", row.actionKey),
+			level:  NotificationInfo,
 			execute: executeSlashCommandCmd(slashCommandContext{
 				Session: ctx.Session,
 				Dialect: ctx.Dialect,

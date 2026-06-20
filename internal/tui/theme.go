@@ -22,6 +22,9 @@ type tuiTheme struct {
 	InfoNotice               lipgloss.Style
 	WarningNotice            lipgloss.Style
 	ErrorNotice              lipgloss.Style
+	NotificationSuccess      lipgloss.Style
+	NotificationInfo         lipgloss.Style
+	NotificationError        lipgloss.Style
 	ResultTitle              lipgloss.Style
 	ResultHeader             lipgloss.Style
 	ResultSeparator          lipgloss.Style
@@ -81,6 +84,9 @@ func newTUITheme() tuiTheme {
 		InfoNotice:               lipgloss.NewStyle().Foreground(accentSoft).Bold(true),
 		WarningNotice:            lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
 		ErrorNotice:              lipgloss.NewStyle().Foreground(danger).Bold(true),
+		NotificationSuccess:      lipgloss.NewStyle().Foreground(success).Bold(true),
+		NotificationInfo:         lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
+		NotificationError:        lipgloss.NewStyle().Foreground(danger).Bold(true),
 		ResultTitle:              lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
 		ResultHeader:             lipgloss.NewStyle().Foreground(accentSoft).Bold(true),
 		ResultSeparator:          lipgloss.NewStyle().Foreground(mutedSoft),

@@ -53,7 +53,7 @@ func (s *slashWizardModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) Moda
 
 	switch {
 	case msg.String() == "ctrl+c":
-		return modalResultReady{status: "Closed the slash command wizard.", dismiss: true}
+		return modalResultReady{status: "", level: NotificationNone, dismiss: true}
 	case key.Matches(msg, keys.Help):
 		return modalResultForward{cmd: func() tea.Msg { return toggleHelpIntentMsg{} }}
 	case key.Matches(msg, keys.Cancel):
@@ -97,29 +97,27 @@ func (s *slashWizardModal) handleEsc(ctx ModalContext) ModalResult {
 		s.wizard.Step = SlashCommandWizardStepTarget
 		s.wizard.Columns = nil
 		s.wizard.SelectedColumnCursor = 0
-		selectedCommand, _ := slashWizardCommandByIndex(&s.wizard)
-		return modalResultReady{status: fmt.Sprintf("Choose a table for %s and press enter.", selectedCommand.DisplayName)}
+		return modalResultReady{status: "", level: NotificationNone}
 	case SlashCommandWizardStepTarget:
 		if strings.TrimSpace(s.wizard.TargetFilter) != "" {
 			return s.updateFilter(ctx, "")
 		}
 		if s.wizard.DirectInvocation {
-			return modalResultReady{status: "Closed the slash command wizard.", dismiss: true}
+			return modalResultReady{status: "", level: NotificationNone, dismiss: true}
 		}
 		s.wizard.Step = SlashCommandWizardStepCommand
 		s.wizard.Targets = nil
 		s.wizard.SelectedTarget = 0
-		selectedCommand, _ := slashWizardCommandByIndex(&s.wizard)
-		return modalResultReady{status: fmt.Sprintf("Choose a command. %s is selected.", selectedCommand.DisplayName)}
+		return modalResultReady{status: "", level: NotificationNone}
 	default:
-		return modalResultReady{status: "Closed the slash command wizard.", dismiss: true}
+		return modalResultReady{status: "", level: NotificationNone, dismiss: true}
 	}
 }
 
 func (s *slashWizardModal) submit(ctx ModalContext) ModalResult {
 	selectedCommand, ok := slashWizardCommandByIndex(&s.wizard)
 	if !ok {
-		return modalResultReady{status: "Slash command wizard is empty.", dismiss: true}
+		return modalResultReady{status: "Slash command wizard is empty.", level: NotificationInfo, dismiss: true}
 	}
 
 	if s.wizard.Step == SlashCommandWizardStepColumn {
@@ -136,6 +134,7 @@ func (s *slashWizardModal) submit(ctx ModalContext) ModalResult {
 			if err != nil {
 				return modalResultReady{
 					status:      fmt.Sprintf("/commands failed: %v", err),
+					level:       NotificationError,
 					dismiss:     true,
 					clearResult: true,
 				}
@@ -143,16 +142,17 @@ func (s *slashWizardModal) submit(ctx ModalContext) ModalResult {
 			if nextWizard == nil || len(nextWizard.Targets) == 0 {
 				return modalResultReady{
 					status:  fmt.Sprintf("/commands: no tables available for %s.", selectedCommand.DisplayName),
+					level:   NotificationError,
 					dismiss: true,
 				}
 			}
 			s.wizard = *nextWizard
-			return modalResultReady{status: fmt.Sprintf("Choose a table for %s and press enter.", selectedCommand.DisplayName)}
+			return modalResultReady{status: "", level: NotificationNone}
 		}
 
 		selectedTarget, ok := slashWizardFilteredTargetByIndex(&s.wizard)
 		if !ok {
-			return modalResultReady{status: fmt.Sprintf("/commands: choose a table for %s.", selectedCommand.DisplayName)}
+			return modalResultReady{status: fmt.Sprintf("/commands: choose a table for %s.", selectedCommand.DisplayName), level: NotificationInfo}
 		}
 
 		if selectedCommand.NeedsColumns {
@@ -164,6 +164,7 @@ func (s *slashWizardModal) submit(ctx ModalContext) ModalResult {
 			if err != nil {
 				return modalResultReady{
 					status:  fmt.Sprintf("/commands failed loading columns: %v", err),
+					level:   NotificationError,
 					dismiss: true,
 				}
 			}
@@ -172,7 +173,7 @@ func (s *slashWizardModal) submit(ctx ModalContext) ModalResult {
 				return s.executeCommand(ctx, parsed)
 			}
 			s.wizard = *nextWizard
-			return modalResultReady{status: fmt.Sprintf("Choose columns for %s. All selected by default.", selectedTarget.Display)}
+			return modalResultReady{status: "", level: NotificationNone}
 		}
 
 		parsed := buildSlashWizardCommand(selectedCommand, &selectedTarget)
@@ -191,12 +192,12 @@ func (s *slashWizardModal) submitColumnStep(ctx ModalContext, selectedCommand Sl
 		}
 	}
 	if selectedCount == 0 {
-		return modalResultReady{status: "Select at least one column."}
+		return modalResultReady{status: "Select at least one column.", level: NotificationInfo}
 	}
 
 	selectedTarget, ok := slashWizardFilteredTargetByIndex(&s.wizard)
 	if !ok {
-		return modalResultReady{status: "No table selected.", dismiss: true}
+		return modalResultReady{status: "No table selected.", level: NotificationInfo, dismiss: true}
 	}
 
 	table := parseSlashTableRef(selectedTarget.Value)
@@ -204,6 +205,7 @@ func (s *slashWizardModal) submitColumnStep(ctx ModalContext, selectedCommand Sl
 	return modalResultExecute{
 		label:  selectedCommand.DisplayName,
 		status: fmt.Sprintf("Dispatching %s from wizard.", selectedCommand.DisplayName),
+		level:  NotificationInfo,
 		execute: replaceEditorCmd(slashCommandResult{
 			Status:        slashTemplateStatus(selectedCommand.DisplayName, selectedTarget.Display),
 			ReplaceEditor: sql,
@@ -216,6 +218,7 @@ func (s *slashWizardModal) executeCommand(ctx ModalContext, parsed slashCommand)
 	return modalResultExecute{
 		label:  parsed.DisplayName,
 		status: fmt.Sprintf("Dispatching %s from wizard.", parsed.DisplayName),
+		level:  NotificationInfo,
 		execute: executeSlashCommandCmd(slashCommandContext{
 			Session: ctx.Session,
 			Dialect: ctx.Dialect,
@@ -232,21 +235,20 @@ func (s *slashWizardModal) move(_ ModalContext, delta int) ModalResult {
 			return modalResultNone{}
 		}
 		s.wizard.SelectedColumnCursor = wrapSelection(s.wizard.SelectedColumnCursor+delta, len(s.wizard.Columns))
-		return modalResultReady{status: fmt.Sprintf("Column %s.", s.wizard.Columns[s.wizard.SelectedColumnCursor].Name)}
+		return modalResultNone{}
 	case SlashCommandWizardStepTarget:
 		filtered := filterWizardTargets(s.wizard.Targets, s.wizard.TargetFilter)
 		if len(filtered) == 0 {
 			return modalResultNone{}
 		}
 		s.wizard.SelectedTarget = wrapSelection(s.wizard.SelectedTarget+delta, len(filtered))
-		return modalResultReady{status: fmt.Sprintf("Selected table %s.", filtered[s.wizard.SelectedTarget].Display)}
+		return modalResultNone{}
 	default:
 		if len(s.wizard.Commands) == 0 {
 			return modalResultNone{}
 		}
 		s.wizard.SelectedCommand = wrapSelection(s.wizard.SelectedCommand+delta, len(s.wizard.Commands))
-		selectedCommand, _ := slashWizardCommandByIndex(&s.wizard)
-		return modalResultReady{status: fmt.Sprintf("Selected %s.", selectedCommand.DisplayName)}
+		return modalResultNone{}
 	}
 }
 
@@ -256,11 +258,7 @@ func (s *slashWizardModal) toggleColumn() ModalResult {
 	}
 	i := clampWizardIndex(s.wizard.SelectedColumnCursor, len(s.wizard.Columns))
 	s.wizard.Columns[i].Selected = !s.wizard.Columns[i].Selected
-	state := "deselected"
-	if s.wizard.Columns[i].Selected {
-		state = "selected"
-	}
-	return modalResultReady{status: fmt.Sprintf("Column %s %s.", s.wizard.Columns[i].Name, state)}
+	return modalResultNone{}
 }
 
 func (s *slashWizardModal) toggleAllColumns() ModalResult {
@@ -275,10 +273,7 @@ func (s *slashWizardModal) toggleAllColumns() ModalResult {
 	for i := range s.wizard.Columns {
 		s.wizard.Columns[i].Selected = target
 	}
-	if target {
-		return modalResultReady{status: "All columns selected."}
-	}
-	return modalResultReady{status: "All columns deselected."}
+	return modalResultNone{}
 }
 
 func (s *slashWizardModal) updateFilter(_ ModalContext, filter string) ModalResult {
@@ -287,7 +282,7 @@ func (s *slashWizardModal) updateFilter(_ ModalContext, filter string) ModalResu
 	s.hScrollOffset = 0
 	filtered := filterWizardTargets(s.wizard.Targets, filter)
 	if len(filtered) == 0 {
-		return modalResultReady{status: fmt.Sprintf("No tables match %q.", filter)}
+		return modalResultReady{status: fmt.Sprintf("No tables match %q.", filter), level: NotificationInfo}
 	}
-	return modalResultReady{status: fmt.Sprintf("%d table(s) match filter.", len(filtered))}
+	return modalResultNone{}
 }

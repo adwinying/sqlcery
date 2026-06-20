@@ -67,7 +67,7 @@ func TestRunUsesProvidedHistorySession(t *testing.T) {
 		NewProgram: func(model tea.Model, _ ...tea.ProgramOption) Program {
 			return fakeProgram{run: func() (tea.Model, error) {
 				typed := model.(Model)
-				typed.state.SetReady("")
+				typed.state.SetReady("", NotificationNone)
 				typed.command.editor.SetValue("select 1;")
 				typed.syncCurrentSQL()
 
@@ -115,7 +115,7 @@ func TestRunUsesProvidedHistorySession(t *testing.T) {
 
 func TestModelViewIncludesSessionDetails(t *testing.T) {
 	model := NewModel(Session{ConnectionName: "local", DatabaseType: "sqlite"})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
 	view := model.View().Content
@@ -148,7 +148,7 @@ func TestModelUpdateSubmitWarnsWhenHistoryPersistenceFails(t *testing.T) {
 
 	history := apphistory.NewFileBackedHistory(filepath.Join(blockerPath, apphistory.FileName))
 	model := newModelWithDependencies(Session{ConnectionName: "local", DatabaseType: "sqlite", Adapter: adapter}, modelDependencies{history: history})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.command.editor.SetValue("select 1;")
 	model.syncCurrentSQL()
 
@@ -164,7 +164,7 @@ func TestModelUpdateSubmitWarnsWhenHistoryPersistenceFails(t *testing.T) {
 	if got, want := len(model.state.Interaction.History), 1; got != want {
 		t.Fatalf("len(state.Interaction.History) = %d, want %d", got, want)
 	}
-	if got := model.state.Status; !strings.Contains(got, "History was not persisted:") {
+	if got := model.state.Notification.Text; !strings.Contains(got, "History was not persisted:") {
 		t.Fatalf("state.Status = %q, want history persistence warning", got)
 	}
 }
@@ -238,7 +238,7 @@ func TestModelAutocompleteUsesCachedSchemaWhileTyping(t *testing.T) {
 			}, nil
 		},
 	})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 
 	cmd := model.refreshAutocompleteSchemaCmd()
 	if cmd == nil {
@@ -280,7 +280,7 @@ func TestModelAutocompleteUsesCachedSchemaWhileTyping(t *testing.T) {
 
 func TestModelViewIncludesSharedInteractionStatePlaceholders(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select 1", ConnectionName: "local"}})
 	model.state.SetLatestResultContext(&LatestResultContext{Statement: "select 1", OriginPane: PaneCommand})
 	model.state.SetPendingPaneSwitch(&PaneSwitchContext{FromLayout: LayoutCommandOnly, ToLayout: LayoutResultsOnly, FromPane: PaneCommand, ToPane: PaneResults})
@@ -315,8 +315,8 @@ func TestModelInitTransitionsStartupToReady(t *testing.T) {
 		t.Fatalf("state.App.Current = %q, want %q", got, want)
 	}
 
-	if got, want := updated.state.Status, "Ready for SQL input."; got != want {
-		t.Fatalf("state.Status = %q, want %q", got, want)
+	if got, want := updated.state.Notification.Text, ""; got != want {
+		t.Fatalf("state.Notification.Text = %q, want %q", got, want)
 	}
 }
 
@@ -382,7 +382,7 @@ func TestModelViewRendersErrorState(t *testing.T) {
 
 func TestStatementExecutionFailureUsesFriendlyStatus(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 
 	next, _ := model.Update(statementExecutedMsg{
 		Statement:     "select * from missing;",
@@ -391,11 +391,11 @@ func TestStatementExecutionFailureUsesFriendlyStatus(t *testing.T) {
 	})
 	model = next.(Model)
 
-	if got := model.state.Status; !strings.Contains(got, "Execution failed. SQL query failed. Check the statement and any referenced tables or columns.") {
+	if got := model.state.Notification.Text; !strings.Contains(got, "Execution failed. SQL query failed. Check the statement and any referenced tables or columns.") {
 		t.Fatalf("state.Status = %q, want friendly query failure", got)
 	}
 
-	if got := model.state.Status; !strings.Contains(got, "no such table: missing") {
+	if got := model.state.Notification.Text; !strings.Contains(got, "no such table: missing") {
 		t.Fatalf("state.Status = %q, want original error detail", got)
 	}
 }
@@ -417,7 +417,7 @@ func TestModelUpdateQuitsOnCtrlC(t *testing.T) {
 
 func TestModelUpdateTypesIntoCommandMode(t *testing.T) {
 	initial := NewModel(Session{})
-	initial.state.SetReady("")
+	initial.state.SetReady("", NotificationNone)
 
 	next, cmd := initial.Update(tea.KeyPressMsg{Text: "select"})
 	if cmd == nil {
@@ -445,7 +445,7 @@ func TestModelUpdateTypesIntoCommandMode(t *testing.T) {
 
 func TestModelUpdateQTypesWhenEditorFocused(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	next, cmd := model.Update(tea.KeyPressMsg{Text: "q"})
 	if cmd == nil {
 		t.Fatal("Update() cmd = nil, want textarea command")
@@ -463,7 +463,7 @@ func TestModelUpdateQTypesWhenEditorFocused(t *testing.T) {
 
 func TestModelUpdateSubmitSetsPendingIntent(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
 	next, _ = model.Update(tea.KeyPressMsg{Text: "select"})
@@ -515,31 +515,25 @@ func TestModelUpdateSubmitSetsPendingIntent(t *testing.T) {
 
 func TestModelUpdateSubmitWhileRunningShowsCancelGuidance(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL"})
 
-	next, cmd := model.Update(submitIntentMsg{})
-	if cmd != nil {
-		t.Fatalf("Update(submitIntentMsg{}) cmd = %v, want nil", cmd)
-	}
+	next, _ := model.Update(submitIntentMsg{})
 	model = next.(Model)
 
-	if got, want := model.state.Status, "SQL is still running. Press esc to cancel; timeout after 30s."; got != want {
+	if got, want := model.state.Notification.Text, "SQL is still running. Press esc to cancel; timeout after 30s."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
 
 func TestModelUpdateSubmitRejectsIncompleteSQL(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.command.editor.SetValue("select\n1")
 	model.syncCurrentSQL()
 	model.state.SetLastSubmittedSQL("select 0;")
 
-	next, cmd := model.Update(submitIntentMsg{})
-	if cmd != nil {
-		t.Fatalf("Update(submitIntentMsg{}) cmd = %v, want nil", cmd)
-	}
+	next, _ := model.Update(submitIntentMsg{})
 	model = next.(Model)
 
 	if got, want := model.state.Interaction.PendingIntent, IntentNone; got != want {
@@ -548,7 +542,7 @@ func TestModelUpdateSubmitRejectsIncompleteSQL(t *testing.T) {
 	if model.state.Interaction.Running != nil {
 		t.Fatalf("state.Interaction.Running = %#v, want nil", model.state.Interaction.Running)
 	}
-	if got, want := model.state.Status, "SQL is incomplete. End the statement with ';' to run it."; got != want {
+	if got, want := model.state.Notification.Text, "SQL is incomplete. End the statement with ';' to run it."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if got, want := model.command.editor.Value(), "select\n1"; got != want {
@@ -570,7 +564,7 @@ func TestModelUpdateSubmitRejectsIncompleteSQL(t *testing.T) {
 
 func TestModelUpdateRunningTickUpdatesElapsedAndFooter(t *testing.T) {
 	model := NewModel(Session{ConnectionName: "local", DatabaseType: "sqlite"})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
 	startedAt := time.Date(2026, time.April, 8, 10, 0, 0, 0, time.UTC)
@@ -616,7 +610,7 @@ func TestModelUpdateSubmitExecutesSelectAndLimitsInlineRows(t *testing.T) {
 	}
 
 	model := NewModel(Session{ConnectionName: "local", DatabaseType: "sqlite", Adapter: adapter})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
 	query := "select id, name from widgets order by id;"
@@ -632,7 +626,7 @@ func TestModelUpdateSubmitExecutesSelectAndLimitsInlineRows(t *testing.T) {
 	if got, want := model.state.Interaction.PendingIntent, IntentSubmit; got != want {
 		t.Fatalf("state.PendingIntent = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, fmt.Sprintf("Executing %d characters of SQL. Press esc to cancel; timeout after 30s.", len(query)); got != want {
+	if got, want := model.state.Notification.Text, fmt.Sprintf("Executing %d characters of SQL. Press esc to cancel; timeout after 30s.", len(query)); got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
@@ -647,7 +641,7 @@ func TestModelUpdateSubmitExecutesSelectAndLimitsInlineRows(t *testing.T) {
 	if model.state.Interaction.Running != nil {
 		t.Fatalf("state.Interaction.Running = %#v, want nil", model.state.Interaction.Running)
 	}
-	if got, want := model.state.Status, "Query returned 6 rows."; got != want {
+	if got, want := model.state.Notification.Text, "Query returned 6 rows."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if model.state.Interaction.LatestResult == nil {
@@ -690,7 +684,7 @@ func TestModelUpdateSubmitExecutesNonSelectStatement(t *testing.T) {
 	}
 
 	model := NewModel(Session{ConnectionName: "local", DatabaseType: "sqlite", Adapter: adapter})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
 	model.command.editor.SetValue(`insert into widgets (name) values ('Ada'), ('Grace');`)
@@ -705,7 +699,7 @@ func TestModelUpdateSubmitExecutesNonSelectStatement(t *testing.T) {
 	next, _ = model.Update(firstCommandMessageForTest[statementExecutedMsg](t, cmd))
 	model = next.(Model)
 
-	if got, want := model.state.Status, "Statement executed successfully. 2 rows affected."; got != want {
+	if got, want := model.state.Notification.Text, "Statement executed successfully. 2 rows affected."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if model.state.Interaction.LatestResult == nil {
@@ -728,7 +722,7 @@ func TestModelUpdateSubmitExecutesNonSelectStatement(t *testing.T) {
 
 func TestModelUpdateCancelDoesNotClearInput(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	next, _ := model.Update(tea.KeyPressMsg{Text: "select"})
 	model = next.(Model)
 
@@ -754,7 +748,7 @@ func TestModelUpdateCancelDoesNotClearInput(t *testing.T) {
 
 func TestModelUpdateCancelDismissesAutocompleteWithoutClearingInput(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 
 	// Type enough of a keyword to open the autocomplete dropdown.
 	next, _ := model.Update(tea.KeyPressMsg{Text: "sel"})
@@ -802,7 +796,7 @@ func TestModelUpdateCancelDismissesAutocompleteWithoutClearingInput(t *testing.T
 
 func TestModelUpdateCancelAfterDismissTypingReopensAutocomplete(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 
 	next, _ := model.Update(tea.KeyPressMsg{Text: "sel"})
 	model = next.(Model)
@@ -826,7 +820,7 @@ func TestModelUpdateCancelAfterDismissTypingReopensAutocomplete(t *testing.T) {
 
 func TestAutocompleteMenuOpensAfterTypingOneCharacter(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 
 	if model.command.AutocompleteVisible(model.state.Interaction) {
 		t.Fatal("AutocompleteVisible() = true on a fresh model, want false")
@@ -842,7 +836,7 @@ func TestAutocompleteMenuOpensAfterTypingOneCharacter(t *testing.T) {
 
 func TestAutocompleteMenuStaysClosedOnCursorMovement(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 
 	// Type enough to open the menu.
 	next, _ := model.Update(tea.KeyPressMsg{Text: "sel"})
@@ -884,7 +878,7 @@ func TestAutocompleteMenuStaysClosedOnCursorMovement(t *testing.T) {
 
 func TestAutocompleteMenuStaysClosedOnHistoryRecall(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select * from users"}})
 
 	// Open history search, select the entry (auto-selected), then restore.
@@ -923,7 +917,7 @@ func TestAutocompleteMenuStaysClosedAfterSubmitAndRefocus(t *testing.T) {
 	}()
 
 	model := newModelWithDependencies(Session{ConnectionName: "local", DatabaseType: "sqlite", Adapter: adapter}, modelDependencies{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 
 	// Simulate typing a query and submitting it.
 	next, _ := model.Update(tea.KeyPressMsg{Text: "select 1;"})
@@ -960,7 +954,7 @@ func TestAutocompleteMenuStaysClosedAfterSubmitAndRefocus(t *testing.T) {
 
 func TestModelUpdateCancelWhileRunningRequestsCancellation(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL"})
 
 	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -976,7 +970,7 @@ func TestModelUpdateCancelWhileRunningRequestsCancellation(t *testing.T) {
 	next, _ = next.(Model).Update(msg)
 	model = next.(Model)
 
-	if got, want := model.state.Status, "Cancelling SQL..."; got != want {
+	if got, want := model.state.Notification.Text, "Cancelling SQL..."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.PendingIntent, IntentSubmit; got != want {
@@ -986,7 +980,7 @@ func TestModelUpdateCancelWhileRunningRequestsCancellation(t *testing.T) {
 
 func TestStatementExecutionCancellationUsesFriendlyStatus(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	startedAt := time.Now().Add(-2500 * time.Millisecond)
 	model.state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL", StartedAt: startedAt, Elapsed: 2500 * time.Millisecond})
 
@@ -997,7 +991,7 @@ func TestStatementExecutionCancellationUsesFriendlyStatus(t *testing.T) {
 	})
 	model = next.(Model)
 
-	if got, want := model.state.Status, "Cancelled SQL after 2.5s."; got != want {
+	if got, want := model.state.Notification.Text, "Cancelled SQL after 2.5s."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if model.state.Interaction.Running != nil {
@@ -1007,7 +1001,7 @@ func TestStatementExecutionCancellationUsesFriendlyStatus(t *testing.T) {
 
 func TestStatementExecutionTimeoutUsesFriendlyStatus(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetRunningStatementContext(&RunningStatementContext{Label: "SQL", Elapsed: 30 * time.Second})
 
 	next, _ := model.Update(statementExecutedMsg{
@@ -1017,14 +1011,14 @@ func TestStatementExecutionTimeoutUsesFriendlyStatus(t *testing.T) {
 	})
 	model = next.(Model)
 
-	if got, want := model.state.Status, "SQL timed out after 30.0s. Press esc sooner to cancel manually, or retry with a narrower query."; got != want {
+	if got, want := model.state.Notification.Text, "SQL timed out after 30.0s. Press esc sooner to cancel manually, or retry with a narrower query."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
 
 func TestModelUpdateHistorySetsPendingIntent(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select 1"}, {	Statement: "/tables"}})
 	next, cmd := model.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
 	if cmd == nil {
@@ -1049,7 +1043,7 @@ func TestModelUpdateHistorySetsPendingIntent(t *testing.T) {
 		t.Fatal("model.currentModal() = nil, want history search modal open")
 	}
 
-	if got, want := model.state.Status, "History search matched 2 entries; selected \"/tables\"."; got != want {
+	if got, want := model.state.Notification.Text, ""; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	h, _ := model.currentModal().(*historySearchModal)
@@ -1067,7 +1061,7 @@ func TestModelUpdateHistorySetsPendingIntent(t *testing.T) {
 
 func TestModelUpdateHistoryCtrlRIgnoredWhenResultsPaneFocused(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetHistory([]HistoryEntryContext{{Statement: "select 1"}})
 
 	next, _ := model.Update(focusPaneIntentMsg{Pane: PaneResults})
@@ -1092,12 +1086,12 @@ func TestModelUpdateHistoryCtrlRIgnoredWhenResultsPaneFocused(t *testing.T) {
 
 func TestModelUpdateHistoryHandlesEmptyHistory(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 
 	next, _ := model.Update(historyIntentMsg{})
 	model = next.(Model)
 
-	if got, want := model.state.Status, "History search opened; history is empty."; got != want {
+	if got, want := model.state.Notification.Text, ""; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.ActiveModal, ModalHistorySearch; got != want {
@@ -1110,7 +1104,7 @@ func TestModelUpdateHistoryHandlesEmptyHistory(t *testing.T) {
 
 func TestModelUpdateHistorySearchFiltersAndCyclesEntries(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select * from users"}, {	Statement: "delete from users"}, {	Statement: "select * from user_sessions"}})
 
 	next, _ := model.Update(historyIntentMsg{})
@@ -1144,14 +1138,14 @@ func TestModelUpdateHistorySearchFiltersAndCyclesEntries(t *testing.T) {
 	if got, want := selectedEntry(), "select * from users"; got != want {
 		t.Fatalf("selected history entry = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, "History search matched 2 entries; selected \"select * from users\"."; got != want {
+	if got, want := model.state.Notification.Text, ""; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
 
 func TestModelUpdateHistorySearchCancelReturnsToCommandMode(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select 1"}})
 
 	next, _ := model.Update(historyIntentMsg{})
@@ -1169,14 +1163,14 @@ func TestModelUpdateHistorySearchCancelReturnsToCommandMode(t *testing.T) {
 	if got, want := model.state.Interaction.PendingIntent, IntentNone; got != want {
 		t.Fatalf("state.Interaction.PendingIntent = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, "Exited history search."; got != want {
+	if got, want := model.state.Notification.Text, ""; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
 
 func TestModelUpdateHistorySearchRestoreLoadsEditorAndClosesSearch(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select * from users"}, {	Statement: "select * from user_sessions"}})
 	model.command.editor.SetValue("partial")
 	model.command.editor.CursorEnd()
@@ -1206,7 +1200,7 @@ func TestModelUpdateHistorySearchRestoreLoadsEditorAndClosesSearch(t *testing.T)
 	if got, want := model.state.Interaction.PendingIntent, IntentNone; got != want {
 		t.Fatalf("state.Interaction.PendingIntent = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, "Restored selected history entry into the editor."; got != want {
+	if got, want := model.state.Notification.Text, ""; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if got, want := model.command.editor.Line(), 0; got != want {
@@ -1219,7 +1213,7 @@ func TestModelUpdateHistorySearchRestoreLoadsEditorAndClosesSearch(t *testing.T)
 
 func TestModelUpdateModeSwitchSetsPendingIntent(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	next, cmd := model.Update(tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("Update() cmd = nil, want switch mode intent command")
@@ -1244,7 +1238,7 @@ func TestModelUpdateModeSwitchSetsPendingIntent(t *testing.T) {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
 
-	if got, want := model.state.Status, "Focused the Results Pane in split layout. Run a query that returns rows to populate it."; got != want {
+	if got, want := model.state.Notification.Text, ""; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
@@ -1267,7 +1261,7 @@ func TestModelUpdateModeSwitchPreservesLatestResultContext(t *testing.T) {
 	}
 
 	model := NewModel(Session{ConnectionName: "local", DatabaseType: "sqlite", Adapter: adapter})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
 	query := "select id, name from widgets order by id;"
@@ -1292,7 +1286,7 @@ func TestModelUpdateModeSwitchPreservesLatestResultContext(t *testing.T) {
 	next, _ = model.Update(cmd())
 	model = next.(Model)
 
-	if got, want := model.state.Status, "Focused the Results Pane in split layout for 6 row(s) across 2 column(s)."; got != want {
+	if got, want := model.state.Notification.Text, ""; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if got, want := model.state.Interaction.Layout, LayoutSplit; got != want {
@@ -1344,7 +1338,7 @@ func TestModelUpdateNewResultResetsResultsPanePage(t *testing.T) {
 	}
 
 	model := NewModel(Session{ConnectionName: "local", DatabaseType: "sqlite", Adapter: adapter})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetResultsPanePage(4)
 	model.command.editor.SetValue("select id, name from widgets order by id;")
 	model.syncCurrentSQL()
@@ -1365,7 +1359,7 @@ func TestModelUpdateNewResultResetsResultsPanePage(t *testing.T) {
 
 func TestModelViewResultsPaneShowsPaginatedRows(t *testing.T) {
 	model := NewModel(Session{ConnectionName: "local", DatabaseType: "sqlite"})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutResultsOnly)
 	model.state.SetActivePane(PaneResults)
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -1400,7 +1394,7 @@ func TestModelViewResultsPaneShowsPaginatedRows(t *testing.T) {
 
 func TestModelUpdateCtrlDScrollsWithinPageInResultsPaneOnlyLayout(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutResultsOnly)
 	model.state.SetActivePane(PaneResults)
 	model.state.SetLatestResultContext(&LatestResultContext{
@@ -1438,7 +1432,7 @@ func TestModelUpdateCtrlDScrollsWithinPageInResultsPaneOnlyLayout(t *testing.T) 
 
 func TestModelUpdateCtrlUScrollsWithinPageInResultsPaneOnlyLayout(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutResultsOnly)
 	model.state.SetActivePane(PaneResults)
 	model.state.SetLatestResultContext(&LatestResultContext{
@@ -1473,7 +1467,7 @@ func TestModelUpdateCtrlUScrollsWithinPageInResultsPaneOnlyLayout(t *testing.T) 
 
 func TestModelUpdateCtrlDScrollsOnlyWhenResultsPaneFocusedInSplitLayout(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetLatestResultContext(&LatestResultContext{
 		Statement: "select id from widgets order by id",
@@ -1505,7 +1499,7 @@ func TestModelUpdateCtrlDScrollsOnlyWhenResultsPaneFocusedInSplitLayout(t *testi
 
 func TestModelUpdateCtrlDDoesNotPageDuringHistorySearch(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutSplit)
 	h := &historySearchModal{filter: "sel"}
 	model.pushModal(h)
@@ -1538,7 +1532,7 @@ func TestModelUpdateCtrlDDoesNotPageDuringHistorySearch(t *testing.T) {
 
 func TestModelUpdateArrowKeysNavigateResultsPaneSelectionAcrossPages(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutResultsOnly)
 	model.state.SetActivePane(PaneResults)
 	model.state.SetLatestResultContext(&LatestResultContext{
@@ -1583,7 +1577,7 @@ func TestModelUpdateArrowKeysNavigateResultsPaneSelectionAcrossPages(t *testing.
 
 func TestModelUpdateSpaceTogglesSelectedRowsInResultsPane(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutResultsOnly)
 	model.state.SetActivePane(PaneResults)
 	model.state.SetLatestResultContext(&LatestResultContext{
@@ -1597,15 +1591,12 @@ func TestModelUpdateSpaceTogglesSelectedRowsInResultsPane(t *testing.T) {
 		},
 	})
 
-	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	next, _ := model.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	model = next.(Model)
-	if cmd != nil {
-		t.Fatalf("Update(space) cmd = %#v, want nil", cmd)
-	}
 	if got, want := model.state.Interaction.MarkedRows, []int{0}; len(got) != len(want) || got[0] != want[0] {
 		t.Fatalf("SelectedRows = %#v, want %#v", got, want)
 	}
-	if got, want := model.state.Status, "Selected row 1 (1 total)."; got != want {
+	if got, want := model.state.Notification.Text, "Selected row 1 (1 total)."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
@@ -1615,7 +1606,7 @@ func TestModelUpdateSpaceTogglesSelectedRowsInResultsPane(t *testing.T) {
 	if got, want := model.state.Interaction.MarkedRows, []int{0, 1}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("SelectedRows = %#v, want %#v", got, want)
 	}
-	if got, want := model.state.Status, "Selected row 2 (2 total)."; got != want {
+	if got, want := model.state.Notification.Text, "Selected row 2 (2 total)."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
@@ -1625,7 +1616,7 @@ func TestModelUpdateSpaceTogglesSelectedRowsInResultsPane(t *testing.T) {
 	if got, want := model.state.Interaction.MarkedRows, []int{1}; len(got) != len(want) || got[0] != want[0] {
 		t.Fatalf("SelectedRows = %#v, want %#v", got, want)
 	}
-	if got, want := model.state.Status, "Unselected row 1 (1 total)."; got != want {
+	if got, want := model.state.Notification.Text, "Unselected row 1 (1 total)."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
@@ -1640,10 +1631,10 @@ func TestModelUpdateSpaceTogglesSelectedRowsInResultsPane(t *testing.T) {
 
 func TestModelUpdateSpaceIgnoredOutsideResultsPane(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetActivePane(PaneCommand)
-	model.state.SetPendingIntent(IntentNone, "seed", "unchanged")
+	model.state.SetPendingIntent(IntentNone, "seed", "unchanged", NotificationInfo)
 	model.state.SetLatestResultContext(&LatestResultContext{
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "id"}},
@@ -1656,7 +1647,7 @@ func TestModelUpdateSpaceIgnoredOutsideResultsPane(t *testing.T) {
 	if len(model.state.Interaction.MarkedRows) != 0 {
 		t.Fatalf("MarkedRows = %#v, want unchanged", model.state.Interaction.MarkedRows)
 	}
-	if got, want := model.state.Status, "unchanged"; got != want {
+	if got, want := model.state.Notification.Text, "unchanged"; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if cmd != nil {
@@ -1666,7 +1657,7 @@ func TestModelUpdateSpaceIgnoredOutsideResultsPane(t *testing.T) {
 
 func TestModelUpdateNavigationIgnoredOutsideResultsPane(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetActivePane(PaneCommand)
 	model.state.SetLatestResultContext(&LatestResultContext{
@@ -1695,7 +1686,7 @@ func TestModelUpdateNavigationIgnoredOutsideResultsPane(t *testing.T) {
 
 func TestModelUpdateModeSwitchReturnsFromResultsPaneToCommandMode(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutResultsOnly)
 	model.state.SetActivePane(PaneResults)
 	model.command.Blur()
@@ -1725,7 +1716,7 @@ func TestModelUpdateModeSwitchReturnsFromResultsPaneToCommandMode(t *testing.T) 
 	if got, want := model.state.Interaction.PendingIntent, IntentNone; got != want {
 		t.Fatalf("state.Interaction.PendingIntent = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, "Returned to command line."; got != want {
+	if got, want := model.state.Notification.Text, ""; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if model.state.Interaction.PendingPaneSwitch != nil {
@@ -1741,7 +1732,7 @@ func TestModelUpdateModeSwitchReturnsFromResultsPaneToCommandMode(t *testing.T) 
 
 func TestModelUpdateQQuitsWhenResultsPaneFocusedInSplitLayout(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetLatestResultContext(&LatestResultContext{
 		Statement: "select 1",
@@ -1780,7 +1771,7 @@ func TestModelUpdateQQuitsWhenResultsPaneFocusedInSplitLayout(t *testing.T) {
 
 func TestModelUpdateFocusResultsPaneFromHistorySearchClosesHistorySearch(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select 1"}})
 	next, _ := model.Update(historyIntentMsg{})
 	model = next.(Model)
@@ -1805,7 +1796,7 @@ func TestModelUpdateFocusResultsPaneFromHistorySearchClosesHistorySearch(t *test
 
 func TestModelUpdateLayoutSwitchesToResultsPaneOnlyAndClosesHistorySearch(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select 1"}})
 	next, _ := model.Update(historyIntentMsg{})
 	model = next.(Model)
@@ -1823,14 +1814,14 @@ func TestModelUpdateLayoutSwitchesToResultsPaneOnlyAndClosesHistorySearch(t *tes
 	if model.currentModal() != nil {
 		t.Fatalf("model.currentModal() = %#v, want nil after layout switch", model.currentModal())
 	}
-	if got, want := model.state.Status, "Switched to results pane only. Run a query that returns rows to populate the Results Pane."; got != want {
+	if got, want := model.state.Notification.Text, ""; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
 
 func TestModelUpdateLayoutSwitchesToCommandOnlyFromSplitResultsPaneFocus(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetActivePane(PaneResults)
 	model.state.SetLatestResultContext(&LatestResultContext{
@@ -1858,7 +1849,7 @@ func TestModelUpdateLayoutSwitchesToCommandOnlyFromSplitResultsPaneFocus(t *test
 
 func TestModelUpdateCtrlXUsesSplitFocusWhenAlreadyInSplitLayout(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetLatestResultContext(&LatestResultContext{
 		Statement: "select 1",
@@ -1881,7 +1872,7 @@ func TestModelUpdateCtrlXUsesSplitFocusWhenAlreadyInSplitLayout(t *testing.T) {
 	if got, want := model.state.Interaction.ActivePane, PaneResults; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, "Focused the Results Pane in split layout for 1 row(s) across 1 column(s)."; got != want {
+	if got, want := model.state.Notification.Text, ""; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
@@ -1907,7 +1898,7 @@ func TestBuildLatestResultContextInfersSingleTableSource(t *testing.T) {
 
 func TestModelUpdateCCComposesUpdateAndReturnsToCommandMode(t *testing.T) {
 	model := NewModel(Session{ConnectionName: "local", DatabaseType: "sqlite"})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutResultsOnly)
 	model.state.SetActivePane(PaneResults)
 	model.command.Blur()
@@ -1931,9 +1922,6 @@ func TestModelUpdateCCComposesUpdateAndReturnsToCommandMode(t *testing.T) {
 
 	next, cmd = model.Update(tea.KeyPressMsg{Text: "c"})
 	model = next.(Model)
-	if cmd != nil {
-		t.Fatalf("Update(second c) cmd = %#v, want nil", cmd)
-	}
 	if got, want := model.state.Interaction.ActivePane, PaneCommand; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
@@ -1949,14 +1937,14 @@ func TestModelUpdateCCComposesUpdateAndReturnsToCommandMode(t *testing.T) {
 	if got, want := model.state.Interaction.CurrentSQL, model.command.Value(); got != want {
 		t.Fatalf("state.Interaction.CurrentSQL = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, "Loaded UPDATE for row 1 from main.widgets into command mode using primary key predicate."; got != want {
+	if got, want := model.state.Notification.Text, "Loaded UPDATE for row 1 from main.widgets into command mode using primary key predicate."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
 
 func TestModelUpdateCCRejectsUpdateWhenNoPrimaryKeys(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetActivePane(PaneResults)
 	model.command.Blur()
@@ -1976,14 +1964,14 @@ func TestModelUpdateCCRejectsUpdateWhenNoPrimaryKeys(t *testing.T) {
 	if got, want := model.state.Interaction.ActivePane, PaneResults; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
-	if !strings.Contains(model.state.Status, "Could not compose UPDATE") {
-		t.Fatalf("state.Status = %q, want error about missing primary key", model.state.Status)
+	if !strings.Contains(model.state.Notification.Text, "Could not compose UPDATE") {
+		t.Fatalf("state.Status = %q, want error about missing primary key", model.state.Notification.Text)
 	}
 }
 
 func TestModelUpdateCCReportsUnknownSource(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutResultsOnly)
 	model.state.SetActivePane(PaneResults)
 	model.state.SetLatestResultContext(&LatestResultContext{
@@ -2002,14 +1990,14 @@ func TestModelUpdateCCReportsUnknownSource(t *testing.T) {
 	if got, want := model.state.Interaction.ActivePane, PaneResults; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, "Could not compose UPDATE: result source table is unknown"; got != want {
+	if got, want := model.state.Notification.Text, "Could not compose UPDATE: result source table is unknown"; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
 
 func TestModelUpdateYYComposesInsertAndReturnsToCommandMode(t *testing.T) {
 	model := NewModel(Session{ConnectionName: "local", DatabaseType: "sqlite"})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutResultsOnly)
 	model.state.SetActivePane(PaneResults)
 	model.command.Blur()
@@ -2022,23 +2010,17 @@ func TestModelUpdateYYComposesInsertAndReturnsToCommandMode(t *testing.T) {
 		},
 	})
 
-	next, cmd := model.Update(tea.KeyPressMsg{Text: "y"})
+	next, _ := model.Update(tea.KeyPressMsg{Text: "y"})
 	model = next.(Model)
-	if cmd != nil {
-		t.Fatalf("Update(first y) cmd = %#v, want nil", cmd)
-	}
 	if got, want := model.state.Interaction.ActivePane, PaneResults; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, "Press y again to load INSERT for the selected row into command mode."; got != want {
+	if got, want := model.state.Notification.Text, "Press y again to load INSERT for the selected row into command mode."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
-	next, cmd = model.Update(tea.KeyPressMsg{Text: "y"})
+	next, _ = model.Update(tea.KeyPressMsg{Text: "y"})
 	model = next.(Model)
-	if cmd != nil {
-		t.Fatalf("Update(second y) cmd = %#v, want nil", cmd)
-	}
 	if got, want := model.state.Interaction.ActivePane, PaneCommand; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
@@ -2054,7 +2036,7 @@ func TestModelUpdateYYComposesInsertAndReturnsToCommandMode(t *testing.T) {
 	if got, want := model.state.Interaction.CurrentSQL, model.command.Value(); got != want {
 		t.Fatalf("state.Interaction.CurrentSQL = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, "Loaded INSERT for row 1 from main.widgets into command mode."; got != want {
+	if got, want := model.state.Notification.Text, "Loaded INSERT for row 1 from main.widgets into command mode."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if got := model.View().Content; strings.Contains(got, "Warning: generated DELETE statement. Review carefully before submitting.") {
@@ -2068,7 +2050,7 @@ func TestModelUpdateYYComposesInsertAndReturnsToCommandMode(t *testing.T) {
 
 func TestModelUpdateYYReportsUnknownSource(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutResultsOnly)
 	model.state.SetActivePane(PaneResults)
 	model.state.SetLatestResultContext(&LatestResultContext{
@@ -2087,14 +2069,14 @@ func TestModelUpdateYYReportsUnknownSource(t *testing.T) {
 	if got, want := model.state.Interaction.ActivePane, PaneResults; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, "Could not compose INSERT: result source table is unknown"; got != want {
+	if got, want := model.state.Notification.Text, "Could not compose INSERT: result source table is unknown"; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
 
 func TestModelUpdateDDComposesDeleteAndReturnsToCommandMode(t *testing.T) {
 	model := NewModel(Session{ConnectionName: "local", DatabaseType: "sqlite"})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutResultsOnly)
 	model.state.SetActivePane(PaneResults)
 	model.command.Blur()
@@ -2107,23 +2089,17 @@ func TestModelUpdateDDComposesDeleteAndReturnsToCommandMode(t *testing.T) {
 		},
 	})
 
-	next, cmd := model.Update(tea.KeyPressMsg{Text: "d"})
+	next, _ := model.Update(tea.KeyPressMsg{Text: "d"})
 	model = next.(Model)
-	if cmd != nil {
-		t.Fatalf("Update(first d) cmd = %#v, want nil", cmd)
-	}
 	if got, want := model.state.Interaction.ActivePane, PaneResults; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, "Press d again to load DELETE for the selected row into command mode."; got != want {
+	if got, want := model.state.Notification.Text, "Press d again to load DELETE for the selected row into command mode."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
-	next, cmd = model.Update(tea.KeyPressMsg{Text: "d"})
+	next, _ = model.Update(tea.KeyPressMsg{Text: "d"})
 	model = next.(Model)
-	if cmd != nil {
-		t.Fatalf("Update(second d) cmd = %#v, want nil", cmd)
-	}
 	if got, want := model.state.Interaction.ActivePane, PaneCommand; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
@@ -2139,7 +2115,7 @@ func TestModelUpdateDDComposesDeleteAndReturnsToCommandMode(t *testing.T) {
 	if got, want := model.state.Interaction.CurrentSQL, model.command.Value(); got != want {
 		t.Fatalf("state.Interaction.CurrentSQL = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, "Loaded DELETE for row 1 from main.widgets into command mode using primary key predicate."; got != want {
+	if got, want := model.state.Notification.Text, "Loaded DELETE for row 1 from main.widgets into command mode using primary key predicate."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	next, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -2153,7 +2129,7 @@ func TestModelUpdateDDComposesDeleteAndReturnsToCommandMode(t *testing.T) {
 
 func TestModelUpdateDDKeepsSplitLayoutWhenComposingDelete(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutSplit)
 	model.state.SetActivePane(PaneResults)
 	model.command.Blur()
@@ -2176,7 +2152,7 @@ func TestModelUpdateDDKeepsSplitLayoutWhenComposingDelete(t *testing.T) {
 	if got, want := model.state.Interaction.ActivePane, PaneCommand; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, "Loaded DELETE for row 1 from widgets into command mode using visible column predicate."; got != want {
+	if got, want := model.state.Notification.Text, "Loaded DELETE for row 1 from widgets into command mode using visible column predicate."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	if got := model.command.Value(); !strings.Contains(got, "DELETE FROM \"widgets\"") || !strings.Contains(got, "\"name\" = 'one'") {
@@ -2191,7 +2167,7 @@ func TestModelUpdateDDKeepsSplitLayoutWhenComposingDelete(t *testing.T) {
 
 func TestModelUpdateDDReportsUnknownSource(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutResultsOnly)
 	model.state.SetActivePane(PaneResults)
 	model.state.SetLatestResultContext(&LatestResultContext{
@@ -2210,7 +2186,7 @@ func TestModelUpdateDDReportsUnknownSource(t *testing.T) {
 	if got, want := model.state.Interaction.ActivePane, PaneResults; got != want {
 		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
 	}
-	if got, want := model.state.Status, "Could not compose DELETE: result source table is unknown"; got != want {
+	if got, want := model.state.Notification.Text, "Could not compose DELETE: result source table is unknown"; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
@@ -2222,7 +2198,7 @@ func TestModelUpdateResultsPaneWriteExportsSelectedRowsToCSV(t *testing.T) {
 	}
 
 	model := NewModel(Session{WorkingDir: workingDir})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutResultsOnly)
 	model.state.SetActivePane(PaneResults)
 	model.state.SetLatestResultContext(&LatestResultContext{
@@ -2248,7 +2224,7 @@ func TestModelUpdateResultsPaneWriteExportsSelectedRowsToCSV(t *testing.T) {
 		model = next.(Model)
 	}
 
-	if got, want := model.state.Status, "Exported 1 row(s) as csv from selected rows to exports/selected.csv."; got != want {
+	if got, want := model.state.Notification.Text, "Exported 1 row(s) as csv from selected rows to exports/selected.csv."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	data, err := os.ReadFile(filepath.Join(workingDir, "exports", "selected.csv"))
@@ -2267,7 +2243,7 @@ func TestModelUpdateResultsPaneWriteFallsBackToAllRowsAndSupportsJSONMarkdownTSV
 	}
 
 	base := NewModel(Session{WorkingDir: workingDir})
-	base.state.SetReady("")
+	base.state.SetReady("", NotificationNone)
 	base.state.SetLayout(LayoutResultsOnly)
 	base.state.SetActivePane(PaneResults)
 	base.state.SetLatestResultContext(&LatestResultContext{
@@ -2291,7 +2267,7 @@ func TestModelUpdateResultsPaneWriteFallsBackToAllRowsAndSupportsJSONMarkdownTSV
 	}
 
 	model := runWrite(base, "w exports/all.tsv")
-	if got, want := model.state.Status, "Exported 2 row(s) as tsv from current result rows to exports/all.tsv."; got != want {
+	if got, want := model.state.Notification.Text, "Exported 2 row(s) as tsv from current result rows to exports/all.tsv."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	tsvData, err := os.ReadFile(filepath.Join(workingDir, "exports", "all.tsv"))
@@ -2328,7 +2304,7 @@ func TestModelUpdateResultsPaneWriteFallsBackToAllRowsAndSupportsJSONMarkdownTSV
 func TestModelUpdateResultsPaneWriteValidatesCommandAndPathScope(t *testing.T) {
 	workingDir := t.TempDir()
 	model := NewModel(Session{WorkingDir: workingDir})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutResultsOnly)
 	model.state.SetActivePane(PaneResults)
 	model.state.SetLatestResultContext(&LatestResultContext{
@@ -2343,7 +2319,7 @@ func TestModelUpdateResultsPaneWriteValidatesCommandAndPathScope(t *testing.T) {
 		next, _ := model.Update(msg)
 		model = next.(Model)
 	}
-	if got, want := model.state.Status, "Use :w [filename] with .csv, .tsv, .json, or .md while Results Pane is focused."; got != want {
+	if got, want := model.state.Notification.Text, "Use :w [filename] with .csv, .tsv, .json, or .md while Results Pane is focused."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
@@ -2357,14 +2333,14 @@ func TestModelUpdateResultsPaneWriteValidatesCommandAndPathScope(t *testing.T) {
 		next, _ := model.Update(msg)
 		model = next.(Model)
 	}
-	if got := model.state.Status; !strings.Contains(got, "Could not export rows: export path must stay within") {
+	if got := model.state.Notification.Text; !strings.Contains(got, "Could not export rows: export path must stay within") {
 		t.Fatalf("state.Status = %q, want scoped path error", got)
 	}
 }
 
 func TestModelViewResultsPaneShowsWritePrompt(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutResultsOnly)
 	model.state.SetActivePane(PaneResults)
 	model.state.SetLatestResultContext(&LatestResultContext{
@@ -2385,14 +2361,14 @@ func TestModelViewResultsPaneShowsWritePrompt(t *testing.T) {
 	if got, want := model.resultsPane.exportBuffer, ":"; got != want {
 		t.Fatalf("resultsPane.writeBuffer = %q, want %q", got, want)
 	}
-	if got := model.state.Status; !strings.Contains(got, "Type :w") {
+	if got := model.state.Notification.Text; !strings.Contains(got, "Type :w") {
 		t.Fatalf("state.Status = %q, want to contain export guidance", got)
 	}
 }
 
 func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 
 	next, cmd := model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 	if cmd == nil {
@@ -2406,7 +2382,7 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 	if model.currentModal() == nil || model.currentModal().Name() != ModalKeybindings {
 		t.Fatal("currentModal() is not keybindings modal, want keybindings modal open")
 	}
-	if got, want := model.state.Status, "Opened keybindings."; got != want {
+	if got, want := model.state.Notification.Text, ""; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 
@@ -2445,7 +2421,7 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 	if model.currentModal() != nil && model.currentModal().Name() == ModalKeybindings {
 		t.Fatal("currentModal() is still keybindings, want closed")
 	}
-	if got, want := model.state.Status, "Closed keybindings."; got != want {
+	if got, want := model.state.Notification.Text, ""; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 }
@@ -2481,7 +2457,7 @@ func TestModelToggleHelpShowsSplitAndWizardSpecificGuidance(t *testing.T) {
 
 func TestModelToggleHelpShowsHistorySearchGuidance(t *testing.T) {
 	model := NewModel(Session{})
-	model.state.SetReady("")
+	model.state.SetReady("", NotificationNone)
 	model.state.SetHistory([]HistoryEntryContext{{Statement: "select 1"}})
 	next, _ := model.Update(historyIntentMsg{})
 	model = next.(Model)
@@ -2513,7 +2489,7 @@ func TestModelToggleHelpShowsHistorySearchGuidance(t *testing.T) {
 	for _, want := range []string{
 		"ctrl+e toggle keybindings",
 		"enter restore selected entry",
-		"ctrl+r or up select older match",
+		"ctrl+n or down select older match",
 		"esc close history search",
 	} {
 		if !strings.Contains(combined, want) {

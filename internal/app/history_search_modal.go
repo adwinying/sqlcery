@@ -46,7 +46,7 @@ func (h *historySearchModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) Mo
 
 	switch {
 	case msg.String() == "ctrl+c":
-		return modalResultPendingStatus{intent: IntentNone, action: "history", status: "Exited history search.", dismiss: true}
+		return modalResultPendingStatus{intent: IntentNone, action: "history", status: "", level: NotificationNone, dismiss: true}
 	case key.Matches(msg, keys.Help):
 		return modalResultForward{cmd: func() tea.Msg { return toggleHelpIntentMsg{} }}
 	case key.Matches(msg, keys.RestoreHistory):
@@ -55,9 +55,9 @@ func (h *historySearchModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) Mo
 		if strings.TrimSpace(h.filter) != "" {
 			h.filter = ""
 			h.selectedIndex = 0
-			return modalResultPendingStatus{intent: IntentHistory, action: "history", status: "Cleared history search filter."}
+			return modalResultPendingStatus{intent: IntentHistory, action: "history", status: "", level: NotificationNone}
 		}
-		return modalResultPendingStatus{intent: IntentNone, action: "history", status: "Exited history search.", dismiss: true}
+		return modalResultPendingStatus{intent: IntentNone, action: "history", status: "", level: NotificationNone, dismiss: true}
 	case key.Matches(msg, keys.PrevSuggestion), msg.String() == "up":
 		return h.cycle(ctx, -1)
 	case key.Matches(msg, keys.NextSuggestion), msg.String() == "down":
@@ -165,40 +165,29 @@ func (h *historySearchModal) Render(interaction InteractionState, innerWidth int
 func (h *historySearchModal) restore(ctx ModalContext) ModalResult {
 	matches := filterHistorySearchEntries(ctx.Interaction.History, h.filter)
 	if len(matches) == 0 {
-		return modalResultPendingStatus{intent: IntentHistory, action: "history", status: h.status(ctx.Interaction)}
+		return modalResultNone{}
 	}
 	idx := wrapHistorySearchIndex(h.selectedIndex, len(matches))
 	return modalResultRestoreHistory{
 		sql:    matches[idx].Statement,
-		status: "Restored selected history entry into the editor.",
+		status: "",
+		level:  NotificationNone,
 	}
 }
 
 func (h *historySearchModal) cycle(ctx ModalContext, delta int) ModalResult {
 	matches := filterHistorySearchEntries(ctx.Interaction.History, h.filter)
 	if len(matches) == 0 {
-		return modalResultPendingStatus{intent: IntentHistory, action: "history", status: h.status(ctx.Interaction)}
+		return modalResultNone{}
 	}
 	h.selectedIndex = wrapHistorySearchIndex(h.selectedIndex+delta, len(matches))
-	return modalResultPendingStatus{intent: IntentHistory, action: "history", status: h.status(ctx.Interaction)}
+	return modalResultNone{}
 }
 
 func (h *historySearchModal) updateFilter(ctx ModalContext, filter string) ModalResult {
 	h.filter = filter
 	h.selectedIndex = 0
-	return modalResultPendingStatus{intent: IntentHistory, action: "history", status: h.status(ctx.Interaction)}
-}
-
-func (h *historySearchModal) status(interaction InteractionState) string {
-	matches := filterHistorySearchEntries(interaction.History, h.filter)
-	if len(interaction.History) == 0 {
-		return "History search opened; history is empty."
-	}
-	if len(matches) == 0 {
-		return fmt.Sprintf("History search for %q returned no matches.", h.filter)
-	}
-	idx := wrapHistorySearchIndex(h.selectedIndex, len(matches))
-	return fmt.Sprintf("History search matched %d entries; selected %q.", len(matches), historySearchDisplaySQL(matches[idx].Statement))
+	return modalResultNone{}
 }
 
 // --- pure helpers ---

@@ -176,9 +176,6 @@ func (m resultsPaneModeModel) FooterHints(interaction InteractionState) string {
 			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
 		}
 	}
-	if running := formatRunningIndicator(interaction.Running); running != "" {
-		parts = append(parts, running)
-	}
 	if m.pendingAction == resultsPanePendingActionExport {
 		parts = append(parts, ":w [file] export", "enter save", "esc cancel")
 	}
