@@ -646,10 +646,11 @@ func (m Model) readyStateView(totalHeight int) string {
 	}
 
 	if modal := m.currentModal(); modal != nil {
-		modalContent := modal.Render(interaction)
-		if modalContent != "" {
-			maxW := min(tui.ModalMaxWidth, w-4)
-			if maxW >= tui.ModalMinWidth {
+		maxW := min(tui.ModalMaxWidth, w-4)
+		if maxW >= tui.ModalMinWidth {
+			innerWidth := maxW - 2
+			modalContent := modal.Render(interaction, innerWidth)
+			if modalContent != "" {
 				rendered := tui.RenderModal(modalContent, maxW)
 				base = tui.OverlayCenter(base, rendered, w, totalHeight)
 			}

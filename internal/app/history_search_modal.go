@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/adwinying/sqlcery/internal/tui"
 )
@@ -19,6 +20,7 @@ const historySearchPreviewRows = tui.ModalFixedRows - 3 // 3 = title + query + m
 type historySearchModal struct {
 	filter        string
 	selectedIndex int
+	hScrollOffset int
 }
 
 func (h *historySearchModal) Name() AppModal { return ModalHistorySearch }
@@ -32,7 +34,7 @@ func (h *historySearchModal) FooterHints(interaction InteractionState) string {
 	case len(matches) == 0:
 		return strings.Join([]string{"ctrl+r keep searching", "esc close", bindingSummary(keys.Help)}, " | ")
 	default:
-		return strings.Join([]string{"enter restore", "ctrl+r older", "ctrl+n newer", "esc close", bindingSummary(keys.Help)}, " | ")
+		return strings.Join([]string{"enter restore", "ctrl+r older", "ctrl+n newer", "alt+← → scroll", "esc close", bindingSummary(keys.Help)}, " | ")
 	}
 }
 
@@ -52,6 +54,12 @@ func (h *historySearchModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) Mo
 		return h.cycle(ctx, 1)
 	case key.Matches(msg, keys.PrevSuggestion), msg.String() == "down":
 		return h.cycle(ctx, -1)
+	case msg.String() == "alt+right":
+		h.hScrollOffset += 8
+		return modalResultNone{}
+	case msg.String() == "alt+left":
+		h.hScrollOffset = max(0, h.hScrollOffset-8)
+		return modalResultNone{}
 	case msg.String() == "backspace" || msg.String() == "ctrl+h" || msg.String() == "delete":
 		return h.updateFilter(ctx, trimLastRune(h.filter))
 	case msg.String() == "space":
@@ -72,7 +80,7 @@ func (h *historySearchModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) Mo
 	}
 }
 
-func (h *historySearchModal) Render(interaction InteractionState) string {
+func (h *historySearchModal) Render(interaction InteractionState, innerWidth int) string {
 	matches := filterHistorySearchEntries(interaction.History, h.filter)
 	lines := []string{
 		tui.AppTheme.PanelTitle.Render("Reverse search:"),
@@ -98,7 +106,9 @@ func (h *historySearchModal) Render(interaction InteractionState) string {
 		display := historySearchDisplaySQL(matches[i].Statement)
 		var line string
 		if i == selected {
-			line = tui.AppTheme.PanelSelected.Render("> " + display)
+			content := "> " + display
+			h.hScrollOffset = tui.ClampHScrollOffset(ansi.StringWidth(content), h.hScrollOffset, innerWidth)
+			line = tui.AppTheme.PanelSelected.Render(tui.ApplyHScroll(content, h.hScrollOffset, innerWidth))
 		} else {
 			line = tui.AppTheme.PanelText.Render("  " + display)
 		}
@@ -126,12 +136,14 @@ func (h *historySearchModal) cycle(ctx ModalContext, delta int) ModalResult {
 		return modalResultPendingStatus{intent: IntentHistory, action: "history", status: h.status(ctx.Interaction)}
 	}
 	h.selectedIndex = wrapHistorySearchIndex(h.selectedIndex+delta, len(matches))
+	h.hScrollOffset = 0
 	return modalResultPendingStatus{intent: IntentHistory, action: "history", status: h.status(ctx.Interaction)}
 }
 
 func (h *historySearchModal) updateFilter(ctx ModalContext, filter string) ModalResult {
 	h.filter = filter
 	h.selectedIndex = 0
+	h.hScrollOffset = 0
 	return modalResultPendingStatus{intent: IntentHistory, action: "history", status: h.status(ctx.Interaction)}
 }
 

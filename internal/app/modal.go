@@ -73,7 +73,9 @@ type Modal interface {
 	// not mutate the model directly.
 	HandleKey(msg tea.KeyPressMsg, ctx ModalContext) ModalResult
 	// Render returns the modal content string for overlayCenter.
-	Render(interaction InteractionState) string
+	// innerWidth is the available content width inside the modal border,
+	// so modals can pre-apply horizontal scroll offsets to long lines.
+	Render(interaction InteractionState, innerWidth int) string
 	// FooterHints returns a pipe-separated hint string for the Hints Bar,
 	// state-conditional on the modal's own state and interaction.
 	FooterHints(interaction InteractionState) string

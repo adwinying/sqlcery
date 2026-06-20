@@ -31,7 +31,7 @@ func (h *helpModal) HandleKey(msg tea.KeyPressMsg, _ ModalContext) ModalResult {
 	}
 }
 
-func (h *helpModal) Render(interaction InteractionState) string {
+func (h *helpModal) Render(interaction InteractionState, _ int) string {
 	// Restore the context modal so renderKeybindingsContent shows the right
 	// modal-specific sections even though ModalKeybindings is now on top.
 	interaction.ActiveModal = h.contextModal

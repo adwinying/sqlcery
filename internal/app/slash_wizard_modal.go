@@ -13,7 +13,8 @@ import (
 // It owns the full SlashCommandWizardContext; no wizard state lives on
 // InteractionState.
 type slashWizardModal struct {
-	wizard SlashCommandWizardContext
+	wizard        SlashCommandWizardContext
+	hScrollOffset int
 }
 
 func (s *slashWizardModal) Name() AppModal { return ModalSlashWizard }
@@ -28,6 +29,7 @@ func (s *slashWizardModal) FooterHints(_ InteractionState) string {
 		"enter confirm",
 		"ctrl+n next",
 		"ctrl+p prev",
+		"alt+← → scroll",
 		escHint,
 		bindingSummary(keys.Help),
 	}, " | ")
@@ -47,6 +49,12 @@ func (s *slashWizardModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) Moda
 		return s.move(ctx, 1)
 	case key.Matches(msg, keys.PrevSuggestion), msg.String() == "ctrl+p":
 		return s.move(ctx, -1)
+	case msg.String() == "alt+right":
+		s.hScrollOffset += 8
+		return modalResultNone{}
+	case msg.String() == "alt+left":
+		s.hScrollOffset = max(0, s.hScrollOffset-8)
+		return modalResultNone{}
 	case s.wizard.Step == SlashCommandWizardStepTarget &&
 		(msg.String() == "backspace" || msg.String() == "ctrl+h" || msg.String() == "delete"):
 		return s.updateFilter(ctx, trimLastRune(s.wizard.TargetFilter))
@@ -60,8 +68,8 @@ func (s *slashWizardModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) Moda
 	}
 }
 
-func (s *slashWizardModal) Render(_ InteractionState) string {
-	return renderSlashWizardContext(&s.wizard)
+func (s *slashWizardModal) Render(_ InteractionState, innerWidth int) string {
+	return renderSlashWizardContext(&s.wizard, &s.hScrollOffset, innerWidth)
 }
 
 func (s *slashWizardModal) handleEsc(ctx ModalContext) ModalResult {
@@ -141,6 +149,7 @@ func (s *slashWizardModal) submit(ctx ModalContext) ModalResult {
 }
 
 func (s *slashWizardModal) move(_ ModalContext, delta int) ModalResult {
+	s.hScrollOffset = 0
 	switch s.wizard.Step {
 	case SlashCommandWizardStepTarget:
 		filtered := filterWizardTargets(s.wizard.Targets, s.wizard.TargetFilter)
@@ -162,6 +171,7 @@ func (s *slashWizardModal) move(_ ModalContext, delta int) ModalResult {
 func (s *slashWizardModal) updateFilter(_ ModalContext, filter string) ModalResult {
 	s.wizard.TargetFilter = filter
 	s.wizard.SelectedTarget = 0
+	s.hScrollOffset = 0
 	filtered := filterWizardTargets(s.wizard.Targets, filter)
 	if len(filtered) == 0 {
 		return modalResultReady{status: fmt.Sprintf("No tables match %q.", filter)}

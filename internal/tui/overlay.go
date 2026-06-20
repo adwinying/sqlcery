@@ -47,7 +47,7 @@ func RenderModal(content string, maxOuterWidth int) string {
 			padding = strings.Repeat(" ", innerWidth-w)
 		}
 		if w > innerWidth {
-			line = ansi.Truncate(line, innerWidth, "")
+			line = ansi.Truncate(line, innerWidth, "…")
 			padding = ""
 		}
 		result = append(result, bs.Render("│")+line+padding+bs.Render("│"))
@@ -55,6 +55,59 @@ func RenderModal(content string, maxOuterWidth int) string {
 	result = append(result, bottomLine)
 
 	return strings.Join(result, "\n")
+}
+
+// ClampHScrollOffset returns the largest offset that is still meaningful for a
+// view of viewW columns displaying content of totalW visible columns. At any
+// non-zero offset a '<' edge marker occupies one column, so the ceiling is
+// max(0, totalW-viewW+1). Callers should store the result back onto their
+// scroll-offset field so that pressing left immediately moves the view.
+func ClampHScrollOffset(totalW, offset, viewW int) int {
+	return min(offset, max(0, totalW-viewW+1))
+}
+
+// ApplyHScroll returns a width-column slice of plain-text s starting at offset,
+// inserting a '<' left-edge marker when offset > 0 and a '>' right-edge marker
+// when content extends past the right edge. Each marker occupies one column.
+// s must be plain text with no ANSI escape sequences.
+func ApplyHScroll(s string, offset, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	totalW := ansi.StringWidth(s)
+
+	offset = ClampHScrollOffset(totalW, offset, width)
+
+	hasLeft := offset > 0
+
+	contentW := width
+	if hasLeft {
+		contentW--
+	}
+	hasRight := totalW > offset+contentW
+	if hasRight {
+		contentW--
+	}
+	if contentW < 0 {
+		contentW = 0
+	}
+
+	var cut string
+	if contentW > 0 {
+		cut = ansi.Cut(s, offset, offset+contentW)
+	}
+	if w := ansi.StringWidth(cut); w < contentW {
+		cut += strings.Repeat(" ", contentW-w)
+	}
+
+	left, right := "", ""
+	if hasLeft {
+		left = "<"
+	}
+	if hasRight {
+		right = ">"
+	}
+	return left + cut + right
 }
 
 // OverlayCenter composites modal centered over bg.

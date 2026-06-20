@@ -481,7 +481,7 @@ func renderInlineResult(interaction InteractionState) string {
 	return renderInlineQueryResult(latest)
 }
 
-func renderSlashWizardContext(wizard *SlashCommandWizardContext) string {
+func renderSlashWizardContext(wizard *SlashCommandWizardContext, hScrollOffset *int, innerWidth int) string {
 	if wizard == nil {
 		return ""
 	}
@@ -521,7 +521,9 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext) string {
 			for i := scrollOffset; i < viewEnd; i++ {
 				target := filteredTargets[i]
 				if i == selected {
-					lines = append(lines, tui.AppTheme.PanelSelected.Render("> "+target.Display))
+					content := "> " + target.Display
+					*hScrollOffset = tui.ClampHScrollOffset(ansi.StringWidth(content), *hScrollOffset, innerWidth)
+					lines = append(lines, tui.AppTheme.PanelSelected.Render(tui.ApplyHScroll(content, *hScrollOffset, innerWidth)))
 				} else {
 					lines = append(lines, tui.AppTheme.PanelText.Render("  "+target.Display))
 				}
@@ -539,14 +541,15 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext) string {
 		viewEnd := min(len(wizard.Commands), scrollOffset+listViewport)
 		for i := scrollOffset; i < viewEnd; i++ {
 			command := wizard.Commands[i]
-			line := fmt.Sprintf("  %s - %s", command.DisplayName, command.Summary)
+			line := fmt.Sprintf("%s - %s", command.DisplayName, command.Summary)
 			if command.NeedsTarget {
 				line += " (choose table next)"
 			}
 			if i == selected {
-				lines = append(lines, tui.AppTheme.PanelSelected.Render("> "+strings.TrimPrefix(line, "  ")))
+				*hScrollOffset = tui.ClampHScrollOffset(ansi.StringWidth("> "+line), *hScrollOffset, innerWidth)
+				lines = append(lines, tui.AppTheme.PanelSelected.Render(tui.ApplyHScroll("> "+line, *hScrollOffset, innerWidth)))
 			} else {
-				lines = append(lines, tui.AppTheme.PanelText.Render(line))
+				lines = append(lines, tui.AppTheme.PanelText.Render("  "+line))
 			}
 		}
 	}
