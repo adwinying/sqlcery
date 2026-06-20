@@ -27,13 +27,17 @@ func (h *historySearchModal) Name() AppModal { return ModalHistorySearch }
 func (h *historySearchModal) FooterHints(interaction InteractionState) string {
 	keys := defaultCommandModeKeys()
 	matches := filterHistorySearchEntries(interaction.History, h.filter)
+	escHint := "esc close"
+	if strings.TrimSpace(h.filter) != "" {
+		escHint = "esc clear filter"
+	}
 	switch {
 	case len(interaction.History) == 0:
-		return strings.Join([]string{"esc close", bindingSummary(keys.Help)}, " | ")
+		return strings.Join([]string{escHint, bindingSummary(keys.Help)}, " | ")
 	case len(matches) == 0:
-		return strings.Join([]string{"esc close", bindingSummary(keys.Help)}, " | ")
+		return strings.Join([]string{escHint, bindingSummary(keys.Help)}, " | ")
 	default:
-		return strings.Join([]string{"enter restore", "ctrl+p older", "ctrl+n newer", "esc close", bindingSummary(keys.Help)}, " | ")
+		return strings.Join([]string{"enter restore", "ctrl+p up", "ctrl+n down", escHint, bindingSummary(keys.Help)}, " | ")
 	}
 }
 
@@ -48,11 +52,16 @@ func (h *historySearchModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) Mo
 	case key.Matches(msg, keys.RestoreHistory):
 		return h.restore(ctx)
 	case key.Matches(msg, keys.Cancel):
+		if strings.TrimSpace(h.filter) != "" {
+			h.filter = ""
+			h.selectedIndex = 0
+			return modalResultPendingStatus{intent: IntentHistory, action: "history", status: "Cleared history search filter."}
+		}
 		return modalResultPendingStatus{intent: IntentNone, action: "history", status: "Exited history search.", dismiss: true}
 	case key.Matches(msg, keys.PrevSuggestion), msg.String() == "up":
-		return h.cycle(ctx, 1)
-	case key.Matches(msg, keys.NextSuggestion), msg.String() == "down":
 		return h.cycle(ctx, -1)
+	case key.Matches(msg, keys.NextSuggestion), msg.String() == "down":
+		return h.cycle(ctx, 1)
 	case msg.String() == "backspace" || msg.String() == "ctrl+h" || msg.String() == "delete":
 		return h.updateFilter(ctx, trimLastRune(h.filter))
 	case msg.String() == "space":

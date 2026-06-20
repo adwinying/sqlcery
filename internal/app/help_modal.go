@@ -129,7 +129,11 @@ func (h *helpModal) FooterHints(_ InteractionState) string {
 		}
 		parts = append(parts, "ctrl+p up", "ctrl+n down")
 	}
-	parts = append(parts, "esc close", bindingSummary(keys.Help))
+	escHint := "esc close"
+	if strings.TrimSpace(h.filter) != "" {
+		escHint = "esc clear filter"
+	}
+	parts = append(parts, escHint, bindingSummary(keys.Help))
 	return strings.Join(parts, " | ")
 }
 
@@ -221,8 +225,8 @@ func buildHelpRows(pane Pane, modal AppModal) []helpRow {
 	case ModalHistorySearch:
 		contextRows = []helpRow{
 			{display: "enter restore selected entry"},
-			{display: "ctrl+r or up select older match"},
-			{display: "ctrl+n or down select newer match"},
+			{display: "ctrl+p or up select newer match"},
+			{display: "ctrl+n or down select older match"},
 			{display: "esc close history search"},
 		}
 	case ModalSlashWizard:
