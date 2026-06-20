@@ -700,11 +700,17 @@ func (m Model) readyStateView(totalHeight int) string {
 		maxW := min(tui.ModalMaxWidth, w-4)
 		if maxW >= tui.ModalMinWidth {
 			innerWidth := maxW - 2
-			modalContent := modal.Render(interaction, innerWidth)
-			if modalContent != "" {
-				rendered := tui.RenderModal(modalContent, maxW)
-				base = tui.OverlayCenter(base, rendered, w, totalHeight)
+			title := modal.Title()
+			counter := modal.CounterText(interaction)
+			var rendered string
+			if filterText := modal.FilterText(); filterText != "" {
+				filterBox := tui.RenderTitledBox("Filter:", filterText, "", maxW, tui.ModalFilterRows)
+				suggestionsBox := tui.RenderTitledBox(title, modal.Render(interaction, innerWidth), counter, maxW, tui.ModalSplitListRows)
+				rendered = filterBox + "\n" + suggestionsBox
+			} else {
+				rendered = tui.RenderTitledBox(title, modal.Render(interaction, innerWidth), counter, maxW, tui.ModalFixedRows)
 			}
+			base = tui.OverlayCenter(base, rendered, w, totalHeight)
 		}
 	}
 

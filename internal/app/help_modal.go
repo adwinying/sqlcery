@@ -10,7 +10,7 @@ import (
 	"github.com/adwinying/sqlcery/internal/tui"
 )
 
-const helpContentRows = tui.ModalFixedRows - 1 // 1 row reserved for the filter prompt
+const helpContentRows = tui.ModalSplitListRows
 
 // helpRow is a single selectable entry in the Keybindings Modal.
 // actionKey is "" for display-only rows, "ctrl+r" etc. for key-action rows,
@@ -33,6 +33,19 @@ type helpModal struct {
 }
 
 func (h *helpModal) Name() AppModal { return ModalKeybindings }
+
+func (h *helpModal) FilterText() string { return h.filter + "█" }
+
+func (h *helpModal) Title() string { return "Keybindings" }
+
+func (h *helpModal) CounterText(_ InteractionState) string {
+	rows := h.filteredRows()
+	if len(rows) == 0 {
+		return ""
+	}
+	selected := wrapSelection(h.selectedIndex, len(rows))
+	return fmt.Sprintf("%d of %d", selected+1, len(rows))
+}
 
 func (h *helpModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) ModalResult {
 	keys := defaultCommandModeKeys()
@@ -89,14 +102,11 @@ func (h *helpModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) ModalResult
 func (h *helpModal) Render(_ InteractionState, _ int) string {
 	rows := h.filteredRows()
 
-	lines := []string{
-		tui.AppTheme.PanelText.Render(fmt.Sprintf("filter> %s", defaultHelpFilter(h.filter))),
+	if len(rows) == 0 {
+		return tui.AppTheme.PanelMuted.Render("No matching actions.")
 	}
 
-	if len(rows) == 0 {
-		lines = append(lines, tui.AppTheme.PanelMuted.Render("No matching actions."))
-		return strings.Join(lines, "\n")
-	}
+	var lines []string
 
 	selected := wrapSelection(h.selectedIndex, len(rows))
 	vpStart := max(0, selected+1-helpContentRows)
@@ -314,9 +324,3 @@ func keyToMsgFn(actionKey string) func() tea.Msg {
 	}
 }
 
-func defaultHelpFilter(value string) string {
-	if strings.TrimSpace(value) == "" {
-		return "(empty)"
-	}
-	return value
-}

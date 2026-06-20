@@ -491,7 +491,7 @@ func TestModelSubmitCommandsOpensWizard(t *testing.T) {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	view := model.View().Content
-	for _, want := range []string{"Slash command wizard:", "Step 1/2: choose a slash command", "> /tables - list tables in the current database", "enter confirm", "ctrl+n next", "ctrl+p prev", "esc close"} {
+	for _, want := range []string{"Choose Command", "Step 1/2: choose a slash command", "> /tables - list tables in the current database", "enter confirm", "ctrl+n next", "ctrl+p prev", "esc close"} {
 		if !containsLine(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
 		}

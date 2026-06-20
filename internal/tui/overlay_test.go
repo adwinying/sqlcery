@@ -8,17 +8,17 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func TestRenderModal_fixedHeight(t *testing.T) {
-	got := tui.RenderModal("single line", 40)
+func TestRenderTitledBox_fixedHeight(t *testing.T) {
+	got := tui.RenderTitledBox("", "single line", "", 40, tui.ModalFixedRows)
 	lines := strings.Split(got, "\n")
 	// top border + 16 content rows + bottom border = 18
 	if len(lines) != 18 {
-		t.Fatalf("RenderModal produced %d lines, want 18 (16 content + 2 border)", len(lines))
+		t.Fatalf("RenderTitledBox produced %d lines, want 18 (16 content + 2 border)", len(lines))
 	}
 }
 
-func TestRenderModal_topAndBottomBorders(t *testing.T) {
-	got := tui.RenderModal("", 40)
+func TestRenderTitledBox_topAndBottomBorders(t *testing.T) {
+	got := tui.RenderTitledBox("", "", "", 40, tui.ModalFixedRows)
 	lines := strings.Split(got, "\n")
 	top := lines[0]
 	bottom := lines[len(lines)-1]
@@ -30,13 +30,37 @@ func TestRenderModal_topAndBottomBorders(t *testing.T) {
 	}
 }
 
-func TestRenderModal_contentLinesHaveSideBorders(t *testing.T) {
-	got := tui.RenderModal("hello", 40)
+func TestRenderTitledBox_contentLinesHaveSideBorders(t *testing.T) {
+	got := tui.RenderTitledBox("", "hello", "", 40, tui.ModalFixedRows)
 	lines := strings.Split(got, "\n")
 	for i, line := range lines[1 : len(lines)-1] {
 		if !strings.Contains(line, "│") {
 			t.Fatalf("content line %d missing side border: %q", i+1, line)
 		}
+	}
+}
+
+func TestRenderTitledBox_titleInBorder(t *testing.T) {
+	got := tui.RenderTitledBox("History", "item", "", 40, tui.ModalFixedRows)
+	lines := strings.Split(got, "\n")
+	top := lines[0]
+	if !strings.Contains(top, "History") {
+		t.Fatalf("top border does not contain title, got: %q", top)
+	}
+	if !strings.Contains(top, "╭") || !strings.Contains(top, "╮") {
+		t.Fatalf("titled top border missing rounded corners, got: %q", top)
+	}
+}
+
+func TestRenderTitledBox_counterInBottomBorder(t *testing.T) {
+	got := tui.RenderTitledBox("", "item", "1 of 6", 40, tui.ModalFixedRows)
+	lines := strings.Split(got, "\n")
+	bottom := lines[len(lines)-1]
+	if !strings.Contains(bottom, "1 of 6") {
+		t.Fatalf("bottom border does not contain counter, got: %q", bottom)
+	}
+	if !strings.Contains(bottom, "╰") || !strings.Contains(bottom, "╯") {
+		t.Fatalf("bottom border with counter missing rounded corners, got: %q", bottom)
 	}
 }
 

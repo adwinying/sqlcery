@@ -8,35 +8,54 @@ import (
 )
 
 const (
-	ModalMinWidth  = 30
-	ModalMaxWidth  = 64
-	ModalFixedRows = 16 // fixed inner height: content is padded or clipped to this many rows
+	ModalMinWidth    = 30
+	ModalMaxWidth    = 64
+	ModalFixedRows   = 16 // single-box inner height (no filter)
+	ModalFilterRows  = 1  // filter box inner height
+	ModalSplitListRows = 13 // suggestions box inner height when filter is present (ModalFixedRows - ModalFilterRows - 2 border rows)
 )
 
-// RenderModal wraps content in a rounded-border modal box with a fixed inner
-// height of modalFixedRows rows and a fixed inner width derived from maxOuterWidth.
-// Content lines are padded or truncated to fit the inner width.
-// If there are fewer content lines than modalFixedRows, blank lines are added.
-// If there are more, excess lines are silently dropped (the modal acts like a
-// fixed-size viewport — callers are responsible for pre-scrolling the slice).
-func RenderModal(content string, maxOuterWidth int) string {
+// RenderTitledBox wraps content in a rounded-border box. If title is non-empty
+// it is embedded in the top border as ╭─Title────╮. If counter is non-empty
+// it is embedded in the bottom border as ╰────1 of 6─╯. Content lines are
+// padded or truncated to exactly rows inner rows.
+func RenderTitledBox(title, content, counter string, maxOuterWidth, rows int) string {
 	lines := strings.Split(content, "\n")
 
-	// Inner width accounts for left and right border chars (│ = 1 char each).
 	innerWidth := maxOuterWidth - 2
 	if innerWidth < 1 {
 		innerWidth = 1
 	}
 
-	// Pad or clip to exactly ModalFixedRows rows.
-	for len(lines) < ModalFixedRows {
+	for len(lines) < rows {
 		lines = append(lines, "")
 	}
-	lines = lines[:ModalFixedRows]
+	lines = lines[:rows]
 
 	bs := lipgloss.NewStyle().Foreground(AppTheme.ModalBorder.GetForeground())
-	topLine := bs.Render("╭" + strings.Repeat("─", innerWidth) + "╮")
-	bottomLine := bs.Render("╰" + strings.Repeat("─", innerWidth) + "╯")
+
+	var topLine string
+	if title == "" {
+		topLine = bs.Render("╭" + strings.Repeat("─", innerWidth) + "╮")
+	} else {
+		titleW := ansi.StringWidth(title)
+		dashes := innerWidth - titleW - 1 // 1 dash before title
+		if dashes < 0 {
+			dashes = 0
+		}
+		topLine = bs.Render("╭─") + AppTheme.PanelTitle.Render(title) + bs.Render(strings.Repeat("─", dashes)+"╮")
+	}
+	var bottomLine string
+	if counter == "" {
+		bottomLine = bs.Render("╰" + strings.Repeat("─", innerWidth) + "╯")
+	} else {
+		counterW := ansi.StringWidth(counter)
+		dashes := innerWidth - counterW - 1 // 1 dash after counter (before ╯)
+		if dashes < 0 {
+			dashes = 0
+		}
+		bottomLine = bs.Render("╰"+strings.Repeat("─", dashes)) + AppTheme.PanelMuted.Render(counter) + bs.Render("─╯")
+	}
 
 	result := make([]string, 0, len(lines)+2)
 	result = append(result, topLine)

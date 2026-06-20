@@ -486,9 +486,10 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext, hScrollOffset *
 		return ""
 	}
 
-	lines := []string{tui.AppTheme.PanelTitle.Render("Slash command wizard:")}
+	var lines []string
 	switch wizard.Step {
 	case SlashCommandWizardStepColumn:
+		// Single-box (no filter); uses ModalFixedRows.
 		selectedCommand, _ := slashWizardCommandByIndex(wizard)
 		selectedTarget, _ := slashWizardFilteredTargetByIndex(wizard)
 		lines = append(lines,
@@ -496,7 +497,7 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext, hScrollOffset *
 			tui.AppTheme.PanelMuted.Render(fmt.Sprintf("Step 2/3 complete: %s", selectedTarget.Display)),
 			tui.AppTheme.PanelText.Render(fmt.Sprintf("Step 3/3: choose columns for %s", selectedTarget.Display)),
 		)
-		const columnHeaderLines = 4
+		const columnHeaderLines = 3
 		listViewport := tui.ModalFixedRows - columnHeaderLines
 		if listViewport < 1 {
 			listViewport = 1
@@ -529,29 +530,28 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext, hScrollOffset *
 			}
 		}
 	case SlashCommandWizardStepTarget:
+		// Two-box (filter visible); uses ModalSplitListRows.
 		selectedCommand, _ := slashWizardCommandByIndex(wizard)
 		totalSteps := 2
 		if selectedCommand.NeedsColumns {
 			totalSteps = 3
 		}
-		headerLines := 1
+		var headerLines int
 		if wizard.DirectInvocation {
 			lines = append(lines,
 				tui.AppTheme.PanelText.Render(fmt.Sprintf("Choose a table for %s:", selectedCommand.DisplayName)),
 			)
-			headerLines++
+			headerLines = 1
 		} else {
 			lines = append(lines,
 				tui.AppTheme.PanelMuted.Render(fmt.Sprintf("Step 1/%d complete: %s", totalSteps, selectedCommand.DisplayName)),
 				tui.AppTheme.PanelText.Render(fmt.Sprintf("Step 2/%d: choose a table for %s", totalSteps, selectedCommand.DisplayName)),
 			)
-			headerLines += 2
+			headerLines = 2
 		}
-		lines = append(lines, tui.AppTheme.PanelText.Render(fmt.Sprintf("filter> %s", defaultWizardFilter(wizard.TargetFilter))))
-		headerLines++
 
 		filteredTargets := filterWizardTargets(wizard.Targets, wizard.TargetFilter)
-		listViewport := tui.ModalFixedRows - headerLines
+		listViewport := tui.ModalSplitListRows - headerLines
 		if listViewport < 1 {
 			listViewport = 1
 		}
@@ -574,13 +574,14 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext, hScrollOffset *
 			}
 		}
 	default:
+		// Single-box (no filter); uses ModalFixedRows.
 		selectedCommand, _ := slashWizardCommandByIndex(wizard)
 		totalSteps := 2
 		if selectedCommand.NeedsColumns {
 			totalSteps = 3
 		}
 		lines = append(lines, tui.AppTheme.PanelText.Render(fmt.Sprintf("Step 1/%d: choose a slash command", totalSteps)))
-		const headerLines = 2
+		const headerLines = 1
 		listViewport := tui.ModalFixedRows - headerLines
 		if listViewport < 1 {
 			listViewport = 1
@@ -591,9 +592,6 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext, hScrollOffset *
 		for i := scrollOffset; i < viewEnd; i++ {
 			command := wizard.Commands[i]
 			line := fmt.Sprintf("%s - %s", command.DisplayName, command.Summary)
-			if command.NeedsTarget {
-				line += " (choose table next)"
-			}
 			if i == selected {
 				*hScrollOffset = tui.ClampHScrollOffset(ansi.StringWidth("> "+line), *hScrollOffset, innerWidth)
 				lines = append(lines, tui.AppTheme.PanelSelected.Render(tui.ApplyHScroll("> "+line, *hScrollOffset, innerWidth)))
@@ -747,13 +745,6 @@ func filterWizardTargets(targets []SlashCommandWizardTarget, filter string) []Sl
 		}
 	}
 	return filtered
-}
-
-func defaultWizardFilter(value string) string {
-	if strings.TrimSpace(value) == "" {
-		return "(empty)"
-	}
-	return value
 }
 
 func renderGeneratedStatementWarning(sql string) string {

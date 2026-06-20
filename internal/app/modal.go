@@ -93,10 +93,20 @@ type Modal interface {
 	// returns a ModalResult describing the intended side effect. It must
 	// not mutate the model directly.
 	HandleKey(msg tea.KeyPressMsg, ctx ModalContext) ModalResult
-	// Render returns the modal content string for overlayCenter.
+	// Render returns the list content string for the suggestions box.
 	// innerWidth is the available content width inside the modal border,
 	// so modals can pre-apply horizontal scroll offsets to long lines.
+	// Title and filter content are provided separately via Title and FilterText.
 	Render(interaction InteractionState, innerWidth int) string
+	// FilterText returns the current filter value with a trailing cursor "█"
+	// always appended (e.g. "sel█", "█" when empty). Return "" to suppress
+	// the filter box and render as a single suggestions-only box.
+	FilterText() string
+	// Title returns the label embedded in the suggestions box top border.
+	Title() string
+	// CounterText returns a "N of M" string embedded in the bottom-right of
+	// the suggestions box border. Return "" to suppress the counter.
+	CounterText(interaction InteractionState) string
 	// FooterHints returns a pipe-separated hint string for the Hints Bar,
 	// state-conditional on the modal's own state and interaction.
 	FooterHints(interaction InteractionState) string

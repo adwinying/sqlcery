@@ -12,7 +12,7 @@ import (
 	"github.com/adwinying/sqlcery/internal/tui"
 )
 
-const historySearchPreviewRows = tui.ModalFixedRows - 3 // 3 = title + query + match-count
+const historySearchPreviewRows = tui.ModalSplitListRows - 1 // 1 = match-count line
 
 // historySearchModal implements Modal for the reverse-history search overlay.
 // It owns the filter text and selection index; History entries are read from
@@ -23,6 +23,19 @@ type historySearchModal struct {
 }
 
 func (h *historySearchModal) Name() AppModal { return ModalHistorySearch }
+
+func (h *historySearchModal) FilterText() string { return h.filter + "█" }
+
+func (h *historySearchModal) Title() string { return "History" }
+
+func (h *historySearchModal) CounterText(interaction InteractionState) string {
+	matches := filterHistorySearchEntries(interaction.History, h.filter)
+	if len(matches) == 0 {
+		return ""
+	}
+	selected := wrapHistorySearchIndex(h.selectedIndex, len(matches))
+	return fmt.Sprintf("%d of %d", selected+1, len(matches))
+}
 
 func (h *historySearchModal) FooterHints(interaction InteractionState) string {
 	keys := defaultCommandModeKeys()
@@ -84,20 +97,16 @@ func (h *historySearchModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) Mo
 
 func (h *historySearchModal) Render(interaction InteractionState, innerWidth int) string {
 	matches := filterHistorySearchEntries(interaction.History, h.filter)
-	lines := []string{
-		tui.AppTheme.PanelTitle.Render("Command History"),
-		tui.AppTheme.PanelText.Render(fmt.Sprintf("query> %s", defaultHistorySearchQuery(h.filter))),
-	}
 
 	if len(interaction.History) == 0 {
-		lines = append(lines, tui.AppTheme.PanelMuted.Render("No history yet."))
-		return strings.Join(lines, "\n")
+		return tui.AppTheme.PanelMuted.Render("No history yet.")
 	}
 
 	if len(matches) == 0 {
-		lines = append(lines, tui.AppTheme.PanelMuted.Render("No fuzzy matches."))
-		return strings.Join(lines, "\n")
+		return tui.AppTheme.PanelMuted.Render("No fuzzy matches.")
 	}
+
+	var lines []string
 
 	selected := wrapHistorySearchIndex(h.selectedIndex, len(matches))
 	lines = append(lines, tui.AppTheme.PanelMuted.Render(fmt.Sprintf("%d match(es); newest first.", len(matches))))
@@ -302,13 +311,6 @@ func trimLastRune(value string) string {
 		return ""
 	}
 	return string(runes[:len(runes)-1])
-}
-
-func defaultHistorySearchQuery(value string) string {
-	if strings.TrimSpace(value) == "" {
-		return "(empty)"
-	}
-	return value
 }
 
 func historySearchDisplaySQL(sql string) string {

@@ -19,6 +19,48 @@ type slashWizardModal struct {
 
 func (s *slashWizardModal) Name() AppModal { return ModalSlashWizard }
 
+func (s *slashWizardModal) FilterText() string {
+	if s.wizard.Step != SlashCommandWizardStepTarget {
+		return ""
+	}
+	return s.wizard.TargetFilter + "█"
+}
+
+func (s *slashWizardModal) Title() string {
+	switch s.wizard.Step {
+	case SlashCommandWizardStepTarget:
+		return "Choose Table"
+	case SlashCommandWizardStepColumn:
+		return "Choose Columns"
+	default:
+		return "Choose Command"
+	}
+}
+
+func (s *slashWizardModal) CounterText(_ InteractionState) string {
+	switch s.wizard.Step {
+	case SlashCommandWizardStepColumn:
+		if len(s.wizard.Columns) == 0 {
+			return ""
+		}
+		selected := clampWizardIndex(s.wizard.SelectedColumnCursor, len(s.wizard.Columns))
+		return fmt.Sprintf("%d of %d", selected+1, len(s.wizard.Columns))
+	case SlashCommandWizardStepTarget:
+		filtered := filterWizardTargets(s.wizard.Targets, s.wizard.TargetFilter)
+		if len(filtered) == 0 {
+			return ""
+		}
+		selected := clampWizardIndex(s.wizard.SelectedTarget, len(filtered))
+		return fmt.Sprintf("%d of %d", selected+1, len(filtered))
+	default:
+		if len(s.wizard.Commands) == 0 {
+			return ""
+		}
+		selected := clampWizardIndex(s.wizard.SelectedCommand, len(s.wizard.Commands))
+		return fmt.Sprintf("%d of %d", selected+1, len(s.wizard.Commands))
+	}
+}
+
 func (s *slashWizardModal) FooterHints(_ InteractionState) string {
 	keys := defaultCommandModeKeys()
 	switch s.wizard.Step {
