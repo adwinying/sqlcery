@@ -63,32 +63,17 @@ func (s *slashWizardModal) CounterText(_ InteractionState) string {
 	}
 }
 
-func (s *slashWizardModal) FooterHints(_ InteractionState) string {
+func (s *slashWizardModal) FooterHints(_ InteractionState) []string {
 	keys := defaultCommandModeKeys()
 	switch s.wizard.Step {
 	case SlashCommandWizardStepColumn:
-		return strings.Join([]string{
-			"enter confirm",
-			"ctrl+n next",
-			"ctrl+p prev",
-			"space toggle",
-			"a toggle all",
-			"esc back",
-			bindingSummary(keys.Help),
-		}, " | ")
+		return []string{"enter confirm", "esc back", "ctrl+n next", "ctrl+p prev", "space toggle", "a toggle all", bindingSummary(keys.Help)}
 	default:
 		escHint := "esc close"
 		if s.wizard.Step == SlashCommandWizardStepTarget && !s.wizard.DirectInvocation {
 			escHint = "esc back"
 		}
-		return strings.Join([]string{
-			"enter confirm",
-			"ctrl+n next",
-			"ctrl+p prev",
-			"alt+← → scroll",
-			escHint,
-			bindingSummary(keys.Help),
-		}, " | ")
+		return []string{"enter confirm", escHint, "ctrl+n next", "ctrl+p prev", "alt+← → scroll", bindingSummary(keys.Help)}
 	}
 }
 

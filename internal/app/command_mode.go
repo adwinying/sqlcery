@@ -322,17 +322,20 @@ func (m commandModeModel) View(interaction InteractionState) string {
 	return m.widget.View(m.buildViewContext(interaction))
 }
 
-func (m commandModeModel) FooterHints(interaction InteractionState) string {
+func (m commandModeModel) FooterHints(interaction InteractionState) []string {
+	autocompleteActive := len(m.cachedSuggestions) > 0 || len(m.computeSuggestions(interaction)) > 0
 	var parts []string
-	if len(m.cachedSuggestions) > 0 || len(m.computeSuggestions(interaction)) > 0 {
-		parts = append(parts, bindingSummary(m.keys.AcceptSuggestion), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
+	if autocompleteActive {
+		// enter accepts the suggestion here, not submits; ctrl+c closes the dropdown
+		parts = append(parts, bindingSummary(m.keys.AcceptSuggestion), "esc cancel")
+		parts = append(parts, bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
+	} else if interaction.Running != nil {
+		parts = append(parts, "esc cancel query", "ctrl+c quit")
+	} else {
+		parts = append(parts, "enter submit", bindingSummary(m.keys.Cancel), "ctrl+c quit")
 	}
-	parts = append(parts, "enter submit", bindingSummary(m.keys.Cancel), bindingSummary(m.keys.History), bindingSummary(m.keys.OpenEditor))
-	if interaction.Running != nil {
-		parts = append(parts, "esc cancel query")
-	}
-	parts = append(parts, "ctrl+c quit", bindingSummary(m.keys.Help))
-	return strings.Join(parts, " | ")
+	parts = append(parts, bindingSummary(m.keys.History), bindingSummary(m.keys.OpenEditor), bindingSummary(m.keys.Help))
+	return parts
 }
 
 func (m commandModeModel) Footer(connectionName, dialect string, interaction InteractionState) string {

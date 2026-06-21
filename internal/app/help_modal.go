@@ -130,23 +130,25 @@ func (h *helpModal) Render(_ InteractionState, _ int) string {
 	return strings.Join(lines, "\n")
 }
 
-func (h *helpModal) FooterHints(_ InteractionState) string {
+func (h *helpModal) FooterHints(_ InteractionState) []string {
 	keys := defaultCommandModeKeys()
 	rows := h.filteredRows()
+	escHint := "esc close"
+	if strings.TrimSpace(h.filter) != "" {
+		escHint = "esc clear filter"
+	}
 	var parts []string
 	if len(rows) > 0 {
 		idx := wrapSelection(h.selectedIndex, len(rows))
 		if rows[idx].actionKey != "" {
 			parts = append(parts, "enter execute")
 		}
-		parts = append(parts, "ctrl+p up", "ctrl+n down")
+		parts = append(parts, escHint, "ctrl+p up", "ctrl+n down")
+	} else {
+		parts = append(parts, escHint)
 	}
-	escHint := "esc close"
-	if strings.TrimSpace(h.filter) != "" {
-		escHint = "esc clear filter"
-	}
-	parts = append(parts, escHint, bindingSummary(keys.Help))
-	return strings.Join(parts, " | ")
+	parts = append(parts, bindingSummary(keys.Help))
+	return parts
 }
 
 // filteredRows returns all Help Rows for the current context, filtered by the

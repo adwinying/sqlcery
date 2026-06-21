@@ -182,8 +182,8 @@ func (m *resultsPaneModeModel) View(ctx tui.ResultsPaneViewContext) string {
 	return strings.Join(append(header, "", body), "\n")
 }
 
-func (m resultsPaneModeModel) FooterHints(interaction InteractionState) string {
-	parts := []string{"Results Pane"}
+func (m resultsPaneModeModel) FooterHints(interaction InteractionState) []string {
+	parts := []string{"arrows/hjkl navigate", "space toggle row", "ctrl+c quit"}
 	if latest := interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
 		page := tui.ResultsPanePageContextFor(interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
 		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
@@ -191,8 +191,8 @@ func (m resultsPaneModeModel) FooterHints(interaction InteractionState) string {
 			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
 		}
 	}
-	parts = append(parts, "arrows/hjkl navigate", "space toggle row", "ctrl+e export", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit", "ctrl+t keybindings")
-	return strings.Join(parts, " | ")
+	parts = append(parts, "ctrl+e export", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+t keybindings")
+	return parts
 }
 
 func (m resultsPaneModeModel) Footer(connectionName, dialect string, interaction InteractionState) string {

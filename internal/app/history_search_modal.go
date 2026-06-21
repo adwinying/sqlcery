@@ -38,7 +38,7 @@ func (h *historySearchModal) CounterText(interaction InteractionState) string {
 	return fmt.Sprintf("%d of %d", selected+1, len(matches))
 }
 
-func (h *historySearchModal) FooterHints(interaction InteractionState) string {
+func (h *historySearchModal) FooterHints(interaction InteractionState) []string {
 	keys := defaultCommandModeKeys()
 	matches := filterHistorySearchEntries(interaction.History, h.filter)
 	escHint := "esc close"
@@ -47,11 +47,11 @@ func (h *historySearchModal) FooterHints(interaction InteractionState) string {
 	}
 	switch {
 	case len(interaction.History) == 0:
-		return strings.Join([]string{escHint, bindingSummary(keys.Help)}, " | ")
+		return []string{escHint, bindingSummary(keys.Help)}
 	case len(matches) == 0:
-		return strings.Join([]string{escHint, bindingSummary(keys.Help)}, " | ")
+		return []string{escHint, bindingSummary(keys.Help)}
 	default:
-		return strings.Join([]string{"enter restore", "ctrl+p up", "ctrl+n down", escHint, bindingSummary(keys.Help)}, " | ")
+		return []string{"enter restore", escHint, "ctrl+p up", "ctrl+n down", bindingSummary(keys.Help)}
 	}
 }
 

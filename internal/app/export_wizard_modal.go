@@ -71,27 +71,16 @@ func (e *exportWizardModal) CounterText(_ InteractionState) string {
 	return fmt.Sprintf("%d of %d", selected+1, len(filtered))
 }
 
-func (e *exportWizardModal) FooterHints(_ InteractionState) string {
+func (e *exportWizardModal) FooterHints(_ InteractionState) []string {
 	keys := defaultCommandModeKeys()
 	if e.step == exportWizardStepPath {
-		return strings.Join([]string{
-			"enter export",
-			"backspace delete",
-			"esc back",
-			bindingSummary(keys.Help),
-		}, " | ")
+		return []string{"enter export", "esc back", "backspace delete", bindingSummary(keys.Help)}
 	}
 	escHint := "esc close"
 	if strings.TrimSpace(e.formatFilter) != "" {
 		escHint = "esc clear filter"
 	}
-	return strings.Join([]string{
-		"enter confirm",
-		"ctrl+p up",
-		"ctrl+n down",
-		escHint,
-		bindingSummary(keys.Help),
-	}, " | ")
+	return []string{"enter confirm", escHint, "ctrl+p up", "ctrl+n down", bindingSummary(keys.Help)}
 }
 
 func (e *exportWizardModal) HandleKey(msg tea.KeyPressMsg, _ ModalContext) ModalResult {

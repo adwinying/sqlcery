@@ -213,7 +213,7 @@ func TestCommandModeAcceptSuggestionReplacesPrefix(t *testing.T) {
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}}},
 	}
 
-	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl}, query)
+	updated, _ := mode.Update(tea.KeyPressMsg{Code: tea.KeyTab}, query)
 
 	if got, want := updated.Value(), "SELECT * FROM users"; got != want {
 		t.Fatalf("Value() = %q, want %q", got, want)
@@ -420,10 +420,10 @@ func TestCommandModeViewRendersSlashWizard(t *testing.T) {
 			t.Fatalf("slashWizardModal.Render() = %q, want to contain %q", modal, want)
 		}
 	}
-	hints := m.FooterHints(InteractionState{})
+	hintsStr := strings.Join(m.FooterHints(InteractionState{}), " | ")
 	for _, want := range []string{"enter confirm", "ctrl+n next", "ctrl+p prev", "esc close", "ctrl+t keybindings"} {
-		if !strings.Contains(hints, want) {
-			t.Fatalf("slashWizardModal.FooterHints() = %q, want to contain %q", hints, want)
+		if !strings.Contains(hintsStr, want) {
+			t.Fatalf("slashWizardModal.FooterHints() = %q, want to contain %q", hintsStr, want)
 		}
 	}
 }
@@ -441,10 +441,10 @@ func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 			t.Fatalf("historySearchModal.Render() = %q, want to contain %q", modal, want)
 		}
 	}
-	hints := h.FooterHints(interaction)
+	hintsStr := strings.Join(h.FooterHints(interaction), " | ")
 	for _, want := range []string{"enter restore", "ctrl+p up", "ctrl+n down", "esc", "ctrl+t keybindings"} {
-		if !strings.Contains(hints, want) {
-			t.Fatalf("historySearchModal.FooterHints() = %q, want to contain %q", hints, want)
+		if !strings.Contains(hintsStr, want) {
+			t.Fatalf("historySearchModal.FooterHints() = %q, want to contain %q", hintsStr, want)
 		}
 	}
 }

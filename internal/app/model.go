@@ -783,18 +783,18 @@ func (m Model) statusBarView() string {
 		}
 	}
 
-	// Middle: keybind hints
-	var hints string
+	// Middle: keybind hints (priority-ordered; lower-priority hints drop at narrow widths)
+	var hintParts []string
 	if m.state.App.Current == StateReady {
 		if modal := m.currentModal(); modal != nil {
-			hints = modal.FooterHints(interaction)
+			hintParts = modal.FooterHints(interaction)
 		} else if interaction.ActivePane == PaneResults && interaction.Layout != LayoutCommandOnly {
-			hints = m.resultsPane.FooterHints(interaction)
+			hintParts = m.resultsPane.FooterHints(interaction)
 		} else {
-			hints = m.command.FooterHints(interaction)
+			hintParts = m.command.FooterHints(interaction)
 		}
 	} else {
-		hints = "ctrl+c quit"
+		hintParts = []string{"ctrl+c quit"}
 	}
 
 	// Right: connection name (coloured if configured)
@@ -807,11 +807,26 @@ func (m Model) statusBarView() string {
 		}
 	}
 
-	// Compose: [notification |] hints <spacer> connection
-	left := hints
+	// Calculate how much width is available for hints, then drop from the tail to fit.
+	notifPrefix := ""
 	if notification != "" {
-		left = notification + " | " + hints
+		notifPrefix = notification + " | "
 	}
+	var hints string
+	if m.width > 0 {
+		connWidth := ansi.StringWidth(connectionName)
+		connOverhead := 0
+		if connectionName != "" {
+			connOverhead = connWidth + 1 // at least 1-char spacer
+		}
+		availForHints := m.width - ansi.StringWidth(notifPrefix) - connOverhead
+		hints = fitHints(hintParts, availForHints)
+	} else {
+		hints = strings.Join(hintParts, " | ")
+	}
+
+	// Compose: [notification |] hints <spacer> connection
+	left := notifPrefix + hints
 
 	var bar string
 	if connectionName != "" && m.width > 0 {
@@ -842,6 +857,21 @@ func padOrTruncate(s string, width int) string {
 		return ansi.Truncate(s, width, "")
 	}
 	return s + strings.Repeat(" ", width-displayWidth)
+}
+
+// fitHints joins hints with " | ", dropping from the tail until the result fits
+// within width. Returns "" if even a single hint doesn't fit.
+func fitHints(hints []string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	for i := len(hints); i > 0; i-- {
+		candidate := strings.Join(hints[:i], " | ")
+		if ansi.StringWidth(candidate) <= width {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
