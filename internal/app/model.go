@@ -84,6 +84,8 @@ func (m Model) newNotificationClearCmdIfChanged(prevCreatedAt time.Time) tea.Cmd
 
 type historyIntentMsg struct{}
 
+type historyNavBoundaryMsg struct{}
+
 type toggleHelpIntentMsg struct{}
 
 type toggleZoomIntentMsg struct{}
@@ -229,6 +231,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pushModal(h)
 		m.state.SetPendingIntent(IntentHistory, "history", "", NotificationNone)
 		return m, m.notificationClearCmdIfSet()
+	case historyNavBoundaryMsg:
+		prevCreatedAt := m.state.Notification.CreatedAt
+		m.state.SetPendingIntent(IntentNone, "history-nav", "Beginning of history.", NotificationInfo)
+		return m, m.newNotificationClearCmdIfChanged(prevCreatedAt)
 	case switchPaneIntentMsg:
 		m.syncCurrentSQL()
 		switchContext := buildPaneSwitchContext(m.state.Interaction.Layout, nextLayoutForModeIntent(m.state.Interaction.Layout, m.state.Interaction.ActivePane), m.state.Interaction.ActivePane, nextModeForIntent(m.state.Interaction.ActivePane), m.state.Interaction.LatestResult)

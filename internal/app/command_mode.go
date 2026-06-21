@@ -35,6 +35,9 @@ type commandModeModel struct {
 	autocompleteSuppressed       bool
 	autocompleteSuppressedValue  string
 	autocompleteSuppressedCursor int
+	// history navigation state
+	historyNavIndex int    // -1 = at draft; 0 = most recent history entry
+	historyNavDraft string // editor content saved when navigation begins
 	// pre-computed in Update; used by buildViewContext and footer methods
 	cachedSuggestions []tui.AutocompleteSuggestion
 }
@@ -81,11 +84,12 @@ func newCommandModeModel() commandModeModel {
 	editor.Focus()
 
 	return commandModeModel{
-		editor:      editor,
-		widget:      tui.NewEditorWidget(),
-		innerWidth:  defaultEditorWidth,
-		innerHeight: 1,
-		keys:        defaultCommandModeKeys(),
+		editor:          editor,
+		widget:          tui.NewEditorWidget(),
+		innerWidth:      defaultEditorWidth,
+		innerHeight:     1,
+		keys:            defaultCommandModeKeys(),
+		historyNavIndex: -1,
 	}
 }
 
@@ -108,10 +112,21 @@ func (m commandModeModel) Update(msg tea.Msg, interaction InteractionState) (com
 				m.widget.SelectNextSuggestion(len(suggestions))
 				return m, nil
 			}
+			return m.navigateHistoryNext(interaction)
 		case key.Matches(keyMsg, m.keys.PrevSuggestion):
 			if len(suggestions) > 0 {
 				m.widget.SelectPrevSuggestion(len(suggestions))
 				return m, nil
+			}
+			return m.navigateHistoryPrev(interaction)
+		case keyMsg.String() == "up":
+			if len(suggestions) == 0 && m.editor.Line() == 0 {
+				return m.navigateHistoryPrev(interaction)
+			}
+		case keyMsg.String() == "down":
+			lines := splitEditorLines(m.editor.Value())
+			if len(suggestions) == 0 && m.editor.Line() == len(lines)-1 {
+				return m.navigateHistoryNext(interaction)
 			}
 		case key.Matches(keyMsg, m.keys.ScrollTranscriptUp):
 			step := max(1, m.innerHeight/2)
@@ -142,6 +157,8 @@ func (m commandModeModel) Update(msg tea.Msg, interaction InteractionState) (com
 		}
 		if valueChanged {
 			m.autocompleteOpenedByTyping = true
+			m.historyNavIndex = -1
+			m.historyNavDraft = ""
 		} else {
 			m.autocompleteOpenedByTyping = false
 		}
@@ -159,6 +176,8 @@ func (m *commandModeModel) Clear() {
 	m.cachedSuggestions = nil
 	m.autocompleteOpenedByTyping = false
 	m.clearAutocompleteSuppression()
+	m.historyNavIndex = -1
+	m.historyNavDraft = ""
 }
 
 // AutocompleteVisible reports whether the autocomplete dropdown is currently
@@ -731,6 +750,53 @@ func formatInlineResultValue(value db.ResultValue) string {
 
 func runeWidth(value string) int {
 	return ansi.StringWidth(value)
+}
+
+func (m commandModeModel) navigateHistoryPrev(interaction InteractionState) (commandModeModel, tea.Cmd) {
+	history := deduplicatedHistory(interaction.History)
+	if len(history) == 0 {
+		return m, nil
+	}
+	if m.historyNavIndex == -1 {
+		m.historyNavDraft = m.editor.Value()
+		m.historyNavIndex = 0
+		m.SetEditorValue(history[0].Statement)
+		return m, nil
+	}
+	if m.historyNavIndex < len(history)-1 {
+		m.historyNavIndex++
+		m.SetEditorValue(history[m.historyNavIndex].Statement)
+		return m, nil
+	}
+	return m, func() tea.Msg { return historyNavBoundaryMsg{} }
+}
+
+func (m commandModeModel) navigateHistoryNext(interaction InteractionState) (commandModeModel, tea.Cmd) {
+	if m.historyNavIndex == -1 {
+		return m, nil
+	}
+	history := deduplicatedHistory(interaction.History)
+	if m.historyNavIndex > 0 {
+		m.historyNavIndex--
+		if m.historyNavIndex < len(history) {
+			m.SetEditorValue(history[m.historyNavIndex].Statement)
+		}
+		return m, nil
+	}
+	draft := m.historyNavDraft
+	m.historyNavIndex = -1
+	m.historyNavDraft = ""
+	m.SetEditorValue(draft)
+	return m, nil
+}
+
+func deduplicatedHistory(entries []HistoryEntryContext) []HistoryEntryContext {
+	matches := rankHistorySearchEntries(entries, "")
+	result := make([]HistoryEntryContext, len(matches))
+	for i, m := range matches {
+		result[i] = m.Entry
+	}
+	return result
 }
 
 func filterWizardTargets(targets []SlashCommandWizardTarget, filter string) []SlashCommandWizardTarget {
