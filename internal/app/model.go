@@ -731,15 +731,15 @@ func (m Model) readyStateView(totalHeight int) string {
 		resultsPaneContent := m.resultsPane.View(m.resultsPane.buildViewContext(interaction))
 		commandContent := m.command.View(interaction)
 		resultsPaneActive := interaction.ActivePane == PaneResults
-		resultsPanePane := m.renderBorderedPane(resultsPaneContent, "[1] Results", resultsPaneActive, w, resultsPaneOuterH-2)
-		commandPane := m.renderBorderedPane(commandContent, "[2] Commands", !resultsPaneActive, w, commandOuterH-2)
+		resultsPanePane := m.renderBorderedPane(resultsPaneContent, "Results", resultsPaneActive, w, resultsPaneOuterH-2)
+		commandPane := m.renderBorderedPane(commandContent, "Commands", !resultsPaneActive, w, commandOuterH-2)
 		base = resultsPanePane + "\n" + commandPane
 	case LayoutResultsOnly:
 		resultsPaneContent := m.resultsPane.View(m.resultsPane.buildViewContext(interaction))
-		base = m.renderBorderedPane(resultsPaneContent, "[1] Results", true, w, totalHeight-2)
+		base = m.renderBorderedPane(resultsPaneContent, "Results", true, w, totalHeight-2)
 	default: // LayoutCommandOnly
 		commandContent := m.command.View(interaction)
-		base = m.renderBorderedPane(commandContent, "[2] Commands", true, w, totalHeight-2)
+		base = m.renderBorderedPane(commandContent, "Commands", true, w, totalHeight-2)
 	}
 
 	if modal := m.currentModal(); modal != nil {
