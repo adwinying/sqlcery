@@ -96,7 +96,7 @@ func newTUITheme() tuiTheme {
 		ResultsPaneSelection:     lipgloss.NewStyle().Foreground(accentSoft).Bold(true),
 		ResultsPaneEmpty:         lipgloss.NewStyle().Foreground(muted).Italic(true),
 		ResultsPaneEmptyLogo:     lipgloss.NewStyle().Foreground(panelForeground).Bold(true),
-		ResultsPaneEmptySubtitle: lipgloss.NewStyle().Foreground(muted).Italic(true),
+		ResultsPaneEmptySubtitle: lipgloss.NewStyle().Foreground(accentSoft),
 		SelectedRowMarker:        lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
 		KeywordStyle:             lipgloss.NewStyle().Foreground(accent).Bold(true),
 		StringStyle:              lipgloss.NewStyle().Foreground(success),

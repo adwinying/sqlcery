@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 
 	"github.com/adwinying/sqlcery/internal/db"
@@ -30,6 +31,23 @@ const sqlceryLogo = `███████╗ ██████╗ ██╗   
 const sqlceryLogoWidth = 58
 const sqlceryLogoHeight = 6
 
+var emptyStateHints = []string{
+	"Press ctrl+r to fuzzy-search your query history",
+	"Tab or ctrl+y accepts an autocomplete suggestion",
+	"Type /select <table> to expand a SELECT template",
+	"Type /commands to open the Slash Command Wizard",
+	"ctrl+3 switches to a command-only layout",
+	"In the Results Pane, yy loads an INSERT into the Command Pane",
+	"In the Results Pane, cc loads an UPDATE into the Command Pane",
+	"In the Results Pane, dd loads a DELETE into the Command Pane",
+	"In the Results Pane, space marks rows for targeted export",
+	"ctrl+e exports the current results to a file or clipboard",
+	"ctrl+z zooms the focused pane to full screen",
+	"ctrl+x switches focus between Results and Command Panes",
+	"Try /tables to list all tables in your database",
+	"Press ctrl+t to open the Keybindings Modal",
+}
+
 type resultsPaneModeModel struct {
 	width           int
 	height          int
@@ -39,12 +57,14 @@ type resultsPaneModeModel struct {
 	selectionActive bool
 	pendingAction   resultsPanePendingAction
 	cachedPage      *tui.ResultsPanePreparedPage
+	hintIdx         int
 }
 
 func newResultsPaneModeModel() resultsPaneModeModel {
 	return resultsPaneModeModel{
-		width:  defaultResultsPaneWidth,
-		height: defaultResultsPaneHeight,
+		width:   defaultResultsPaneWidth,
+		height:  defaultResultsPaneHeight,
+		hintIdx: rand.Intn(len(emptyStateHints)),
 	}
 }
 
@@ -53,7 +73,9 @@ func (m *resultsPaneModeModel) SetSize(width, height int) {
 	m.height = clampEditorSize(height, minimumResultsPaneHeight)
 }
 
-func (m *resultsPaneModeModel) renderEmptyState(subtitle string) string {
+func (m *resultsPaneModeModel) renderEmptyState() string {
+	hintText := emptyStateHints[m.hintIdx]
+
 	logoLines := strings.Split(sqlceryLogo, "\n")
 
 	var centeredLogoLines []string
@@ -66,12 +88,14 @@ func (m *resultsPaneModeModel) renderEmptyState(subtitle string) string {
 		centeredLogoLines = append(centeredLogoLines, padStr+tui.AppTheme.ResultsPaneEmptyLogo.Render(line))
 	}
 
-	subtitleWidth := ansi.StringWidth(subtitle)
+	subtitleWidth := len("Hint: ") + ansi.StringWidth(hintText)
 	subLeftPad := (m.width - subtitleWidth) / 2
 	if subLeftPad < 0 {
 		subLeftPad = 0
 	}
-	styledSubtitle := strings.Repeat(" ", subLeftPad) + tui.AppTheme.ResultsPaneEmptySubtitle.Render(subtitle)
+	styledSubtitle := strings.Repeat(" ", subLeftPad) +
+		tui.AppTheme.ResultsPaneEmptySubtitle.Bold(true).Render("Hint:") + " " +
+		tui.AppTheme.ResultsPaneEmptySubtitle.Render(hintText)
 
 	contentLines := append(centeredLogoLines, "", styledSubtitle)
 	contentHeight := len(contentLines)
@@ -118,10 +142,7 @@ func (m *resultsPaneModeModel) buildViewContext(interaction InteractionState) tu
 
 func (m *resultsPaneModeModel) View(ctx tui.ResultsPaneViewContext) string {
 	if ctx.Result == nil {
-		if ctx.IsSplit {
-			return m.renderEmptyState("Run a query that returns rows to populate this pane")
-		}
-		return m.renderEmptyState("Run a query that returns rows, then press ctrl+x or ctrl+3.")
+		return m.renderEmptyState()
 	}
 
 	if ctx.IsSplit {
