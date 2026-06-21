@@ -48,8 +48,8 @@ func TestEditorWidgetViewRendersDropdownFromSuggestions(t *testing.T) {
 		Prompt:      "> ",
 		PromptWidth: 2,
 		AutocompleteSuggestions: []tui.AutocompleteSuggestion{
-			{Label: "SELECT", InsertText: "SELECT", Kind: "kw"},
-			{Label: "SET", InsertText: "SET", Kind: "kw"},
+			{Label: "SELECT", InsertText: "SELECT", Kind: "kwd"},
+			{Label: "SET", InsertText: "SET", Kind: "kwd"},
 		},
 	}
 
@@ -61,8 +61,8 @@ func TestEditorWidgetViewRendersDropdownFromSuggestions(t *testing.T) {
 	if !strings.Contains(output, "SET") {
 		t.Fatalf("View() = %q, want 'SET' in autocomplete dropdown", output)
 	}
-	if !strings.Contains(output, "kw") {
-		t.Fatalf("View() = %q, want kind label 'kw' in dropdown", output)
+	if !strings.Contains(output, "[kwd]") {
+		t.Fatalf("View() = %q, want kind label '[kwd]' in dropdown", output)
 	}
 }
 

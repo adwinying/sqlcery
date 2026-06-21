@@ -278,6 +278,29 @@ func (w EditorWidget) RenderAutocompletePanel(suggestions []AutocompleteSuggesti
 		start = selected - visible + 1
 	}
 
+	type panelRow struct {
+		left     string
+		right    string
+		isItem   bool
+		isSelect bool
+	}
+	rows := make([]panelRow, editorAutocompletePanelRows)
+	maxContent := 0
+	for i := start; i < start+editorAutocompletePanelRows; i++ {
+		if i < len(suggestions) {
+			item := suggestions[i]
+			left := item.Label
+			if detail := strings.TrimSpace(item.Detail); detail != "" {
+				left += " - " + detail
+			}
+			right := "[" + item.Kind + "]"
+			if w := ansi.StringWidth(left) + 1 + ansi.StringWidth(right); w > maxContent {
+				maxContent = w
+			}
+			rows[i-start] = panelRow{left: left, right: right, isItem: true, isSelect: i == selected}
+		}
+	}
+
 	lines := make([]string, 0, editorAutocompletePanelRows+1)
 	if len(suggestions) > 0 {
 		lines = append(lines, AppTheme.PanelTitle.Render("Suggestions:"))
@@ -285,20 +308,21 @@ func (w EditorWidget) RenderAutocompletePanel(suggestions []AutocompleteSuggesti
 		lines = append(lines, AppTheme.PanelMuted.Render("Suggestions:"))
 	}
 
-	for i := start; i < start+editorAutocompletePanelRows; i++ {
-		if i < len(suggestions) {
-			item := suggestions[i]
-			line := fmt.Sprintf("  [%s] %s", item.Kind, item.Label)
-			if detail := strings.TrimSpace(item.Detail); detail != "" {
-				line += " - " + detail
-			}
-			if i == selected {
-				lines = append(lines, AppTheme.PanelSelected.Render("> "+strings.TrimPrefix(line, "  ")))
-			} else {
-				lines = append(lines, AppTheme.PanelText.Render(line))
-			}
-		} else {
+	for _, row := range rows {
+		if !row.isItem {
 			lines = append(lines, "")
+			continue
+		}
+		rightWidth := ansi.StringWidth(row.right)
+		gap := maxContent - ansi.StringWidth(row.left) - rightWidth
+		if gap < 1 {
+			gap = 1
+		}
+		content := row.left + strings.Repeat(" ", gap) + row.right
+		if row.isSelect {
+			lines = append(lines, AppTheme.PanelSelected.Render("> "+content))
+		} else {
+			lines = append(lines, AppTheme.PanelText.Render("  "+content))
 		}
 	}
 
@@ -319,36 +343,56 @@ func (w EditorWidget) renderAutocompleteDropdown(ctx EditorViewContext) string {
 		start = rawSelected - visible + 1
 	}
 
-	lines := make([]string, 0, visible)
+	type dropRow struct {
+		left     string
+		right    string
+		selected bool
+	}
+	rows := make([]dropRow, 0, visible)
+	maxRaw := 0
 	for i := start; i < start+visible; i++ {
 		if i >= len(suggestions) {
 			break
 		}
 		item := suggestions[i]
-		line := fmt.Sprintf("[%s] %s", item.Kind, item.Label)
+		left := item.Label
 		if detail := strings.TrimSpace(item.Detail); detail != "" {
-			line += " - " + detail
+			left += " - " + detail
 		}
-		if i == rawSelected {
-			lines = append(lines, AppTheme.PanelSelected.Render(line))
-		} else {
-			lines = append(lines, AppTheme.PanelText.Render(line))
+		right := "[" + item.Kind + "]"
+		if w := ansi.StringWidth(left) + 1 + ansi.StringWidth(right); w > maxRaw {
+			maxRaw = w
 		}
+		rows = append(rows, dropRow{left: left, right: right, selected: i == rawSelected})
 	}
 
-	maxWidth := 0
-	for _, line := range lines {
-		if w := ansi.StringWidth(line); w > maxWidth {
-			maxWidth = w
-		}
-	}
-	popupWidth := maxWidth
+	popupWidth := maxRaw
 	editorWidth := ctx.Width
 	if popupWidth > editorWidth {
 		popupWidth = editorWidth
 	}
 	if popupWidth < 10 {
 		popupWidth = 10
+	}
+
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		rightWidth := ansi.StringWidth(row.right)
+		leftMax := popupWidth - rightWidth - 1
+		left := row.left
+		if ansi.StringWidth(left) > leftMax {
+			left = ansi.Truncate(left, leftMax, "")
+		}
+		gap := popupWidth - ansi.StringWidth(left) - rightWidth
+		if gap < 1 {
+			gap = 1
+		}
+		line := left + strings.Repeat(" ", gap) + row.right
+		if row.selected {
+			lines = append(lines, AppTheme.PanelSelected.Render(line))
+		} else {
+			lines = append(lines, AppTheme.PanelText.Render(line))
+		}
 	}
 
 	indent := ctx.PromptWidth + ctx.AutocompleteTokenCol

@@ -149,7 +149,6 @@ func buildAutocompleteItems(value string, cursor int, interaction InteractionSta
 				Label:      label,
 				InsertText: label,
 				Kind:       "tbl",
-				Detail:     "table",
 			})
 		}
 	}
@@ -177,8 +176,7 @@ func buildAutocompleteItems(value string, cursor int, interaction InteractionSta
 			items = appendAutocompleteItem(items, seen, autocompleteItem{
 				Label:      keyword,
 				InsertText: keyword,
-				Kind:       "kw",
-				Detail:     "keyword",
+				Kind:       "kwd",
 			})
 		}
 	}
@@ -193,7 +191,6 @@ func buildAutocompleteItems(value string, cursor int, interaction InteractionSta
 				Label:      label,
 				InsertText: label,
 				Kind:       "tbl",
-				Detail:     "table",
 			})
 		}
 	}
@@ -476,7 +473,7 @@ func autocompleteKindRank(item autocompleteItem, ctx autocompleteContext) int {
 		autocompleteScopeAfterInsertTarget, autocompleteScopeInsertStatement,
 		autocompleteScopeDeleteStatement, autocompleteScopeCreateStatement, autocompleteScopeDropStatement:
 		switch item.Kind {
-		case "kw":
+		case "kwd":
 			return 0
 		case "tbl":
 			return 1
@@ -491,7 +488,7 @@ func autocompleteKindRank(item autocompleteItem, ctx autocompleteContext) int {
 		switch item.Kind {
 		case "col":
 			return 0
-		case "kw":
+		case "kwd":
 			return 1
 		case "tbl":
 			return 2
@@ -502,7 +499,7 @@ func autocompleteKindRank(item autocompleteItem, ctx autocompleteContext) int {
 		switch item.Kind {
 		case "tbl":
 			return 0
-		case "kw":
+		case "kwd":
 			return 1
 		case "col":
 			return 2
@@ -515,7 +512,7 @@ func autocompleteKindRank(item autocompleteItem, ctx autocompleteContext) int {
 			return 0
 		case "col":
 			return 1
-		case "kw":
+		case "kwd":
 			return 2
 		default:
 			return 3
@@ -525,7 +522,7 @@ func autocompleteKindRank(item autocompleteItem, ctx autocompleteContext) int {
 
 func autocompleteItemRank(item autocompleteItem, ctx autocompleteContext, catalog autocompleteCatalog) int {
 	switch item.Kind {
-	case "kw":
+	case "kwd":
 		return autocompleteKeywordRank(item.Label, ctx.Scope)
 	case "col":
 		if columnInActiveTables(item.Label, ctx, catalog) {
