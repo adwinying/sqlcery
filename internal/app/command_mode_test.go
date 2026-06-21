@@ -175,6 +175,20 @@ func TestBuildAutocompleteItemsUsesSchemaQualifiedActiveTableColumns(t *testing.
 	}
 }
 
+func TestBuildAutocompleteItemsSuppressedImmediatelyAfterSemicolon(t *testing.T) {
+	// No prefix typed yet after the semicolon — suppress the dropdown.
+	for _, value := range []string{
+		"SELECT * FROM users;",
+		"SELECT * FROM users; ",
+		"SELECT * FROM users;\n",
+	} {
+		items := buildAutocompleteItems(value, len([]rune(value)), InteractionState{})
+		if len(items) != 0 {
+			t.Fatalf("buildAutocompleteItems(%q) = %d items, want 0 (suppressed after semicolon)", value, len(items))
+		}
+	}
+}
+
 func TestBuildAutocompleteItemsResetsContextAfterSemicolon(t *testing.T) {
 	items := buildAutocompleteItems("SELECT * FROM users; DE", len([]rune("SELECT * FROM users; DE")), InteractionState{})
 
@@ -206,24 +220,168 @@ func TestCommandModeAcceptSuggestionReplacesPrefix(t *testing.T) {
 	}
 }
 
-func TestCommandModeSuggestionNavigationCyclesSelection(t *testing.T) {
+func TestCommandModeNavFirstCtrlNAdvancesFromHighlight(t *testing.T) {
+	// Item 0 is already visually highlighted (ghost text). First ctrl+n should
+	// advance to item 1, not re-apply item 0.
 	mode := newCommandModeModel()
 	mode.SetSize(80, 20)
 	mode.editor.SetValue("SELECT * FROM ")
 	mode.editor.CursorEnd()
 	mode.autocompleteOpenedByTyping = true
 	query := InteractionState{
-		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}, {Name: "orders"}}},
+		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
 	}
+	mode.cachedSuggestions = mode.computeSuggestions(query)
 
 	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}, query)
+
 	if got, want := updated.widget.SelectedSuggestion(), 1; got != want {
-		t.Fatalf("selectedSuggestion = %d, want %d", got, want)
+		t.Fatalf("selectedSuggestion = %d, want %d (advanced past initial highlight)", got, want)
+	}
+	if !updated.autocompleteNavActive {
+		t.Fatal("autocompleteNavActive should be true after first ctrl+n")
+	}
+	suggestions := updated.cachedSuggestions
+	if !strings.Contains(updated.Value(), suggestions[1].InsertText) {
+		t.Fatalf("Value() = %q, want it to contain suggestion[1] %q", updated.Value(), suggestions[1].InsertText)
+	}
+}
+
+func TestCommandModeNavCtrlNWrapsToRestoreSlotAfterAllItems(t *testing.T) {
+	// Pressing ctrl+n count times from the initial selection (item 0) cycles
+	// through all items and lands on the restore slot.
+	mode := newCommandModeModel()
+	mode.SetSize(80, 20)
+	mode.editor.SetValue("SELECT * FROM ")
+	mode.editor.CursorEnd()
+	mode.autocompleteOpenedByTyping = true
+	query := InteractionState{
+		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
+	}
+	mode.cachedSuggestions = mode.computeSuggestions(query)
+	count := len(mode.cachedSuggestions)
+
+	// count presses from initial sel=0 cycles through all items and hits restore.
+	updated := mode
+	for i := 0; i < count; i++ {
+		updated, _ = updated.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}, query)
 	}
 
-	updated, _ = updated.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl}, query)
-	if got, want := updated.widget.SelectedSuggestion(), 0; got != want {
-		t.Fatalf("selectedSuggestion = %d, want %d", got, want)
+	if got := updated.widget.SelectedSuggestion(); got != -1 {
+		t.Fatalf("selectedSuggestion = %d, want -1 (restore slot)", got)
+	}
+	if got, want := updated.Value(), "SELECT * FROM "; got != want {
+		t.Fatalf("Value() at restore slot = %q, want %q", got, want)
+	}
+}
+
+func TestCommandModeNavFirstCtrlPGoesToRestoreSlot(t *testing.T) {
+	// Item 0 is the initial highlight. ctrl+p goes backward from 0 to the
+	// restore slot, revealing the original typed text.
+	mode := newCommandModeModel()
+	mode.SetSize(80, 20)
+	mode.editor.SetValue("SELECT * FROM ")
+	mode.editor.CursorEnd()
+	mode.autocompleteOpenedByTyping = true
+	query := InteractionState{
+		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
+	}
+	mode.cachedSuggestions = mode.computeSuggestions(query)
+
+	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl}, query)
+
+	if got := updated.widget.SelectedSuggestion(); got != -1 {
+		t.Fatalf("selectedSuggestion = %d, want -1 (restore slot on first ctrl+p)", got)
+	}
+	if !updated.autocompleteNavActive {
+		t.Fatal("autocompleteNavActive should be true after first ctrl+p")
+	}
+	if got, want := updated.Value(), "SELECT * FROM "; got != want {
+		t.Fatalf("Value() = %q, want original %q", got, want)
+	}
+}
+
+func TestCommandModeNavEscRestoresOriginalPrefix(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 20)
+	originalValue := "SELECT * FROM "
+	mode.editor.SetValue(originalValue)
+	mode.editor.CursorEnd()
+	mode.autocompleteOpenedByTyping = true
+	query := InteractionState{
+		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
+	}
+	mode.cachedSuggestions = mode.computeSuggestions(query)
+
+	// Activate nav — first ctrl+n advances from sel=0 to sel=1, populating item 1.
+	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}, query)
+	if updated.Value() == originalValue {
+		t.Fatal("value should have changed after ctrl+n")
+	}
+
+	// ESC: DismissAutocomplete is called by the parent model; call it directly here.
+	updated.DismissAutocomplete()
+
+	if got, want := updated.Value(), originalValue; got != want {
+		t.Fatalf("Value() after ESC = %q, want original %q", got, want)
+	}
+	if updated.autocompleteNavActive {
+		t.Fatal("autocompleteNavActive should be false after dismiss")
+	}
+}
+
+func TestCommandModeNavTypingAcceptsAndClearsNav(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 20)
+	mode.editor.SetValue("SELECT * FROM ")
+	mode.editor.CursorEnd()
+	mode.autocompleteOpenedByTyping = true
+	query := InteractionState{
+		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
+	}
+	mode.cachedSuggestions = mode.computeSuggestions(query)
+
+	// Activate nav — first ctrl+n populates item 1.
+	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}, query)
+	if !updated.autocompleteNavActive {
+		t.Fatal("expected nav to be active after ctrl+n")
+	}
+	populatedValue := updated.Value()
+
+	// Type a character: nav clears, populated text stays.
+	updated, _ = updated.Update(tea.KeyPressMsg{Code: 's', Text: "s"}, query)
+
+	if updated.autocompleteNavActive {
+		t.Fatal("autocompleteNavActive should be false after typing")
+	}
+	if !strings.HasPrefix(updated.Value(), populatedValue) {
+		t.Fatalf("Value() = %q, want it to start with populated %q", updated.Value(), populatedValue)
+	}
+}
+
+func TestCommandModeNavTabClosesWithoutRewriting(t *testing.T) {
+	mode := newCommandModeModel()
+	mode.SetSize(80, 20)
+	mode.editor.SetValue("SELECT * FROM ")
+	mode.editor.CursorEnd()
+	mode.autocompleteOpenedByTyping = true
+	query := InteractionState{
+		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
+	}
+	mode.cachedSuggestions = mode.computeSuggestions(query)
+
+	// Activate nav — first ctrl+n populates item 1.
+	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}, query)
+	populatedValue := updated.Value()
+
+	// Tab: should close dropdown, leave text as-is.
+	updated, _ = updated.Update(tea.KeyPressMsg{Code: tea.KeyTab}, query)
+
+	if updated.autocompleteNavActive {
+		t.Fatal("autocompleteNavActive should be false after tab")
+	}
+	if got := updated.Value(); got != populatedValue {
+		t.Fatalf("Value() after tab = %q, want %q (text should stay)", got, populatedValue)
 	}
 }
 

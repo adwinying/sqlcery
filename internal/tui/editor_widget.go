@@ -49,6 +49,7 @@ type EditorViewContext struct {
 	AutocompleteSuggestions []AutocompleteSuggestion
 	GhostText               string // pre-computed suffix to show after cursor
 	PromptWidth             int    // display width of Prompt, for dropdown indent
+	AutocompleteTokenCol    int    // column of the token start, for stable dropdown anchor
 }
 
 // EditorWidget owns cosmetic state for the command-mode editor: transcript,
@@ -101,23 +102,48 @@ func (w *EditorWidget) SnapToBottom() {
 	w.scrollOffset = 0
 }
 
-// SelectNextSuggestion advances the selection by one, wrapping around.
+// SelectNextSuggestion advances the selection by one. Wraps from the last item
+// to -1 (the restore slot), and from -1 back to item 0.
 func (w *EditorWidget) SelectNextSuggestion(count int) {
-	w.selectedSuggestion = (w.selectedSuggestionIndex(count) + 1) % count
+	if count <= 0 {
+		w.selectedSuggestion = 0
+		return
+	}
+	switch {
+	case w.selectedSuggestion == -1:
+		w.selectedSuggestion = 0
+	case w.selectedSuggestion >= count-1:
+		w.selectedSuggestion = -1
+	default:
+		w.selectedSuggestion++
+	}
 }
 
-// SelectPrevSuggestion moves the selection back by one, wrapping around.
+// SelectPrevSuggestion moves the selection back by one. Wraps from item 0 to
+// -1 (the restore slot), and from -1 to the last item.
 func (w *EditorWidget) SelectPrevSuggestion(count int) {
-	w.selectedSuggestion = w.selectedSuggestionIndex(count) - 1
-	if w.selectedSuggestion < 0 {
+	if count <= 0 {
+		w.selectedSuggestion = 0
+		return
+	}
+	switch {
+	case w.selectedSuggestion == -1:
 		w.selectedSuggestion = count - 1
+	case w.selectedSuggestion <= 0:
+		w.selectedSuggestion = -1
+	default:
+		w.selectedSuggestion--
 	}
 }
 
 // ClampSuggestionSelection ensures selectedSuggestion is within [0, count).
+// The restore slot (-1) is preserved as-is.
 func (w *EditorWidget) ClampSuggestionSelection(count int) {
 	if count == 0 {
 		w.selectedSuggestion = 0
+		return
+	}
+	if w.selectedSuggestion == -1 {
 		return
 	}
 	w.selectedSuggestion = w.selectedSuggestionIndex(count)
@@ -126,6 +152,12 @@ func (w *EditorWidget) ClampSuggestionSelection(count int) {
 // ResetSuggestionSelection resets selection to the first suggestion.
 func (w *EditorWidget) ResetSuggestionSelection() {
 	w.selectedSuggestion = 0
+}
+
+// SetSuggestionIndex sets the selection to an explicit index. Accepts -1 for
+// the restore slot.
+func (w *EditorWidget) SetSuggestionIndex(i int) {
+	w.selectedSuggestion = i
 }
 
 // SelectedSuggestionIndex returns the clamped selection index for count suggestions.
@@ -279,11 +311,12 @@ func (w EditorWidget) renderAutocompleteDropdown(ctx EditorViewContext) string {
 		return ""
 	}
 
-	selected := w.selectedSuggestionIndex(len(suggestions))
+	// rawSelected may be -1 (restore slot) — no row is highlighted in that case.
+	rawSelected := w.selectedSuggestion
 	visible := min(len(suggestions), editorAutocompletePanelRows)
 	start := 0
-	if selected >= visible {
-		start = selected - visible + 1
+	if rawSelected >= visible {
+		start = rawSelected - visible + 1
 	}
 
 	lines := make([]string, 0, visible)
@@ -296,7 +329,7 @@ func (w EditorWidget) renderAutocompleteDropdown(ctx EditorViewContext) string {
 		if detail := strings.TrimSpace(item.Detail); detail != "" {
 			line += " - " + detail
 		}
-		if i == selected {
+		if i == rawSelected {
 			lines = append(lines, AppTheme.PanelSelected.Render(line))
 		} else {
 			lines = append(lines, AppTheme.PanelText.Render(line))
@@ -318,7 +351,7 @@ func (w EditorWidget) renderAutocompleteDropdown(ctx EditorViewContext) string {
 		popupWidth = 10
 	}
 
-	indent := ctx.PromptWidth + ctx.ColOffset
+	indent := ctx.PromptWidth + ctx.AutocompleteTokenCol
 	if indent+popupWidth > editorWidth+ctx.PromptWidth {
 		indent = max(0, editorWidth+ctx.PromptWidth-popupWidth)
 	}

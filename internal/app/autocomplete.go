@@ -98,6 +98,12 @@ func buildAutocompleteItems(value string, cursor int, interaction InteractionSta
 	if ctx.Prefix == "" && ctx.Qualifier == "" && !ctx.SlashMode && strings.TrimSpace(string(runes[:clampCursorOffset(cursor, len(runes))])) == "" {
 		return nil
 	}
+	if ctx.Prefix == "" && !ctx.SlashMode {
+		trimmed := strings.TrimRight(string(runes[:clampCursorOffset(ctx.ReplaceStart, len(runes))]), " \t\n\r")
+		if len(trimmed) > 0 && trimmed[len(trimmed)-1] == ';' {
+			return nil
+		}
+	}
 
 	items := make([]autocompleteItem, 0, autocompleteLimit)
 	seen := map[string]struct{}{}
@@ -228,8 +234,8 @@ func matchesAutocompletePrefix(candidate, prefix string) bool {
 	if prefix == "" {
 		return true
 	}
-
-	return strings.HasPrefix(strings.ToLower(candidate), strings.ToLower(prefix))
+	_, ok := fuzzyMatch(prefix, candidate)
+	return ok
 }
 
 func wantsTableSuggestions(ctx autocompleteContext) bool {
@@ -459,8 +465,8 @@ func clauseHasContent(tokens []sqlToken) bool {
 func autocompleteSortKey(item autocompleteItem, ctx autocompleteContext, catalog autocompleteCatalog) [3]int {
 	return [3]int{
 		autocompleteKindRank(item, ctx),
-		autocompleteItemRank(item, ctx, catalog),
 		autocompletePrefixRank(item, ctx),
+		autocompleteItemRank(item, ctx, catalog),
 	}
 }
 
@@ -577,21 +583,15 @@ func autocompleteKeywordRank(keyword string, scope autocompleteScope) int {
 
 func autocompletePrefixRank(item autocompleteItem, ctx autocompleteContext) int {
 	if ctx.Prefix == "" {
-		return 1
-	}
-
-	label := strings.ToLower(item.Label)
-	prefix := strings.ToLower(ctx.Prefix)
-	if label == prefix {
 		return 0
 	}
-	if strings.HasPrefix(label, prefix) {
-		return 1
+	score, _ := fuzzyMatch(ctx.Prefix, item.Label)
+	if item.Kind == "tbl" {
+		if s, ok := fuzzyMatch(ctx.Prefix, unqualifiedAutocompleteLabel(item.Label)); ok && s > score {
+			score = s
+		}
 	}
-	if item.Kind == "tbl" && strings.HasPrefix(strings.ToLower(unqualifiedAutocompleteLabel(item.Label)), prefix) {
-		return 2
-	}
-	return 3
+	return -score
 }
 
 func columnInActiveTables(column string, ctx autocompleteContext, catalog autocompleteCatalog) bool {

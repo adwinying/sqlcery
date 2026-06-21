@@ -35,6 +35,12 @@ type commandModeModel struct {
 	autocompleteSuppressed       bool
 	autocompleteSuppressedValue  string
 	autocompleteSuppressedCursor int
+	// vim-style navigation state: active while the user is cycling suggestions
+	// with ctrl+n/ctrl+p; frozen list and original text allow cycling and ESC-restore.
+	autocompleteNavActive     bool
+	autocompleteNavOrigValue  string
+	autocompleteNavOrigCursor int
+	autocompleteNavFrozenList []tui.AutocompleteSuggestion
 	// history navigation state
 	historyNavIndex int    // -1 = at draft; 0 = most recent history entry
 	historyNavDraft string // editor content saved when navigation begins
@@ -105,19 +111,50 @@ func (m commandModeModel) Update(msg tea.Msg, interaction InteractionState) (com
 		switch {
 		case key.Matches(keyMsg, m.keys.AcceptSuggestion), keyMsg.String() == "enter":
 			if len(suggestions) > 0 {
-				m.applySuggestion(suggestions[m.widget.SelectedSuggestionIndex(len(suggestions))])
+				if m.autocompleteNavActive {
+					// Text is already in the editor; just close the dropdown.
+					m.clearAutocompleteNav()
+				} else {
+					m.applySuggestion(suggestions[m.widget.SelectedSuggestionIndex(len(suggestions))])
+				}
 				m.autocompleteOpenedByTyping = false
 				return m, textarea.Blink
 			}
 		case key.Matches(keyMsg, m.keys.NextSuggestion):
 			if len(suggestions) > 0 {
-				m.widget.SelectNextSuggestion(len(suggestions))
+				if !m.autocompleteNavActive {
+					m.autocompleteNavActive = true
+					m.autocompleteNavOrigValue = m.editor.Value()
+					m.autocompleteNavOrigCursor = m.cursorOffset()
+					m.autocompleteNavFrozenList = suggestions
+				}
+				m.widget.SelectNextSuggestion(len(m.autocompleteNavFrozenList))
+				sel := m.widget.SelectedSuggestion()
+				if sel < 0 {
+					m.editor.SetValue(m.autocompleteNavOrigValue)
+					m.setCursorOffset(m.autocompleteNavOrigCursor)
+				} else {
+					m.applyNavSuggestion(m.autocompleteNavFrozenList[sel])
+				}
 				return m, nil
 			}
 			return m.navigateHistoryNext(interaction)
 		case key.Matches(keyMsg, m.keys.PrevSuggestion):
 			if len(suggestions) > 0 {
-				m.widget.SelectPrevSuggestion(len(suggestions))
+				if !m.autocompleteNavActive {
+					m.autocompleteNavActive = true
+					m.autocompleteNavOrigValue = m.editor.Value()
+					m.autocompleteNavOrigCursor = m.cursorOffset()
+					m.autocompleteNavFrozenList = suggestions
+				}
+				m.widget.SelectPrevSuggestion(len(m.autocompleteNavFrozenList))
+				sel := m.widget.SelectedSuggestion()
+				if sel < 0 {
+					m.editor.SetValue(m.autocompleteNavOrigValue)
+					m.setCursorOffset(m.autocompleteNavOrigCursor)
+				} else {
+					m.applyNavSuggestion(m.autocompleteNavFrozenList[sel])
+				}
 				return m, nil
 			}
 			return m.navigateHistoryPrev(interaction)
@@ -158,6 +195,9 @@ func (m commandModeModel) Update(msg tea.Msg, interaction InteractionState) (com
 			m.widget.SnapToBottom()
 		}
 		if valueChanged {
+			if m.autocompleteNavActive {
+				m.clearAutocompleteNav()
+			}
 			m.autocompleteOpenedByTyping = true
 			m.historyNavIndex = -1
 			m.historyNavDraft = ""
@@ -178,6 +218,7 @@ func (m *commandModeModel) Clear() {
 	m.cachedSuggestions = nil
 	m.autocompleteOpenedByTyping = false
 	m.clearAutocompleteSuppression()
+	m.clearAutocompleteNav()
 	m.historyNavIndex = -1
 	m.historyNavDraft = ""
 }
@@ -192,9 +233,15 @@ func (m commandModeModel) AutocompleteVisible(interaction InteractionState) bool
 	return len(m.computeSuggestions(interaction)) > 0
 }
 
-// DismissAutocomplete suppresses the autocomplete dropdown while the editor
-// value and cursor position remain unchanged.
+// DismissAutocomplete suppresses the autocomplete dropdown. If vim-style
+// navigation is active, the editor is first restored to the original prefix
+// typed before navigation began.
 func (m *commandModeModel) DismissAutocomplete() {
+	if m.autocompleteNavActive {
+		m.editor.SetValue(m.autocompleteNavOrigValue)
+		m.setCursorOffset(m.autocompleteNavOrigCursor)
+		m.clearAutocompleteNav()
+	}
 	m.autocompleteSuppressed = true
 	m.autocompleteSuppressedValue = m.editor.Value()
 	m.autocompleteSuppressedCursor = m.cursorOffset()
@@ -207,6 +254,27 @@ func (m *commandModeModel) clearAutocompleteSuppression() {
 	m.autocompleteSuppressed = false
 	m.autocompleteSuppressedValue = ""
 	m.autocompleteSuppressedCursor = 0
+}
+
+func (m *commandModeModel) clearAutocompleteNav() {
+	m.autocompleteNavActive = false
+	m.autocompleteNavOrigValue = ""
+	m.autocompleteNavOrigCursor = 0
+	m.autocompleteNavFrozenList = nil
+	m.widget.ResetSuggestionSelection()
+}
+
+// applyNavSuggestion writes item into the editor, always computing the replace
+// range from the saved original value/cursor so cycling never compounds replacements.
+func (m *commandModeModel) applyNavSuggestion(item tui.AutocompleteSuggestion) {
+	value := []rune(m.autocompleteNavOrigValue)
+	ctx := analyzeAutocompleteContext(m.autocompleteNavOrigValue, m.autocompleteNavOrigCursor)
+	start := clampCursorOffset(ctx.ReplaceStart, len(value))
+	end := clampCursorOffset(ctx.ReplaceEnd, len(value))
+	insert := []rune(item.InsertText)
+	updated := string(append(append(append([]rune(nil), value[:start]...), insert...), value[end:]...))
+	m.editor.SetValue(updated)
+	m.setCursorOffset(start + len(insert))
 }
 
 func (m *commandModeModel) Focus() {
@@ -228,6 +296,7 @@ func (m *commandModeModel) SetEditorValue(value string) {
 	m.cachedSuggestions = nil
 	m.autocompleteOpenedByTyping = false
 	m.clearAutocompleteSuppression()
+	m.clearAutocompleteNav()
 }
 
 func (m commandModeModel) KeyMap() commandModeKeyMap {
@@ -333,13 +402,53 @@ func (m commandModeModel) buildViewContext(interaction InteractionState) tui.Edi
 		AutocompleteSuggestions: m.cachedSuggestions,
 		GhostText:               m.ghostText(),
 		PromptWidth:             ansi.StringWidth(m.editor.Prompt),
+		AutocompleteTokenCol:    m.autocompleteTokenCol(),
 	}
+}
+
+// autocompleteTokenCol returns the visual column of the start of the token
+// being completed. This stays constant while cycling through suggestions so
+// the dropdown doesn't drift left/right as candidates change.
+func (m commandModeModel) autocompleteTokenCol() int {
+	if len(m.cachedSuggestions) == 0 {
+		return m.editor.LineInfo().ColumnOffset
+	}
+	value := m.editor.Value()
+	cursor := m.cursorOffset()
+	if m.autocompleteNavActive {
+		value = m.autocompleteNavOrigValue
+		cursor = m.autocompleteNavOrigCursor
+	}
+	ctx := analyzeAutocompleteContext(value, cursor)
+	prefixLen := cursor - ctx.ReplaceStart
+	col := lineColFromOffset(value, cursor)
+	return max(0, col-prefixLen)
+}
+
+// lineColFromOffset returns the number of runes between the start of the
+// current line and the given rune offset in value.
+func lineColFromOffset(value string, offset int) int {
+	runes := []rune(value)
+	if offset > len(runes) {
+		offset = len(runes)
+	}
+	col := 0
+	for i := offset - 1; i >= 0; i-- {
+		if runes[i] == '\n' {
+			break
+		}
+		col++
+	}
+	return col
 }
 
 // computeSuggestions computes the current autocomplete suggestions from the
 // editor state and interaction context. The result is cached in Update so that
 // View rendering never calls buildAutocompleteItems.
 func (m commandModeModel) computeSuggestions(interaction InteractionState) []tui.AutocompleteSuggestion {
+	if m.autocompleteNavActive {
+		return m.autocompleteNavFrozenList
+	}
 	if !m.autocompleteOpenedByTyping {
 		return nil
 	}

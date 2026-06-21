@@ -922,13 +922,13 @@ func TestAutocompleteMenuStaysClosedAfterSubmitAndRefocus(t *testing.T) {
 	model := newModelWithDependencies(Session{ConnectionName: "local", DatabaseType: "sqlite", Adapter: adapter}, modelDependencies{})
 	model.state.SetReady("", NotificationNone)
 
-	// Simulate typing a query and submitting it.
-	next, _ := model.Update(tea.KeyPressMsg{Text: "select 1;"})
+	// Type a partial query so autocomplete opens, then complete and submit.
+	next, _ := model.Update(tea.KeyPressMsg{Text: "select "})
 	model = next.(Model)
-
 	if !model.command.AutocompleteVisible(model.state.Interaction) {
-		t.Fatal("AutocompleteVisible() = false after typing SQL, want true")
+		t.Fatal("AutocompleteVisible() = false after typing partial SQL, want true")
 	}
+	model.command.SetEditorValue("select 1;")
 
 	next, cmd := model.Update(submitIntentMsg{})
 	if cmd == nil {
