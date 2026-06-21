@@ -10,7 +10,7 @@ import (
 
 const (
 	editorAutocompletePanelRows = 5
-	editorBottomPadding         = 5
+	editorBottomPadding         = 0
 )
 
 // AutocompleteSuggestion is a single autocomplete item, pre-computed by
@@ -216,8 +216,12 @@ func (w EditorWidget) View(ctx EditorViewContext) string {
 	}
 
 	cursorVisualRow := cursorRow - scrollTop
+	dropdownLines := strings.Split(dropdown, "\n")
 	overlayStart := cursorVisualRow + 1
-	for i, dl := range strings.Split(dropdown, "\n") {
+	if cursorVisualRow >= len(dropdownLines) {
+		overlayStart = cursorVisualRow - len(dropdownLines)
+	}
+	for i, dl := range dropdownLines {
 		if row := overlayStart + i; row >= 0 && row < len(visible) {
 			visible[row] = dl
 		}

@@ -542,7 +542,7 @@ func TestCommandModeAutocompleteDropdownHeightCappedAtFive(t *testing.T) {
 	}
 }
 
-func TestCommandModeAutocompleteOverlaysLinesBelowCursor(t *testing.T) {
+func TestCommandModeAutocompleteOpensAboveCursorPreservingLinesBelowCursor(t *testing.T) {
 	mode := newCommandModeModel()
 	mode.SetSize(80, 20)
 	// Two-line editor. After CursorEnd the cursor is on line 1 ("WHERE id = 1;").
@@ -582,15 +582,24 @@ func TestCommandModeAutocompleteOverlaysLinesBelowCursor(t *testing.T) {
 	if cursorIdx < 0 {
 		t.Fatal("cursor line (SELECT * FROM us) not found in view")
 	}
-	if cursorIdx+1 >= len(viewLines) {
-		t.Fatal("cursor line is at the bottom of the view — no room for overlay")
+	// The dropdown opens above the cursor — check the row immediately before it.
+	if cursorIdx < 1 {
+		t.Fatal("cursor line is at the top of the view — no room for dropdown above")
 	}
 
-	// The line immediately below the cursor must be a dropdown entry,
-	// not the second editor line ("WHERE id = 1;").
-	lineAfterCursor := viewLines[cursorIdx+1]
-	if strings.Contains(lineAfterCursor, "WHERE") {
-		t.Fatalf("overlay failed: line after cursor is %q — expected autocomplete dropdown row, not editor line 2", lineAfterCursor)
+	// The row immediately before the cursor must be a dropdown entry.
+	lineBeforeCursor := viewLines[cursorIdx-1]
+	if !strings.Contains(lineBeforeCursor, "[") {
+		t.Fatalf("row before cursor does not look like a dropdown row: %q", lineBeforeCursor)
+	}
+
+	// The line immediately below the cursor must still be "WHERE id = 1;" —
+	// the dropdown must not overwrite continuation lines below the cursor.
+	if cursorIdx+1 < len(viewLines) {
+		lineAfterCursor := viewLines[cursorIdx+1]
+		if !strings.Contains(lineAfterCursor, "WHERE") {
+			t.Fatalf("continuation line below cursor was overwritten: %q", lineAfterCursor)
+		}
 	}
 }
 
@@ -606,18 +615,10 @@ func TestCommandModeBottomAnchorsShortContent(t *testing.T) {
 		t.Fatalf("view has %d rows, want 30 (innerHeight)", got)
 	}
 
-	// The prompt line ("> ") should sit at pane_height - bottomPadding - 1,
-	// leaving 5 blank reserve rows below it.
-	promptRow := 30 - bottomPadding - 1
+	// The prompt line ("> ") should sit at the very last row — no blank reserve below.
+	promptRow := len(lines) - 1
 	if strings.TrimSpace(lines[promptRow]) == "" {
-		t.Fatalf("expected prompt at row %d, but that row is blank; view:\n%s", promptRow, view)
-	}
-
-	// All rows below the prompt (the reserve) must be blank.
-	for i := promptRow + 1; i < len(lines); i++ {
-		if s := strings.TrimSpace(lines[i]); s != "" {
-			t.Fatalf("row %d below prompt is not blank: %q (should be part of 5-row reserve)", i, s)
-		}
+		t.Fatalf("expected prompt at last row %d, but that row is blank; view:\n%s", promptRow, view)
 	}
 
 	// All rows above the transcript must be blank top-padding.
@@ -630,7 +631,7 @@ func TestCommandModeBottomAnchorsShortContent(t *testing.T) {
 	}
 }
 
-func TestCommandModeReserveIsFiveRowsWhenContentOverflows(t *testing.T) {
+func TestCommandModeEditorAtLastRowWhenContentOverflows(t *testing.T) {
 	mode := newCommandModeModel()
 	mode.SetSize(80, 10)
 	// Enough transcript to force overflow so topPadding is 0.
@@ -645,11 +646,10 @@ func TestCommandModeReserveIsFiveRowsWhenContentOverflows(t *testing.T) {
 		t.Fatalf("view has %d rows, want 10", got)
 	}
 
-	// The last bottomPadding rows must be blank reserve.
-	for i := len(lines) - bottomPadding; i < len(lines); i++ {
-		if s := strings.TrimSpace(lines[i]); s != "" {
-			t.Fatalf("reserve row %d is not blank: %q", i, s)
-		}
+	// With no bottom reserve the editor sits at the very last row.
+	// The last row must be non-blank (editor prompt), not a blank reserve row.
+	if s := strings.TrimSpace(lines[len(lines)-1]); s == "" {
+		t.Fatalf("last row is blank — expected editor prompt, not a blank reserve; view:\n%s", view)
 	}
 }
 
@@ -679,22 +679,22 @@ func TestCommandModeAutocompleteVisibleWhenCursorIsAtBufferEnd(t *testing.T) {
 	view := mode.View(query)
 	lines := strings.Split(view, "\n")
 
-	// The last 5 rows are the reserve; when the dropdown opens with cursor at
-	// the end of the editor, the dropdown overlays the reserve and must be
-	// visible (not clipped off the bottom of the pane).
+	// The cursor sits on the last row. The dropdown must open upward —
+	// visible in the autocompletePanelRows rows immediately above the cursor.
+	cursorRow := len(lines) - 1
 	found := false
-	for i := len(lines) - bottomPadding; i < len(lines); i++ {
-		if strings.Contains(lines[i], "users") {
+	for i := cursorRow - autocompletePanelRows; i < cursorRow; i++ {
+		if i >= 0 && strings.Contains(lines[i], "users") {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("expected autocomplete dropdown in reserve rows; view:\n%s", view)
+		t.Fatalf("expected autocomplete dropdown in rows above cursor; view:\n%s", view)
 	}
 }
 
-func TestCommandModeAutocompleteOverlaysMidBufferOfMultiLinePrompt(t *testing.T) {
+func TestCommandModeAutocompleteOpensAboveMidBufferCursorInMultiLinePrompt(t *testing.T) {
 	mode := newCommandModeModel()
 	mode.SetSize(80, 30)
 	// Four-line editor. Place the cursor at the end of line 0 so the dropdown
@@ -732,13 +732,21 @@ func TestCommandModeAutocompleteOverlaysMidBufferOfMultiLinePrompt(t *testing.T)
 		t.Fatal("cursor line not found in view")
 	}
 
-	// The next row must contain a dropdown entry (kw/fn/table kind marker),
-	// not "WHERE id = 1".
-	next := lines[cursorIdx+1]
-	if strings.Contains(next, "WHERE") {
-		t.Fatalf("overlay failed: row after cursor is %q (expected dropdown row)", next)
+	// The dropdown opens above the cursor — check the row immediately before it.
+	if cursorIdx < 1 {
+		t.Fatal("cursor line is at the top of the view — no room for dropdown above")
 	}
-	if !strings.Contains(next, "[") { // dropdown rows are rendered as "[kind] label"
-		t.Fatalf("row after cursor does not look like a dropdown row: %q", next)
+	prev := lines[cursorIdx-1]
+	if !strings.Contains(prev, "[") { // dropdown rows are rendered as "[kind] label"
+		t.Fatalf("row before cursor does not look like a dropdown row: %q", prev)
+	}
+
+	// The row immediately below the cursor must be "WHERE id = 1" —
+	// the dropdown must not overwrite continuation lines below the cursor.
+	if cursorIdx+1 < len(lines) {
+		next := lines[cursorIdx+1]
+		if !strings.Contains(next, "WHERE") {
+			t.Fatalf("continuation line below cursor was overwritten or missing: %q", next)
+		}
 	}
 }

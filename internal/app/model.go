@@ -849,8 +849,9 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	switch {
 	case msg.String() == "enter":
-		// Enter submits when statement is complete (ends with ;), otherwise
-		// falls through to textarea to insert a newline for multi-line SQL.
+		// Complete statements always submit regardless of autocomplete state.
+		// Incomplete statements fall through to command.Update, which accepts a
+		// suggestion if the dropdown is open, or inserts a newline otherwise.
 		m.syncCurrentSQL()
 		currentSQL := m.command.Value()
 		if isCompleteSQLStatement(currentSQL) || isSlashCommandText(currentSQL) {

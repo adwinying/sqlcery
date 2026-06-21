@@ -420,7 +420,9 @@ func TestModelUpdateTypesIntoCommandMode(t *testing.T) {
 	initial := NewModel(Session{})
 	initial.state.SetReady("", NotificationNone)
 
-	next, cmd := initial.Update(tea.KeyPressMsg{Text: "select"})
+	// Use text that doesn't match any SQL keyword or schema item so autocomplete
+	// does not open and enter inserts a plain newline.
+	next, cmd := initial.Update(tea.KeyPressMsg{Text: "foo"})
 	if cmd == nil {
 		t.Fatal("Update() cmd = nil, want cursor blink command")
 	}
@@ -430,7 +432,7 @@ func TestModelUpdateTypesIntoCommandMode(t *testing.T) {
 		t.Fatalf("Update() model type = %T, want %T", next, Model{})
 	}
 
-	if got, want := model.command.editor.Value(), "select"; got != want {
+	if got, want := model.command.editor.Value(), "foo"; got != want {
 		t.Fatalf("editor.Value() = %q, want %q", got, want)
 	}
 
@@ -439,7 +441,7 @@ func TestModelUpdateTypesIntoCommandMode(t *testing.T) {
 	next, _ = model.Update(tea.KeyPressMsg{Text: "1"})
 	model = next.(Model)
 
-	if got, want := model.command.editor.Value(), "select\n1"; got != want {
+	if got, want := model.command.editor.Value(), "foo\n1"; got != want {
 		t.Fatalf("editor.Value() = %q, want %q", got, want)
 	}
 }

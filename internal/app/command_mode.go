@@ -20,7 +20,7 @@ const (
 	minimumEditorWidth = 20
 	// autocompletePanelRows and bottomPadding mirror tui constants; kept for test access.
 	autocompletePanelRows = 5
-	bottomPadding         = 5
+	bottomPadding         = 0
 	editorLargeHeight     = 9999
 )
 
@@ -67,7 +67,7 @@ func defaultCommandModeKeys() commandModeKeyMap {
 		RestoreHistory:       key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restore")),
 		SwitchMode:           key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "focus")),
 		LayoutCommandOnly:    key.NewBinding(key.WithKeys("ctrl+3"), key.WithHelp("ctrl+3", "command")),
-		AcceptSuggestion:     key.NewBinding(key.WithKeys("tab", "ctrl+y"), key.WithHelp("tab/ctrl+y", "accept")),
+		AcceptSuggestion:     key.NewBinding(key.WithKeys("tab", "ctrl+y"), key.WithHelp("tab/ctrl+y/enter", "accept")),
 		NextSuggestion:       key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "next suggestion")),
 		PrevSuggestion:       key.NewBinding(key.WithKeys("ctrl+p"), key.WithHelp("ctrl+p", "prev suggestion")),
 		ScrollTranscriptUp:   key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "scroll up")),
@@ -103,7 +103,7 @@ func (m commandModeModel) Update(msg tea.Msg, interaction InteractionState) (com
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		suggestions := m.computeSuggestions(interaction)
 		switch {
-		case key.Matches(keyMsg, m.keys.AcceptSuggestion):
+		case key.Matches(keyMsg, m.keys.AcceptSuggestion), keyMsg.String() == "enter":
 			if len(suggestions) > 0 {
 				m.applySuggestion(suggestions[m.widget.SelectedSuggestionIndex(len(suggestions))])
 				m.autocompleteOpenedByTyping = false
