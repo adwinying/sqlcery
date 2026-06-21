@@ -33,7 +33,7 @@ const sqlceryLogoHeight = 6
 
 var emptyStateHints = []string{
 	"Press ctrl+r to fuzzy-search your query history",
-	"Tab or ctrl+y accepts an autocomplete suggestion",
+	"Tab or Enter accepts an autocomplete suggestion",
 	"Type /select <table> to expand a SELECT template",
 	"Type /commands to open the Slash Command Wizard",
 	"ctrl+3 switches to a command-only layout",
@@ -45,7 +45,7 @@ var emptyStateHints = []string{
 	"ctrl+z zooms the focused pane to full screen",
 	"ctrl+x switches focus between Results and Command Panes",
 	"Try /tables to list all tables in your database",
-	"Press ctrl+t to open the Keybindings Modal",
+	"Press ctrl+t to show a list of keybindings that can be used",
 }
 
 type resultsPaneModeModel struct {

@@ -73,7 +73,7 @@ func defaultCommandModeKeys() commandModeKeyMap {
 		RestoreHistory:       key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restore")),
 		SwitchMode:           key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "focus")),
 		LayoutCommandOnly:    key.NewBinding(key.WithKeys("ctrl+3"), key.WithHelp("ctrl+3", "command")),
-		AcceptSuggestion:     key.NewBinding(key.WithKeys("tab", "ctrl+y"), key.WithHelp("tab/ctrl+y/enter", "accept")),
+		AcceptSuggestion:     key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab/enter", "accept")),
 		NextSuggestion:       key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "next suggestion")),
 		PrevSuggestion:       key.NewBinding(key.WithKeys("ctrl+p"), key.WithHelp("ctrl+p", "prev suggestion")),
 		ScrollTranscriptUp:   key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "scroll up")),
