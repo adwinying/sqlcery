@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -148,19 +149,29 @@ func (h *helpModal) FooterHints(_ InteractionState) string {
 }
 
 // filteredRows returns all Help Rows for the current context, filtered by the
-// current filter string (case-insensitive substring match).
+// current filter string using fuzzy matching, ranked by score.
 func (h *helpModal) filteredRows() []helpRow {
 	all := buildHelpRows(h.contextPane, h.contextModal)
 	trimmed := strings.TrimSpace(h.filter)
 	if trimmed == "" {
 		return all
 	}
-	lower := strings.ToLower(trimmed)
-	filtered := make([]helpRow, 0, len(all))
+	type scored struct {
+		row   helpRow
+		score int
+	}
+	matches := make([]scored, 0, len(all))
 	for _, row := range all {
-		if strings.Contains(strings.ToLower(row.display), lower) {
-			filtered = append(filtered, row)
+		if score, ok := fuzzyMatch(trimmed, row.display); ok {
+			matches = append(matches, scored{row, score})
 		}
+	}
+	sort.SliceStable(matches, func(i, j int) bool {
+		return matches[i].score > matches[j].score
+	})
+	filtered := make([]helpRow, len(matches))
+	for i, m := range matches {
+		filtered[i] = m.row
 	}
 	return filtered
 }

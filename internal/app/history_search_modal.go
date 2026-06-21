@@ -232,7 +232,7 @@ func rankHistorySearchEntries(entries []HistoryEntryContext, filter string) []hi
 			continue
 		}
 
-		score, ok := fuzzyHistoryMatch(trimmed, entry.Statement)
+		score, ok := fuzzyMatch(trimmed, entry.Statement)
 		if !ok {
 			continue
 		}
@@ -250,7 +250,7 @@ func rankHistorySearchEntries(entries []HistoryEntryContext, filter string) []hi
 	return matches
 }
 
-func fuzzyHistoryMatch(query, candidate string) (int, bool) {
+func fuzzyMatch(query, candidate string) (int, bool) {
 	needle := []rune(strings.ToLower(strings.TrimSpace(query)))
 	haystack := []rune(strings.ToLower(candidate))
 	if len(needle) == 0 {
@@ -278,7 +278,11 @@ func fuzzyHistoryMatch(query, candidate string) (int, bool) {
 			streak = 1
 		}
 
-		score += 1 + streak*streak
+		wordBonus := 0
+		if i == 0 || isFuzzyWordSep(haystack[i-1]) {
+			wordBonus = 15
+		}
+		score += 1 + streak*streak + wordBonus
 		lastMatch = i
 		needleIndex++
 	}
@@ -291,6 +295,10 @@ func fuzzyHistoryMatch(query, candidate string) (int, bool) {
 		score += max(0, 32-firstMatch)
 	}
 	return score, true
+}
+
+func isFuzzyWordSep(r rune) bool {
+	return r == ' ' || r == '_' || r == '+' || r == '-' || r == '/' || r == '.'
 }
 
 func wrapHistorySearchIndex(index, count int) int {

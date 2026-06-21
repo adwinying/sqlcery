@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -737,12 +738,22 @@ func filterWizardTargets(targets []SlashCommandWizardTarget, filter string) []Sl
 	if trimmed == "" {
 		return targets
 	}
-	lower := strings.ToLower(trimmed)
-	filtered := make([]SlashCommandWizardTarget, 0, len(targets))
+	type scored struct {
+		target SlashCommandWizardTarget
+		score  int
+	}
+	matches := make([]scored, 0, len(targets))
 	for _, t := range targets {
-		if strings.Contains(strings.ToLower(t.Display), lower) {
-			filtered = append(filtered, t)
+		if score, ok := fuzzyMatch(trimmed, t.Display); ok {
+			matches = append(matches, scored{t, score})
 		}
+	}
+	sort.SliceStable(matches, func(i, j int) bool {
+		return matches[i].score > matches[j].score
+	})
+	filtered := make([]SlashCommandWizardTarget, len(matches))
+	for i, m := range matches {
+		filtered[i] = m.target
 	}
 	return filtered
 }
