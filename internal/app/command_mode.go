@@ -55,6 +55,7 @@ type commandModeKeyMap struct {
 	PrevSuggestion       key.Binding
 	ScrollTranscriptUp   key.Binding
 	ScrollTranscriptDown key.Binding
+	OpenEditor           key.Binding
 }
 
 func defaultCommandModeKeys() commandModeKeyMap {
@@ -71,6 +72,7 @@ func defaultCommandModeKeys() commandModeKeyMap {
 		PrevSuggestion:       key.NewBinding(key.WithKeys("ctrl+p"), key.WithHelp("ctrl+p", "prev suggestion")),
 		ScrollTranscriptUp:   key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "scroll up")),
 		ScrollTranscriptDown: key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "scroll down")),
+		OpenEditor:           key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "open in $EDITOR")),
 	}
 }
 
@@ -256,7 +258,7 @@ func (m commandModeModel) FooterHints(interaction InteractionState) string {
 	if len(m.cachedSuggestions) > 0 || len(m.computeSuggestions(interaction)) > 0 {
 		parts = append(parts, bindingSummary(m.keys.AcceptSuggestion), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
 	}
-	parts = append(parts, "enter submit", bindingSummary(m.keys.Cancel), bindingSummary(m.keys.History))
+	parts = append(parts, "enter submit", bindingSummary(m.keys.Cancel), bindingSummary(m.keys.History), bindingSummary(m.keys.OpenEditor))
 	if interaction.Running != nil {
 		parts = append(parts, "esc cancel query")
 	}
@@ -284,7 +286,7 @@ func (m commandModeModel) Footer(connectionName, dialect string, interaction Int
 	}
 
 	parts = append(parts, fmt.Sprintf("line %d col %d", m.editor.Line()+1, m.editor.LineInfo().ColumnOffset+1))
-	parts = append(parts, bindingSummary(m.keys.Submit), bindingSummary(m.keys.Cancel), bindingSummary(m.keys.History), bindingSummary(m.keys.SwitchMode), bindingSummary(m.keys.LayoutCommandOnly), bindingSummary(m.keys.Help))
+	parts = append(parts, bindingSummary(m.keys.Submit), bindingSummary(m.keys.Cancel), bindingSummary(m.keys.History), bindingSummary(m.keys.OpenEditor), bindingSummary(m.keys.SwitchMode), bindingSummary(m.keys.LayoutCommandOnly), bindingSummary(m.keys.Help))
 	if interaction.ActivePane == PaneResults {
 		parts = append(parts, "ctrl+u scroll up", "ctrl+d scroll down")
 	}

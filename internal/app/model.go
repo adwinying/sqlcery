@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -138,6 +140,17 @@ type appErrorMsg struct {
 	Status string
 }
 
+type openEditorIntentMsg struct{}
+
+type editorReadyMsg struct {
+	path string
+}
+
+type editorFinishedMsg struct {
+	path string
+	err  error
+}
+
 type runningTickMsg struct {
 	StartedAt time.Time
 	Now       time.Time
@@ -267,6 +280,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case reconnectStateMsg:
 		m.state.SetReconnect(msg.Status, &msg.Context)
+		return m, nil
+	case openEditorIntentMsg:
+		return m, m.openInEditorCmd()
+	case editorReadyMsg:
+		editor := getEditorEnv()
+		return m, tea.ExecProcess(exec.Command(editor, msg.path), func(err error) tea.Msg {
+			return editorFinishedMsg{path: msg.path, err: err}
+		})
+	case editorFinishedMsg:
+		if msg.err != nil {
+			prevCreatedAt := m.state.Notification.CreatedAt
+			m.state.SetPendingIntent(IntentNone, "editor", fmt.Sprintf("$EDITOR exited with error: %v", msg.err), NotificationError)
+			os.Remove(msg.path)
+			return m, m.newNotificationClearCmdIfChanged(prevCreatedAt)
+		}
+		content, err := os.ReadFile(msg.path)
+		os.Remove(msg.path)
+		if err != nil {
+			prevCreatedAt := m.state.Notification.CreatedAt
+			m.state.SetPendingIntent(IntentNone, "editor", fmt.Sprintf("Could not read editor output: %v", err), NotificationError)
+			return m, m.newNotificationClearCmdIfChanged(prevCreatedAt)
+		}
+		m.command.SetEditorValue(strings.TrimRight(string(content), "\n"))
+		m.syncCurrentSQL()
 		return m, nil
 	case appErrorMsg:
 		m.clearExecution()
@@ -842,6 +879,11 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		return func() tea.Msg { return historyIntentMsg{} }
+	case key.Matches(msg, keys.OpenEditor):
+		if m.state.Interaction.ActivePane != PaneCommand {
+			return nil
+		}
+		return func() tea.Msg { return openEditorIntentMsg{} }
 	case key.Matches(msg, keys.Help):
 		return func() tea.Msg { return toggleHelpIntentMsg{} }
 	case key.Matches(msg, keys.SwitchMode):
@@ -1876,4 +1918,31 @@ func formatReplSlashOutput(msg slashCommandExecutedMsg) string {
 	}
 	status := defaultStatus(msg.Result.Status, fmt.Sprintf("%s completed.", msg.Command.DisplayName))
 	return status
+}
+
+func getEditorEnv() string {
+	return os.Getenv("EDITOR")
+}
+
+func (m *Model) openInEditorCmd() tea.Cmd {
+	editor := getEditorEnv()
+	if editor == "" {
+		prevCreatedAt := m.state.Notification.CreatedAt
+		m.state.SetPendingIntent(IntentNone, "editor", "$EDITOR is not set.", NotificationError)
+		return m.newNotificationClearCmdIfChanged(prevCreatedAt)
+	}
+	content := m.command.Value()
+	return func() tea.Msg {
+		f, err := os.CreateTemp("", "sqlcery-*.sql")
+		if err != nil {
+			return editorFinishedMsg{err: err}
+		}
+		_, err = f.WriteString(content)
+		f.Close()
+		if err != nil {
+			os.Remove(f.Name())
+			return editorFinishedMsg{err: err}
+		}
+		return editorReadyMsg{path: f.Name()}
+	}
 }

@@ -284,6 +284,7 @@ func buildHelpRows(pane Pane, modal AppModal) []helpRow {
 			contextRows = []helpRow{
 				{display: "enter submit SQL or slash command", actionKey: "enter"},
 				{display: "ctrl+r open history search", actionKey: "ctrl+r"},
+				{display: "ctrl+e open command in $EDITOR", actionKey: "ctrl+e"},
 				{display: "ctrl+y accept autocomplete suggestion"},
 				{display: "ctrl+n next autocomplete suggestion"},
 				{display: "ctrl+p previous autocomplete suggestion"},
@@ -315,6 +316,8 @@ func keyToMsgFn(actionKey string) func() tea.Msg {
 		return func() tea.Msg { return submitIntentMsg{} }
 	case "ctrl+r":
 		return func() tea.Msg { return historyIntentMsg{} }
+	case "ctrl+e":
+		return func() tea.Msg { return openEditorIntentMsg{} }
 	case "ctrl+x":
 		return func() tea.Msg { return switchPaneIntentMsg{} }
 	case "ctrl+z":
