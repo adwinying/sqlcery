@@ -24,6 +24,7 @@ const (
 	ModalHistorySearch AppModal = "history-search"
 	ModalSlashWizard   AppModal = "slash-wizard"
 	ModalKeybindings   AppModal = "keybindings"
+	ModalExportWizard  AppModal = "export-wizard"
 )
 
 type AppLayout string

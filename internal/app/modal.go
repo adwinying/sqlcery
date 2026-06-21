@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/adwinying/sqlcery/internal/db"
+	"github.com/adwinying/sqlcery/internal/export"
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -76,6 +77,12 @@ type modalResultOpenWizardFor struct {
 	level       NotificationLevel
 }
 
+// modalResultExportWizard closes the Export Wizard and dispatches the export.
+type modalResultExportWizard struct {
+	format export.Format
+	path   string // empty = copy to clipboard
+}
+
 func (modalResultNone) isModalResult()           {}
 func (modalResultPendingStatus) isModalResult()  {}
 func (modalResultReady) isModalResult()          {}
@@ -84,6 +91,7 @@ func (modalResultExecute) isModalResult()        {}
 func (modalResultForward) isModalResult()        {}
 func (modalResultRunHelpRow) isModalResult()     {}
 func (modalResultOpenWizardFor) isModalResult()  {}
+func (modalResultExportWizard) isModalResult()   {}
 
 // Modal is the interface implemented by every overlay dialog.
 // When m.modal is non-nil, Update routes all key events to it — no
@@ -102,6 +110,10 @@ type Modal interface {
 	// always appended (e.g. "sel█", "█" when empty). Return "" to suppress
 	// the filter box and render as a single suggestions-only box.
 	FilterText() string
+	// FilterLabel returns the label embedded in the filter box top border.
+	// Return "Filter:" for the standard filter box; modals that repurpose the
+	// filter box for other input (e.g. "Path:") return their own label.
+	FilterLabel() string
 	// Title returns the label embedded in the suggestions box top border.
 	Title() string
 	// CounterText returns a "N of M" string embedded in the bottom-right of
@@ -188,6 +200,9 @@ func (m *Model) applyModalResult(result ModalResult) tea.Cmd {
 	case modalResultOpenWizardFor:
 		m.closeModal()
 		return m.pushWizardForCommand(r.commandName, r.status, r.level)
+	case modalResultExportWizard:
+		m.closeModal()
+		return m.executeExportWizard(r.format, r.path)
 	}
 	return nil
 }

@@ -263,7 +263,7 @@ func TestCommandModeViewRendersSlashWizard(t *testing.T) {
 		}
 	}
 	hints := m.FooterHints(InteractionState{})
-	for _, want := range []string{"enter confirm", "ctrl+n next", "ctrl+p prev", "esc close", "ctrl+e keybindings"} {
+	for _, want := range []string{"enter confirm", "ctrl+n next", "ctrl+p prev", "esc close", "ctrl+t keybindings"} {
 		if !strings.Contains(hints, want) {
 			t.Fatalf("slashWizardModal.FooterHints() = %q, want to contain %q", hints, want)
 		}
@@ -284,7 +284,7 @@ func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 		}
 	}
 	hints := h.FooterHints(interaction)
-	for _, want := range []string{"enter restore", "ctrl+p up", "ctrl+n down", "esc", "ctrl+e keybindings"} {
+	for _, want := range []string{"enter restore", "ctrl+p up", "ctrl+n down", "esc", "ctrl+t keybindings"} {
 		if !strings.Contains(hints, want) {
 			t.Fatalf("historySearchModal.FooterHints() = %q, want to contain %q", hints, want)
 		}
@@ -351,7 +351,7 @@ func TestCommandModeFooterShowsRunningIndicator(t *testing.T) {
 		Running: &RunningStatementContext{Label: "SQL", Elapsed: 1500 * time.Millisecond},
 	})
 
-	for _, want := range []string{"Command mode", "layout command only", "connection local", "sqlite", "ctrl+e keybindings", "ctrl+3 command", "- SQL 1.5s", "esc cancel query"} {
+	for _, want := range []string{"Command mode", "layout command only", "connection local", "sqlite", "ctrl+t keybindings", "ctrl+3 command", "- SQL 1.5s", "esc cancel query"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
 		}
@@ -366,7 +366,7 @@ func TestCommandModeFooterShowsResultsPanePagingWhenResultsPaneFocusedInSplit(t 
 		ActivePane: PaneResults,
 	})
 
-	for _, want := range []string{"Command line hidden focus", "layout split", "ctrl+e keybindings", "ctrl+u scroll up", "ctrl+d scroll down"} {
+	for _, want := range []string{"Command line hidden focus", "layout split", "ctrl+t keybindings", "ctrl+u scroll up", "ctrl+d scroll down"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
 		}

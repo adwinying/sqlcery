@@ -15,6 +15,7 @@ import (
 
 	"github.com/adwinying/sqlcery/internal/config"
 	"github.com/adwinying/sqlcery/internal/db"
+	"github.com/adwinying/sqlcery/internal/export"
 	apphistory "github.com/adwinying/sqlcery/internal/history"
 )
 
@@ -2191,7 +2192,27 @@ func TestModelUpdateDDReportsUnknownSource(t *testing.T) {
 	}
 }
 
-func TestModelUpdateResultsPaneWriteExportsSelectedRowsToCSV(t *testing.T) {
+// runExportWizard drives the Export Wizard: ctrl+e to open, then formatAdvances
+// ctrl+n presses to select a format, then Enter to advance to Step 2, types
+// path (or "" for clipboard), and presses Enter to execute.
+func runExportWizard(model Model, formatAdvances int, path string) Model {
+	next, _ := model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	model = next.(Model)
+	for range formatAdvances {
+		next, _ = model.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
+		model = next.(Model)
+	}
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = next.(Model)
+	if path != "" {
+		next, _ = model.Update(tea.KeyPressMsg{Text: path})
+		model = next.(Model)
+	}
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	return next.(Model)
+}
+
+func TestModelExportWizardExportsSelectedRowsToCSV(t *testing.T) {
 	workingDir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(workingDir, "exports"), 0o755); err != nil {
 		t.Fatalf("Mkdir() error = %v", err)
@@ -2213,16 +2234,7 @@ func TestModelUpdateResultsPaneWriteExportsSelectedRowsToCSV(t *testing.T) {
 	})
 	model.state.SetMarkedRows([]int{1})
 
-	for _, msg := range []tea.KeyPressMsg{
-		{Text: ":"},
-		{Text: "w"},
-		{Text: " "},
-		{Text: "exports/selected.csv"},
-		{Code: tea.KeyEnter},
-	} {
-		next, _ := model.Update(msg)
-		model = next.(Model)
-	}
+	model = runExportWizard(model, 0, "exports/selected.csv") // 0 advances = CSV
 
 	if got, want := model.state.Notification.Text, "Exported 1 row(s) as csv from selected rows to exports/selected.csv."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
@@ -2236,7 +2248,7 @@ func TestModelUpdateResultsPaneWriteExportsSelectedRowsToCSV(t *testing.T) {
 	}
 }
 
-func TestModelUpdateResultsPaneWriteFallsBackToAllRowsAndSupportsJSONMarkdownTSV(t *testing.T) {
+func TestModelExportWizardExportsAllRowsInMultipleFormats(t *testing.T) {
 	workingDir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(workingDir, "exports"), 0o755); err != nil {
 		t.Fatalf("Mkdir() error = %v", err)
@@ -2257,16 +2269,8 @@ func TestModelUpdateResultsPaneWriteFallsBackToAllRowsAndSupportsJSONMarkdownTSV
 		},
 	})
 
-	runWrite := func(model Model, command string) Model {
-		next, _ := model.Update(tea.KeyPressMsg{Text: ":"})
-		model = next.(Model)
-		next, _ = model.Update(tea.KeyPressMsg{Text: command})
-		model = next.(Model)
-		next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-		return next.(Model)
-	}
-
-	model := runWrite(base, "w exports/all.tsv")
+	// TSV is index 1 (1 ctrl+n advance)
+	model := runExportWizard(base, 1, "exports/all.tsv")
 	if got, want := model.state.Notification.Text, "Exported 2 row(s) as tsv from current result rows to exports/all.tsv."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
@@ -2278,7 +2282,8 @@ func TestModelUpdateResultsPaneWriteFallsBackToAllRowsAndSupportsJSONMarkdownTSV
 		t.Fatalf("tsv export = %q, want %q", got, want)
 	}
 
-	model = runWrite(base, "w exports/all.json")
+	// JSON is index 2 (2 ctrl+n advances)
+	model = runExportWizard(base, 2, "exports/all.json")
 	jsonData, err := os.ReadFile(filepath.Join(workingDir, "exports", "all.json"))
 	if err != nil {
 		t.Fatalf("ReadFile(json) error = %v", err)
@@ -2289,7 +2294,8 @@ func TestModelUpdateResultsPaneWriteFallsBackToAllRowsAndSupportsJSONMarkdownTSV
 		}
 	}
 
-	model = runWrite(base, "w exports/all.md")
+	// Markdown is index 3 (3 ctrl+n advances)
+	model = runExportWizard(base, 3, "exports/all.md")
 	markdownData, err := os.ReadFile(filepath.Join(workingDir, "exports", "all.md"))
 	if err != nil {
 		t.Fatalf("ReadFile(md) error = %v", err)
@@ -2301,7 +2307,7 @@ func TestModelUpdateResultsPaneWriteFallsBackToAllRowsAndSupportsJSONMarkdownTSV
 	}
 }
 
-func TestModelUpdateResultsPaneWriteValidatesCommandAndPathScope(t *testing.T) {
+func TestModelExportWizardRejectsOutOfScopePath(t *testing.T) {
 	workingDir := t.TempDir()
 	model := NewModel(Session{WorkingDir: workingDir})
 	model.state.SetReady("", NotificationNone)
@@ -2315,30 +2321,13 @@ func TestModelUpdateResultsPaneWriteValidatesCommandAndPathScope(t *testing.T) {
 		},
 	})
 
-	for _, msg := range []tea.KeyPressMsg{{Text: ":"}, {Code: tea.KeyEnter}} {
-		next, _ := model.Update(msg)
-		model = next.(Model)
-	}
-	if got, want := model.state.Notification.Text, "Use :w [filename] with .csv, .tsv, .json, or .md while Results Pane is focused."; got != want {
-		t.Fatalf("state.Status = %q, want %q", got, want)
-	}
-
-	for _, msg := range []tea.KeyPressMsg{
-		{Text: ":"},
-		{Text: "w"},
-		{Text: " "},
-		{Text: "../out.csv"},
-		{Code: tea.KeyEnter},
-	} {
-		next, _ := model.Update(msg)
-		model = next.(Model)
-	}
+	model = runExportWizard(model, 0, "../out.csv")
 	if got := model.state.Notification.Text; !strings.Contains(got, "Could not export rows: export path must stay within") {
 		t.Fatalf("state.Status = %q, want scoped path error", got)
 	}
 }
 
-func TestModelViewResultsPaneShowsWritePrompt(t *testing.T) {
+func TestModelExportWizardOpensOnCtrlEAndClosesOnEsc(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutResultsOnly)
@@ -2351,18 +2340,142 @@ func TestModelViewResultsPaneShowsWritePrompt(t *testing.T) {
 		},
 	})
 
-	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	next, _ := model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 	model = next.(Model)
-	next, _ = model.Update(tea.KeyPressMsg{Text: ":"})
+	if model.currentModal() == nil || model.currentModal().Name() != ModalExportWizard {
+		t.Fatal("ctrl+e should open export wizard modal")
+	}
+
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = next.(Model)
-	if got, want := model.resultsPane.pendingAction, resultsPanePendingActionExport; got != want {
-		t.Fatalf("resultsPane.pendingAction = %q, want %q", got, want)
+	if model.currentModal() != nil {
+		t.Fatal("esc should close export wizard")
 	}
-	if got, want := model.resultsPane.exportBuffer, ":"; got != want {
-		t.Fatalf("resultsPane.writeBuffer = %q, want %q", got, want)
+}
+
+func TestModelExportWizardDoesNotOpenWithNoResult(t *testing.T) {
+	model := NewModel(Session{})
+	model.state.SetReady("", NotificationNone)
+	model.state.SetLayout(LayoutResultsOnly)
+	model.state.SetActivePane(PaneResults)
+
+	next, _ := model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	model = next.(Model)
+	if model.currentModal() != nil {
+		t.Fatal("ctrl+e with no result should not open modal")
 	}
-	if got := model.state.Notification.Text; !strings.Contains(got, "Type :w") {
-		t.Fatalf("state.Status = %q, want to contain export guidance", got)
+	if got, want := model.state.Notification.Text, "Results Pane has no rows to export."; got != want {
+		t.Fatalf("state.Status = %q, want %q", got, want)
+	}
+}
+
+func TestModelExportWizardEscInStep2GoesBackToStep1(t *testing.T) {
+	model := NewModel(Session{})
+	model.state.SetReady("", NotificationNone)
+	model.state.SetLayout(LayoutResultsOnly)
+	model.state.SetActivePane(PaneResults)
+	model.state.SetLatestResultContext(&LatestResultContext{
+		Statement: "select id from widgets;",
+		PreservedResult: &db.ResultSet{
+			Columns: []db.ResultColumn{{Name: "id"}},
+			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}}}},
+		},
+	})
+
+	// Open wizard and advance to Step 2
+	next, _ := model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	model = next.(Model)
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter}) // confirm format → Step 2
+	model = next.(Model)
+
+	wm, ok := model.currentModal().(*exportWizardModal)
+	if !ok || wm.step != exportWizardStepPath {
+		t.Fatal("expected wizard to be on step 2 (path)")
+	}
+
+	// Esc in Step 2 → back to Step 1, modal still open
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = next.(Model)
+	wm, ok = model.currentModal().(*exportWizardModal)
+	if !ok || wm.step != exportWizardStepFormat {
+		t.Fatal("esc in step 2 should return to step 1, not close modal")
+	}
+}
+
+func TestModelExportWizardFormatWinsOverExtension(t *testing.T) {
+	workingDir := t.TempDir()
+	model := NewModel(Session{WorkingDir: workingDir})
+	model.state.SetReady("", NotificationNone)
+	model.state.SetLayout(LayoutResultsOnly)
+	model.state.SetActivePane(PaneResults)
+	model.state.SetLatestResultContext(&LatestResultContext{
+		Statement: "select id from widgets;",
+		PreservedResult: &db.ResultSet{
+			Columns: []db.ResultColumn{{Name: "id"}},
+			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}}}},
+		},
+	})
+
+	// Choose CSV (index 0) but type a .json filename
+	model = runExportWizard(model, 0, "out.json")
+	if got := model.state.Notification.Text; !strings.Contains(got, "as csv") {
+		t.Fatalf("state.Status = %q, want csv format in message", got)
+	}
+	data, err := os.ReadFile(filepath.Join(workingDir, "out.json"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if got := string(data); !strings.Contains(got, "id") {
+		t.Fatalf("file content = %q, want CSV content", got)
+	}
+	// CSV has no braces; JSON would have them
+	if strings.Contains(string(data), "{") {
+		t.Fatalf("file content = %q, looks like JSON but should be CSV", string(data))
+	}
+}
+
+func TestModelExportWizardStep1FilterNarrowsFormats(t *testing.T) {
+	model := NewModel(Session{})
+	model.state.SetReady("", NotificationNone)
+	model.state.SetLayout(LayoutResultsOnly)
+	model.state.SetActivePane(PaneResults)
+	model.state.SetLatestResultContext(&LatestResultContext{
+		Statement: "select id from widgets;",
+		PreservedResult: &db.ResultSet{
+			Columns: []db.ResultColumn{{Name: "id"}},
+			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}}}},
+		},
+	})
+
+	// Open wizard
+	next, _ := model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	model = next.(Model)
+
+	// Type "j" to filter to JSON
+	next, _ = model.Update(tea.KeyPressMsg{Text: "j"})
+	model = next.(Model)
+
+	wm := model.currentModal().(*exportWizardModal)
+	if got := wm.filteredFormats(); len(got) != 1 || got[0] != export.FormatJSON {
+		t.Fatalf("filteredFormats() = %v, want [JSON]", got)
+	}
+
+	// Esc clears filter (modal stays open)
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = next.(Model)
+	wm = model.currentModal().(*exportWizardModal)
+	if wm == nil || wm.formatFilter != "" {
+		t.Fatal("esc with filter should clear filter, not close modal")
+	}
+	if got := wm.filteredFormats(); len(got) != len(exportWizardFormats) {
+		t.Fatalf("after esc, filteredFormats() = %v, want all 4", got)
+	}
+
+	// Second Esc closes the modal
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = next.(Model)
+	if model.currentModal() != nil {
+		t.Fatal("second esc should close modal")
 	}
 }
 
@@ -2370,9 +2483,9 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("", NotificationNone)
 
-	next, cmd := model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
 	if cmd == nil {
-		t.Fatal("Update(ctrl+e) cmd = nil, want toggle help intent")
+		t.Fatal("Update(ctrl+t) cmd = nil, want toggle help intent")
 	}
 	model = next.(Model)
 
@@ -2395,7 +2508,7 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 	}
 	combined := strings.Join(displays, "\n")
 	for _, want := range []string{
-		"ctrl+e toggle keybindings",
+		"ctrl+t toggle keybindings",
 		"ctrl+c quit",
 		"enter submit SQL or slash command",
 		"ctrl+r open history search",
@@ -2415,8 +2528,8 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 		}
 	}
 
-	// Second ctrl+e closes the modal.
-	next, _ = model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	// Second ctrl+t closes the modal.
+	next, _ = model.Update(tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
 	model = next.(Model)
 	if model.currentModal() != nil && model.currentModal().Name() == ModalKeybindings {
 		t.Fatal("currentModal() is still keybindings, want closed")
@@ -2435,7 +2548,7 @@ func TestModelToggleHelpShowsSplitAndWizardSpecificGuidance(t *testing.T) {
 	}
 	combined := strings.Join(displays, "\n")
 	for _, want := range []string{
-		"ctrl+e toggle keybindings",
+		"ctrl+t toggle keybindings",
 		"enter confirm selection",
 		"ctrl+n next item",
 		"esc back or close",
@@ -2462,9 +2575,9 @@ func TestModelToggleHelpShowsHistorySearchGuidance(t *testing.T) {
 	next, _ := model.Update(historyIntentMsg{})
 	model = next.(Model)
 
-	next, cmd := model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
 	if cmd == nil {
-		t.Fatal("Update(ctrl+e) cmd = nil, want toggle help intent")
+		t.Fatal("Update(ctrl+t) cmd = nil, want toggle help intent")
 	}
 	model = next.(Model)
 	next, _ = model.Update(cmd())
@@ -2487,7 +2600,7 @@ func TestModelToggleHelpShowsHistorySearchGuidance(t *testing.T) {
 	}
 	combined := strings.Join(displays, "\n")
 	for _, want := range []string{
-		"ctrl+e toggle keybindings",
+		"ctrl+t toggle keybindings",
 		"enter restore selected entry",
 		"ctrl+n or down select older match",
 		"esc close history search",

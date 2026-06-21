@@ -58,7 +58,7 @@ func defaultCommandModeKeys() commandModeKeyMap {
 	return commandModeKeyMap{
 		Submit:               key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit")),
 		Cancel:               key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
-		Help:                 key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "keybindings")),
+		Help:                 key.NewBinding(key.WithKeys("ctrl+t"), key.WithHelp("ctrl+t", "keybindings")),
 		History:              key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "history")),
 		RestoreHistory:       key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restore")),
 		SwitchMode:           key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "focus")),

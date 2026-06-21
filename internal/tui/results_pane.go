@@ -27,8 +27,6 @@ type ResultsPaneViewContext struct {
 	SelectedColumn  int
 	SelectionActive bool
 	ColScrollOffset int
-	PendingExport   bool
-	ExportBuffer    string
 }
 
 type ResultsPaneColumn struct {

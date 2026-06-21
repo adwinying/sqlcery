@@ -46,7 +46,7 @@ The single-line strip at the very bottom of the TUI. Combines three elements: an
 A transient message displayed in the left section of the Status Bar. Carries a severity level: Success (green), Info (yellow), or Error (red). All notifications auto-clear after 3 seconds; the timer resets whenever a new notification arrives. The running indicator occupies the Notification slot during statement execution but has no severity colour. Absent when no recent action has produced feedback.
 
 ### Modal
-An overlay dialog rendered on top of both panes. Does not replace pane focus permanently. Current modals: History Search, Slash Command Wizard, Keybindings, Export Wizard (planned).
+An overlay dialog rendered on top of both panes. Does not replace pane focus permanently. Current modals: History Search, Slash Command Wizard, Keybindings, Export Wizard.
 
 ### Slash Command Wizard
 A guided multi-step Modal for selecting and executing a Slash Command. Opened via `/commands` or by pressing Enter on a Slash Command row in the Keybindings Modal. Steps: choose a command → choose a target table (if required) → choose columns (if required). Distinct from typing a Slash Command directly into the Command Pane.
@@ -58,7 +58,7 @@ A Modal that serves as an interactive command launcher and keybindings reference
 A single selectable entry in the Keybindings Modal. Carries a display string and the action to execute on Enter — either a key to synthesize (for keybinding rows) or a Slash Command name (for slash command rows). The Keybindings Modal operates on a flat list of Help Rows with no section grouping.
 
 ### Export
-Writing a Result Set — or a selected subset of its rows — to an output destination. The user chooses a format (CSV, TSV, JSON, Markdown) and a destination: either a file path (relative or absolute) or the clipboard (when no path is given). Currently triggered via `:w [filename]` in the Results Pane; planned to become an Export Wizard modal.
+Writing a Result Set — or a selected subset of its rows — to an output destination. The user chooses a format (CSV, TSV, JSON, Markdown) and a destination: either a file path (relative or absolute) or the clipboard (when no path is given). Triggered via the Export Wizard. The `:w [filename]` shortcut is removed in favour of the wizard.
 
 ### History
 The list of Statements executed against a given Connection or Connection String. Persists across Sessions — a new Session to the same Connection resumes the same History. Used for fuzzy recall via the History Search modal (Ctrl-r). Distinct from the Audit Log, which is a flat append-only record across all Connections.

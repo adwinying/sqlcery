@@ -24,7 +24,8 @@ type historySearchModal struct {
 
 func (h *historySearchModal) Name() AppModal { return ModalHistorySearch }
 
-func (h *historySearchModal) FilterText() string { return h.filter + "█" }
+func (h *historySearchModal) FilterText() string  { return h.filter + "█" }
+func (h *historySearchModal) FilterLabel() string { return "Filter:" }
 
 func (h *historySearchModal) Title() string { return "History" }
 

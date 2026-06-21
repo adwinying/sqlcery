@@ -38,7 +38,6 @@ type resultsPaneModeModel struct {
 	colScrollOffset int
 	selectionActive bool
 	pendingAction   resultsPanePendingAction
-	exportBuffer    string
 	cachedPage      *tui.ResultsPanePreparedPage
 }
 
@@ -114,8 +113,6 @@ func (m *resultsPaneModeModel) buildViewContext(interaction InteractionState) tu
 		SelectedColumn:  m.selectedColumn,
 		SelectionActive: m.selectionActive,
 		ColScrollOffset: m.colScrollOffset,
-		PendingExport:   m.pendingAction == resultsPanePendingActionExport,
-		ExportBuffer:    m.exportBuffer,
 	}
 }
 
@@ -147,9 +144,6 @@ func (m *resultsPaneModeModel) View(ctx tui.ResultsPaneViewContext) string {
 		tui.AppTheme.ResultsPaneMeta.Render(fmt.Sprintf("Rows: %d  Columns: %d", len(ctx.Result.Rows), len(ctx.Result.Columns))),
 		tui.AppTheme.ResultsPaneMeta.Render(fmt.Sprintf("Page: %d/%d  Showing rows %s", page.Number, page.TotalPages, tui.ResultsPaneFormatRowRange(page))),
 	}
-	if ctx.PendingExport {
-		header = append(header, tui.AppTheme.WarningNotice.Render(fmt.Sprintf("Command: %s", ctx.ExportBuffer)))
-	}
 	if selectedCount := len(ctx.MarkedRows); selectedCount > 0 {
 		header = append(header, tui.AppTheme.ResultsPaneSelection.Render(fmt.Sprintf("Selected: %d", selectedCount)))
 	}
@@ -176,10 +170,7 @@ func (m resultsPaneModeModel) FooterHints(interaction InteractionState) string {
 			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
 		}
 	}
-	if m.pendingAction == resultsPanePendingActionExport {
-		parts = append(parts, ":w [file] export", "enter save", "esc cancel")
-	}
-	parts = append(parts, "arrows/hjkl navigate", "space toggle row", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit", "ctrl+e keybindings")
+	parts = append(parts, "arrows/hjkl navigate", "space toggle row", "ctrl+e export", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit", "ctrl+t keybindings")
 	return strings.Join(parts, " | ")
 }
 
@@ -201,10 +192,7 @@ func (m resultsPaneModeModel) Footer(connectionName, dialect string, interaction
 	if running := formatRunningIndicator(interaction.Running); running != "" {
 		parts = append(parts, running)
 	}
-	if m.pendingAction == resultsPanePendingActionExport {
-		parts = append(parts, ":w [file] export", "enter save", "esc cancel")
-	}
-	parts = append(parts, "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit", "ctrl+e keybindings")
+	parts = append(parts, "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+e export", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit", "ctrl+t keybindings")
 	return tui.AppTheme.Footer.Render(strings.Join(parts, " | "))
 }
 

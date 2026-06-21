@@ -35,7 +35,8 @@ type helpModal struct {
 
 func (h *helpModal) Name() AppModal { return ModalKeybindings }
 
-func (h *helpModal) FilterText() string { return h.filter + "█" }
+func (h *helpModal) FilterText() string  { return h.filter + "█" }
+func (h *helpModal) FilterLabel() string { return "Filter:" }
 
 func (h *helpModal) Title() string { return "Keybindings" }
 
@@ -235,7 +236,7 @@ func (h *helpModal) execute(ctx ModalContext, rows []helpRow) ModalResult {
 // Global rows (always present) are followed by context-specific rows.
 func buildHelpRows(pane Pane, modal AppModal) []helpRow {
 	global := []helpRow{
-		{display: "ctrl+e toggle keybindings"},
+		{display: "ctrl+t toggle keybindings"},
 		{display: "ctrl+c quit"},
 	}
 
@@ -268,7 +269,7 @@ func buildHelpRows(pane Pane, modal AppModal) []helpRow {
 				{display: "yy load INSERT into command pane", actionKey: "yy"},
 				{display: "cc load UPDATE into command pane", actionKey: "cc"},
 				{display: "dd load DELETE into command pane", actionKey: "dd"},
-				{display: ":w [file] export selected or current rows"},
+				{display: "ctrl+e export selected or current rows"},
 				{display: "ctrl+u scroll up"},
 				{display: "ctrl+d scroll down"},
 				{display: "ctrl+p previous page"},

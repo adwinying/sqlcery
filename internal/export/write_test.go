@@ -75,6 +75,47 @@ func TestMarshalSupportsCSVTSVJSONAndMarkdown(t *testing.T) {
 	}
 }
 
+func TestMarshalSQLGeneratesInsertStatements(t *testing.T) {
+	stamp := time.Date(2026, time.April, 8, 12, 34, 56, 0, time.UTC)
+	result := &db.ResultSet{
+		Columns: []db.ResultColumn{{Name: "id"}, {Name: "name"}, {Name: "active"}, {Name: "score"}, {Name: "created_at"}},
+		Rows: []db.ResultRow{{
+			Values: []db.ResultValue{
+				{Kind: db.ValueKindInteger, Value: int64(1)},
+				{Kind: db.ValueKindString, Value: "O'Brien"},
+				{Kind: db.ValueKindBool, Value: true},
+				{Kind: db.ValueKindFloat, Value: 3.14},
+				{Kind: db.ValueKindTime, Value: stamp},
+			},
+		}, {
+			Values: []db.ResultValue{
+				{Kind: db.ValueKindInteger, Value: int64(2)},
+				{Kind: db.ValueKindNull},
+				{Kind: db.ValueKindBool, Value: false},
+				{Kind: db.ValueKindFloat, Value: 0.0},
+				{Kind: db.ValueKindNull},
+			},
+		}},
+	}
+
+	data, rows, err := Marshal(result, nil, FormatSQL)
+	if err != nil {
+		t.Fatalf("Marshal(sql) error = %v", err)
+	}
+	if rows != 2 {
+		t.Fatalf("Marshal(sql) rows = %d, want 2", rows)
+	}
+	got := string(data)
+	for _, want := range []string{
+		`INSERT INTO table_name ("id", "name", "active", "score", "created_at") VALUES (1, 'O''Brien', TRUE, 3.14, '2026-04-08 12:34:56');`,
+		`INSERT INTO table_name ("id", "name", "active", "score", "created_at") VALUES (2, NULL, FALSE, 0, NULL);`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("Marshal(sql) = %q, want to contain %q", got, want)
+		}
+	}
+}
+
 func TestResolveExportPathKeepsWritesWithinWorkingDirectory(t *testing.T) {
 	cwd := t.TempDir()
 	if err := os.Mkdir(filepath.Join(cwd, "exports"), 0o755); err != nil {

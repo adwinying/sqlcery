@@ -4,15 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/adwinying/sqlcery/internal/db"
+	"github.com/adwinying/sqlcery/internal/export"
 	apphistory "github.com/adwinying/sqlcery/internal/history"
 	"github.com/adwinying/sqlcery/internal/tui"
 )
@@ -330,7 +333,7 @@ func (m Model) handleKeyPressMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	prevCreatedAt := m.state.Notification.CreatedAt
-	if m.handleResultsPaneExportKey(msg) {
+	if m.handleResultsPaneExportWizardKey(msg) {
 		return m, m.newNotificationClearCmdIfChanged(prevCreatedAt)
 	}
 	if m.handleResultsPaneSelectionKey(msg) {
@@ -704,7 +707,7 @@ func (m Model) readyStateView(totalHeight int) string {
 			counter := modal.CounterText(interaction)
 			var rendered string
 			if filterText := modal.FilterText(); filterText != "" {
-				filterBox := tui.RenderTitledBox("Filter:", filterText, "", maxW, tui.ModalFilterRows)
+				filterBox := tui.RenderTitledBox(modal.FilterLabel(), filterText, "", maxW, tui.ModalFilterRows)
 				suggestionsBox := tui.RenderTitledBox(title, modal.Render(interaction, innerWidth), counter, maxW, tui.ModalSplitListRows)
 				rendered = filterBox + "\n" + suggestionsBox
 			} else {
@@ -1285,6 +1288,58 @@ func (m *Model) pushWizardForCommand(commandName, status string, level Notificat
 		DirectInvocation: true,
 	}})
 	m.state.SetReady(defaultStatus(status, fmt.Sprintf("Choose a table for %s and press enter.", commands[selectedIdx].DisplayName)), level)
+	return m.notificationClearCmdIfSet()
+}
+
+func (m *Model) executeExportWizard(format export.Format, path string) tea.Cmd {
+	latest := m.state.Interaction.LatestResult
+	if latest == nil || latest.PreservedResult == nil || len(latest.PreservedResult.Rows) == 0 {
+		m.state.SetPendingIntent(IntentNone, "export", "Results Pane has no rows to export.", NotificationInfo)
+		return m.notificationClearCmdIfSet()
+	}
+
+	rowIndices := selectedRowsForExport(latest, m.state.Interaction.MarkedRows)
+	usedSelectedRows := len(m.state.Interaction.MarkedRows) > 0
+	scope := "current result rows"
+	if usedSelectedRows {
+		scope = "selected rows"
+	}
+
+	if strings.TrimSpace(path) == "" {
+		data, rowCount, err := export.Marshal(latest.PreservedResult, rowIndices, format)
+		if err != nil {
+			m.state.SetPendingIntent(IntentNone, "export", fmt.Sprintf("Could not export rows: %v", err), NotificationError)
+			return m.notificationClearCmdIfSet()
+		}
+		if err := clipboard.WriteAll(string(data)); err != nil {
+			m.state.SetPendingIntent(IntentNone, "export", fmt.Sprintf("Could not copy to clipboard: %v", err), NotificationError)
+			return m.notificationClearCmdIfSet()
+		}
+		m.state.SetPendingIntent(IntentNone, "export",
+			fmt.Sprintf("Copied %d row(s) as %s from %s to clipboard.", rowCount, strings.ToLower(string(format)), scope),
+			NotificationSuccess)
+		return m.notificationClearCmdIfSet()
+	}
+
+	written, err := export.Export(export.ExportOptions{
+		CWD:        m.session.WorkingDir,
+		Filename:   path,
+		Result:     latest.PreservedResult,
+		RowIndices: rowIndices,
+		Format:     format,
+	})
+	if err != nil {
+		m.state.SetPendingIntent(IntentNone, "export", fmt.Sprintf("Could not export rows: %v", err), NotificationError)
+		return m.notificationClearCmdIfSet()
+	}
+
+	displayPath := written.Path
+	if rel, err := filepath.Rel(m.session.WorkingDir, written.Path); err == nil && rel != "" && rel != "." && !strings.HasPrefix(rel, "..") {
+		displayPath = rel
+	}
+	m.state.SetPendingIntent(IntentNone, "export",
+		fmt.Sprintf("Exported %d row(s) as %s from %s to %s.", written.Rows, strings.ToLower(string(format)), scope, displayPath),
+		NotificationSuccess)
 	return m.notificationClearCmdIfSet()
 }
 

@@ -20,6 +20,7 @@ const (
 	FormatTSV      Format = "TSV"
 	FormatJSON     Format = "JSON"
 	FormatMarkdown Format = "Markdown"
+	FormatSQL      Format = "SQL"
 )
 
 type ExportOptions struct {
@@ -27,6 +28,7 @@ type ExportOptions struct {
 	Filename   string
 	Result     *db.ResultSet
 	RowIndices []int
+	Format     Format // when non-empty, skips DetectFormat so the chosen format wins over the file extension
 }
 
 type ExportResult struct {
@@ -49,9 +51,12 @@ func Export(options ExportOptions) (ExportResult, error) {
 		return ExportResult{}, err
 	}
 
-	format, err := DetectFormat(path)
-	if err != nil {
-		return ExportResult{}, err
+	format := options.Format
+	if format == "" {
+		format, err = DetectFormat(path)
+		if err != nil {
+			return ExportResult{}, err
+		}
 	}
 
 	data, rowCount, err := Marshal(options.Result, options.RowIndices, format)
@@ -137,8 +142,10 @@ func DetectFormat(path string) (Format, error) {
 		return FormatJSON, nil
 	case ".md", ".markdown":
 		return FormatMarkdown, nil
+	case ".sql":
+		return FormatSQL, nil
 	default:
-		return "", fmt.Errorf("unsupported export format; use .csv, .tsv, .json, or .md")
+		return "", fmt.Errorf("unsupported export format; use .csv, .tsv, .json, .md, or .sql")
 	}
 }
 
@@ -165,6 +172,8 @@ func Marshal(result *db.ResultSet, rowIndices []int, format Format) ([]byte, int
 		data, err = marshalJSON(result, rows)
 	case FormatMarkdown:
 		data, err = marshalMarkdown(result, rows)
+	case FormatSQL:
+		data, err = marshalSQL(result, rows)
 	default:
 		err = fmt.Errorf("unsupported export format %q", format)
 	}
@@ -343,6 +352,61 @@ func jsonValue(value db.ResultValue) any {
 		return nil
 	}
 	return value.Value
+}
+
+func marshalSQL(result *db.ResultSet, rows []db.ResultRow) ([]byte, error) {
+	cols := make([]string, len(result.Columns))
+	for i := range result.Columns {
+		name := columnName(result.Columns, i)
+		cols[i] = `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+	}
+	colList := strings.Join(cols, ", ")
+
+	var buf strings.Builder
+	for _, row := range rows {
+		vals := make([]string, len(result.Columns))
+		for i := range result.Columns {
+			vals[i] = sqlLiteral(rowValue(row, i))
+		}
+		buf.WriteString("INSERT INTO table_name (")
+		buf.WriteString(colList)
+		buf.WriteString(") VALUES (")
+		buf.WriteString(strings.Join(vals, ", "))
+		buf.WriteString(");\n")
+	}
+	return []byte(buf.String()), nil
+}
+
+func sqlLiteral(value db.ResultValue) string {
+	switch value.Kind {
+	case db.ValueKindNull:
+		return "NULL"
+	case db.ValueKindBool:
+		if typed, ok := value.Value.(bool); ok {
+			if typed {
+				return "TRUE"
+			}
+			return "FALSE"
+		}
+	case db.ValueKindInteger, db.ValueKindFloat, db.ValueKindDecimal:
+		return fmt.Sprint(value.Value)
+	case db.ValueKindString:
+		if s, ok := value.Value.(string); ok {
+			return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+		}
+	case db.ValueKindBytes:
+		if b, ok := value.Value.([]byte); ok {
+			return fmt.Sprintf("X'%x'", b)
+		}
+	case db.ValueKindTime:
+		if t, ok := value.Value.(time.Time); ok {
+			return "'" + t.Format("2006-01-02 15:04:05") + "'"
+		}
+	}
+	if value.Value == nil {
+		return "NULL"
+	}
+	return "'" + strings.ReplaceAll(fmt.Sprint(value.Value), "'", "''") + "'"
 }
 
 func escapeMarkdownCell(value string) string {

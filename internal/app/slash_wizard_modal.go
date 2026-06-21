@@ -26,6 +26,8 @@ func (s *slashWizardModal) FilterText() string {
 	return s.wizard.TargetFilter + "█"
 }
 
+func (s *slashWizardModal) FilterLabel() string { return "Filter:" }
+
 func (s *slashWizardModal) Title() string {
 	switch s.wizard.Step {
 	case SlashCommandWizardStepTarget:
