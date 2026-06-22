@@ -2309,7 +2309,7 @@ func TestModelExportWizardExportsAllRowsInMultipleFormats(t *testing.T) {
 	}
 }
 
-func TestModelExportWizardRejectsOutOfScopePath(t *testing.T) {
+func TestModelExportWizardAllowsPathOutsideCwd(t *testing.T) {
 	workingDir := t.TempDir()
 	model := NewModel(Session{WorkingDir: workingDir})
 	model.state.SetReady("", NotificationNone)
@@ -2324,8 +2324,8 @@ func TestModelExportWizardRejectsOutOfScopePath(t *testing.T) {
 	})
 
 	model = runExportWizard(model, 0, "../out.csv")
-	if got := model.state.Notification.Text; !strings.Contains(got, "Could not export rows: export path must stay within") {
-		t.Fatalf("state.Status = %q, want scoped path error", got)
+	if got := model.state.Notification.Text; !strings.Contains(got, "Exported 1 row(s)") {
+		t.Fatalf("state.Status = %q, want success", got)
 	}
 }
 

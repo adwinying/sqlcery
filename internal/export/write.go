@@ -94,6 +94,11 @@ func ResolveExportPath(cwd, name string) (string, error) {
 	cwdAbs = filepath.Clean(cwdAbs)
 
 	target := targetName
+	if strings.HasPrefix(target, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			target = filepath.Join(home, target[2:])
+		}
+	}
 	if !filepath.IsAbs(target) {
 		target = filepath.Join(cwdAbs, target)
 	}
@@ -102,14 +107,6 @@ func ResolveExportPath(cwd, name string) (string, error) {
 		return "", fmt.Errorf("resolve export path: %w", err)
 	}
 	target = filepath.Clean(target)
-
-	rel, err := filepath.Rel(cwdAbs, target)
-	if err != nil {
-		return "", fmt.Errorf("validate export path: %w", err)
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("export path must stay within %s", cwdAbs)
-	}
 
 	parent := filepath.Dir(target)
 	info, err := os.Stat(parent)

@@ -187,12 +187,13 @@ func (e *exportWizardModal) renderPathStep(interaction InteractionState) string 
 		}
 	}
 
+	lines = append(lines, tui.AppTheme.PanelMuted.Render("Relative or absolute path supported"))
+	lines = append(lines, tui.AppTheme.PanelMuted.Render("Leave blank to copy to clipboard"))
+
 	if e.cwd != "" {
+		lines = append(lines, "")
 		lines = append(lines, tui.AppTheme.PanelMuted.Render("cwd: "+e.cwd))
 	}
-
-	lines = append(lines, "")
-	lines = append(lines, tui.AppTheme.PanelMuted.Render("Leave blank to copy to clipboard"))
 
 	return strings.Join(lines, "\n")
 }

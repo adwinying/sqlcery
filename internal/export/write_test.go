@@ -116,12 +116,13 @@ func TestMarshalSQLGeneratesInsertStatements(t *testing.T) {
 	}
 }
 
-func TestResolveExportPathKeepsWritesWithinWorkingDirectory(t *testing.T) {
+func TestResolveExportPathResolvesRelativeAndAbsolutePaths(t *testing.T) {
 	cwd := t.TempDir()
 	if err := os.Mkdir(filepath.Join(cwd, "exports"), 0o755); err != nil {
 		t.Fatalf("Mkdir() error = %v", err)
 	}
 
+	// relative path within cwd
 	path, err := ResolveExportPath(cwd, "exports/result.csv")
 	if err != nil {
 		t.Fatalf("ResolveExportPath() error = %v", err)
@@ -130,10 +131,17 @@ func TestResolveExportPathKeepsWritesWithinWorkingDirectory(t *testing.T) {
 		t.Fatalf("ResolveExportPath() = %q, want %q", got, want)
 	}
 
-	for _, name := range []string{"../result.csv", filepath.Join(filepath.Dir(cwd), "outside.csv")} {
-		if _, err := ResolveExportPath(cwd, name); err == nil {
-			t.Fatalf("ResolveExportPath(%q) error = nil, want scope error", name)
-		}
+	// relative path escaping cwd is allowed
+	if _, err := ResolveExportPath(cwd, "../result.csv"); err != nil {
+		t.Fatalf("ResolveExportPath(\"../result.csv\") error = %v, want nil", err)
+	}
+
+	// absolute path outside cwd is allowed
+	outsideAbs := filepath.Join(filepath.Dir(cwd), "outside.csv")
+	if got, err := ResolveExportPath(cwd, outsideAbs); err != nil {
+		t.Fatalf("ResolveExportPath(%q) error = %v, want nil", outsideAbs, err)
+	} else if got != outsideAbs {
+		t.Fatalf("ResolveExportPath(%q) = %q, want %q", outsideAbs, got, outsideAbs)
 	}
 }
 
