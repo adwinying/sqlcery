@@ -313,7 +313,7 @@ func buildHelpRows(pane Pane, modal AppModal) []helpRow {
 				{keyText: "ctrl+2", desc: "focus command pane", actionKey: "ctrl+2"},
 				{keyText: "ctrl+3", desc: "command-only layout", actionKey: "ctrl+3"},
 			}
-			for _, spec := range slashCommandSpecs() {
+			for _, spec := range defaultSlashCommandRegistry.All() {
 				s := spec
 				contextRows = append(contextRows, helpRow{
 					keyText:     "/" + s.Name,

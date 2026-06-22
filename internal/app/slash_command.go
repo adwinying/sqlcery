@@ -92,6 +92,21 @@ func (r slashCommandRegistry) names() []string {
 	return results
 }
 
+// Names returns the /name autocomplete strings for all registered commands.
+func (r slashCommandRegistry) Names() []string { return r.names() }
+
+// Lookup returns the spec for the given command name. Callers should use this
+// instead of accessing byName directly.
+func (r slashCommandRegistry) Lookup(name string) (slashCommandSpec, bool) {
+	spec, ok := r.byName[name]
+	return spec, ok
+}
+
+// All returns all registered command specs in registration order.
+func (r slashCommandRegistry) All() []slashCommandSpec {
+	return append([]slashCommandSpec(nil), r.ordered...)
+}
+
 func parseSlashCommand(input string) (*slashCommand, error) {
 	trimmed := strings.TrimSpace(input)
 	if trimmed == "" || !strings.HasPrefix(trimmed, "/") {
@@ -202,7 +217,7 @@ func splitSlashCommandInput(input string) ([]string, error) {
 }
 
 func dispatchSlashCommand(ctx context.Context, command slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
-	spec, ok := defaultSlashCommandRegistry.byName[parsed.Name]
+	spec, ok := defaultSlashCommandRegistry.Lookup(parsed.Name)
 	if !ok {
 		return slashCommandResult{}, fmt.Errorf("unknown slash command %s", parsed.DisplayName)
 	}

@@ -64,7 +64,7 @@ type autocompleteTable struct {
 	ColumnTypes map[string]string // column name (lowercase) -> type
 }
 
-var slashCommandList = defaultSlashCommandRegistry.names()
+var slashCommandList = defaultSlashCommandRegistry.Names()
 
 var sqlKeywordList = []string{
 	"ALL", "AND", "AS", "ASC", "BETWEEN", "BY", "CASE", "CREATE",

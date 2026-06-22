@@ -36,6 +36,40 @@ type resultsPaneComposeResult struct {
 	Action          resultsPaneComposeAction
 }
 
+// statementExpander composes SQL Statement Expansion from a Result Set row.
+// Construct with newStatementExpander so the dialect is injected once.
+type statementExpander struct {
+	dialect db.Dialect
+}
+
+func newStatementExpander(dialect db.Dialect) statementExpander {
+	return statementExpander{dialect: dialect}
+}
+
+func (e statementExpander) composeInsert(latest *LatestResultContext, rowIndex int) (resultsPaneComposeResult, error) {
+	return composeResultsPaneInsertSQL(e.dialect, latest, rowIndex)
+}
+
+func (e statementExpander) composeUpdate(latest *LatestResultContext, rowIndex int) (resultsPaneComposeResult, error) {
+	return composeResultsPaneUpdateSQL(e.dialect, latest, rowIndex)
+}
+
+func (e statementExpander) composeDelete(latest *LatestResultContext, rowIndex int) (resultsPaneComposeResult, error) {
+	return composeResultsPaneDeleteSQL(e.dialect, latest, rowIndex)
+}
+
+func (e statementExpander) composeInsertBulk(latest *LatestResultContext, rowIndices []int) (resultsPaneComposeBulkResult, error) {
+	return composeResultsPaneInsertBulkSQL(e.dialect, latest, rowIndices)
+}
+
+func (e statementExpander) composeUpdateBulk(latest *LatestResultContext, rowIndices []int) (resultsPaneComposeBulkResult, error) {
+	return composeResultsPaneUpdateBulkSQL(e.dialect, latest, rowIndices)
+}
+
+func (e statementExpander) composeDeleteBulk(latest *LatestResultContext, rowIndices []int) (resultsPaneComposeBulkResult, error) {
+	return composeResultsPaneDeleteBulkSQL(e.dialect, latest, rowIndices)
+}
+
 func composeResultsPaneUpdateSQL(dialect db.Dialect, latest *LatestResultContext, rowIndex int) (resultsPaneComposeResult, error) {
 	if latest == nil || latest.PreservedResult == nil {
 		return resultsPaneComposeResult{}, fmt.Errorf("Results Pane has no rows to compose")

@@ -23,10 +23,10 @@ import (
 )
 
 type Model struct {
-	session         Session
-	history         *apphistory.History
-	executionCancel context.CancelFunc
-	command         commandModeModel
+	session  Session
+	history  *apphistory.History
+	exec     executionCoordinator
+	command  commandModeModel
 	resultsPane     resultsPaneModeModel
 	state           SharedAppState
 	schema          *AutocompleteSchemaContext
@@ -452,7 +452,7 @@ func (m Model) handleSubmitIntent() (tea.Model, tea.Cmd) {
 		return m, m.notificationClearCmdIfSet()
 	}
 	if parsedSlash != nil {
-		if spec, ok := defaultSlashCommandRegistry.byName[parsedSlash.Name]; ok && spec.NeedsTarget && len(parsedSlash.Args) == 0 {
+		if spec, ok := defaultSlashCommandRegistry.Lookup(parsedSlash.Name); ok && spec.NeedsTarget && len(parsedSlash.Args) == 0 {
 			return m.openTableSelectionForCommand(parsedSlash)
 		}
 		if parsedSlash.Name == "commands" {
@@ -477,9 +477,7 @@ func (m Model) handleSubmitIntent() (tea.Model, tea.Cmd) {
 
 func (m Model) handleCancelRunningIntent() (tea.Model, tea.Cmd) {
 	if running := m.state.Interaction.Running; running != nil {
-		if m.executionCancel != nil {
-			m.executionCancel()
-		}
+		m.exec.cancel()
 		m.state.SetPendingIntent(IntentSubmit, "submit", fmt.Sprintf("Cancelling %s...", runningLabel(running)), NotificationInfo)
 	}
 	return m, m.notificationClearCmdIfSet()
@@ -1046,16 +1044,17 @@ func (m *Model) composeResultsPaneInsert() bool {
 		m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Results Pane has no rows to compose.", NotificationInfo)
 		return true
 	}
+	exp := newStatementExpander(m.adapterDialect())
 	var sql, status string
 	if marked := m.state.Interaction.MarkedRows; len(marked) > 0 {
-		bulk, err := composeResultsPaneInsertBulkSQL(m.adapterDialect(), m.state.Interaction.LatestResult, marked)
+		bulk, err := exp.composeInsertBulk(m.state.Interaction.LatestResult, marked)
 		if err != nil {
 			m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose INSERT: %v", err), NotificationError)
 			return true
 		}
 		sql, status = bulk.SQL, resultsPaneComposeBulkStatus(bulk)
 	} else {
-		result, err := composeResultsPaneInsertSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
+		result, err := exp.composeInsert(m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
 		if err != nil {
 			m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose INSERT: %v", err), NotificationError)
 			return true
@@ -1071,16 +1070,17 @@ func (m *Model) composeResultsPaneUpdate() bool {
 		m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Results Pane has no rows to compose.", NotificationInfo)
 		return true
 	}
+	exp := newStatementExpander(m.adapterDialect())
 	var sql, status string
 	if marked := m.state.Interaction.MarkedRows; len(marked) > 0 {
-		bulk, err := composeResultsPaneUpdateBulkSQL(m.adapterDialect(), m.state.Interaction.LatestResult, marked)
+		bulk, err := exp.composeUpdateBulk(m.state.Interaction.LatestResult, marked)
 		if err != nil {
 			m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose UPDATE: %v", err), NotificationError)
 			return true
 		}
 		sql, status = bulk.SQL, resultsPaneComposeBulkStatus(bulk)
 	} else {
-		result, err := composeResultsPaneUpdateSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
+		result, err := exp.composeUpdate(m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
 		if err != nil {
 			m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose UPDATE: %v", err), NotificationError)
 			return true
@@ -1096,16 +1096,17 @@ func (m *Model) composeResultsPaneDelete() bool {
 		m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Results Pane has no rows to compose.", NotificationInfo)
 		return true
 	}
+	exp := newStatementExpander(m.adapterDialect())
 	var sql, status string
 	if marked := m.state.Interaction.MarkedRows; len(marked) > 0 {
-		bulk, err := composeResultsPaneDeleteBulkSQL(m.adapterDialect(), m.state.Interaction.LatestResult, marked)
+		bulk, err := exp.composeDeleteBulk(m.state.Interaction.LatestResult, marked)
 		if err != nil {
 			m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose DELETE: %v", err), NotificationError)
 			return true
 		}
 		sql, status = bulk.SQL, resultsPaneComposeBulkStatus(bulk)
 	} else {
-		result, err := composeResultsPaneDeleteSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
+		result, err := exp.composeDelete(m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
 		if err != nil {
 			m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose DELETE: %v", err), NotificationError)
 			return true
@@ -1223,25 +1224,15 @@ func (m *Model) startExecution(label, status string, level NotificationLevel, ex
 	if execute == nil {
 		return nil
 	}
-	if m.executionCancel != nil {
-		m.executionCancel()
-	}
-
-	startedAt := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), defaultInteractiveExecutionTimeout)
-	m.executionCancel = cancel
+	startedAt, execCmd := m.exec.start(execute)
 	m.state.SetRunningStatementContext(newRunningStatementContext(label, startedAt))
 	m.state.SetReady("", NotificationNone)
 	m.state.SetPendingIntent(IntentSubmit, "submit", executionStatus(status, defaultInteractiveExecutionTimeout), level)
-	return tea.Batch(execute(ctx, startedAt), runningTickCmd(startedAt), m.notificationClearCmdIfSet())
+	return tea.Batch(execCmd, m.notificationClearCmdIfSet())
 }
 
 func (m *Model) clearExecution() {
-	if m.executionCancel == nil {
-		return
-	}
-	m.executionCancel()
-	m.executionCancel = nil
+	m.exec.cancel()
 }
 
 func loadAutocompleteSchema(ctx context.Context, adapter *db.SQLAdapter) (*AutocompleteSchemaContext, error) {

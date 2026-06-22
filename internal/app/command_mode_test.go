@@ -207,7 +207,7 @@ func TestCommandModeAcceptSuggestionReplacesPrefix(t *testing.T) {
 	mode.editor.SetValue("SELECT * FROM us")
 	mode.editor.CursorEnd()
 	// Simulate the "user just typed" state that normally gates the menu.
-	mode.autocompleteOpenedByTyping = true
+	mode.acOpenedByTyping = true
 	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}}},
 	}
@@ -226,7 +226,7 @@ func TestCommandModeNavFirstCtrlNAdvancesFromHighlight(t *testing.T) {
 	mode.SetSize(80, 20)
 	mode.editor.SetValue("SELECT * FROM ")
 	mode.editor.CursorEnd()
-	mode.autocompleteOpenedByTyping = true
+	mode.acOpenedByTyping = true
 	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
 	}
@@ -237,8 +237,8 @@ func TestCommandModeNavFirstCtrlNAdvancesFromHighlight(t *testing.T) {
 	if got, want := updated.widget.SelectedSuggestion(), 1; got != want {
 		t.Fatalf("selectedSuggestion = %d, want %d (advanced past initial highlight)", got, want)
 	}
-	if !updated.autocompleteNavActive {
-		t.Fatal("autocompleteNavActive should be true after first ctrl+n")
+	if updated.acNav == nil {
+		t.Fatal("acNav should be non-nil after first ctrl+n")
 	}
 	suggestions := updated.cachedSuggestions
 	if !strings.Contains(updated.Value(), suggestions[1].InsertText) {
@@ -253,7 +253,7 @@ func TestCommandModeNavCtrlNWrapsToRestoreSlotAfterAllItems(t *testing.T) {
 	mode.SetSize(80, 20)
 	mode.editor.SetValue("SELECT * FROM ")
 	mode.editor.CursorEnd()
-	mode.autocompleteOpenedByTyping = true
+	mode.acOpenedByTyping = true
 	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
 	}
@@ -281,7 +281,7 @@ func TestCommandModeNavFirstCtrlPGoesToRestoreSlot(t *testing.T) {
 	mode.SetSize(80, 20)
 	mode.editor.SetValue("SELECT * FROM ")
 	mode.editor.CursorEnd()
-	mode.autocompleteOpenedByTyping = true
+	mode.acOpenedByTyping = true
 	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
 	}
@@ -292,8 +292,8 @@ func TestCommandModeNavFirstCtrlPGoesToRestoreSlot(t *testing.T) {
 	if got := updated.widget.SelectedSuggestion(); got != -1 {
 		t.Fatalf("selectedSuggestion = %d, want -1 (restore slot on first ctrl+p)", got)
 	}
-	if !updated.autocompleteNavActive {
-		t.Fatal("autocompleteNavActive should be true after first ctrl+p")
+	if updated.acNav == nil {
+		t.Fatal("acNav should be non-nil after first ctrl+p")
 	}
 	if got, want := updated.Value(), "SELECT * FROM "; got != want {
 		t.Fatalf("Value() = %q, want original %q", got, want)
@@ -306,7 +306,7 @@ func TestCommandModeNavEscRestoresOriginalPrefix(t *testing.T) {
 	originalValue := "SELECT * FROM "
 	mode.editor.SetValue(originalValue)
 	mode.editor.CursorEnd()
-	mode.autocompleteOpenedByTyping = true
+	mode.acOpenedByTyping = true
 	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
 	}
@@ -324,8 +324,8 @@ func TestCommandModeNavEscRestoresOriginalPrefix(t *testing.T) {
 	if got, want := updated.Value(), originalValue; got != want {
 		t.Fatalf("Value() after ESC = %q, want original %q", got, want)
 	}
-	if updated.autocompleteNavActive {
-		t.Fatal("autocompleteNavActive should be false after dismiss")
+	if updated.acNav != nil {
+		t.Fatal("acNav should be nil after dismiss")
 	}
 }
 
@@ -334,7 +334,7 @@ func TestCommandModeNavTypingAcceptsAndClearsNav(t *testing.T) {
 	mode.SetSize(80, 20)
 	mode.editor.SetValue("SELECT * FROM ")
 	mode.editor.CursorEnd()
-	mode.autocompleteOpenedByTyping = true
+	mode.acOpenedByTyping = true
 	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
 	}
@@ -342,7 +342,7 @@ func TestCommandModeNavTypingAcceptsAndClearsNav(t *testing.T) {
 
 	// Activate nav — first ctrl+n populates item 1.
 	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}, query)
-	if !updated.autocompleteNavActive {
+	if updated.acNav == nil {
 		t.Fatal("expected nav to be active after ctrl+n")
 	}
 	populatedValue := updated.Value()
@@ -350,8 +350,8 @@ func TestCommandModeNavTypingAcceptsAndClearsNav(t *testing.T) {
 	// Type a character: nav clears, populated text stays.
 	updated, _ = updated.Update(tea.KeyPressMsg{Code: 's', Text: "s"}, query)
 
-	if updated.autocompleteNavActive {
-		t.Fatal("autocompleteNavActive should be false after typing")
+	if updated.acNav != nil {
+		t.Fatal("acNav should be nil after typing")
 	}
 	if !strings.HasPrefix(updated.Value(), populatedValue) {
 		t.Fatalf("Value() = %q, want it to start with populated %q", updated.Value(), populatedValue)
@@ -363,7 +363,7 @@ func TestCommandModeNavTabClosesWithoutRewriting(t *testing.T) {
 	mode.SetSize(80, 20)
 	mode.editor.SetValue("SELECT * FROM ")
 	mode.editor.CursorEnd()
-	mode.autocompleteOpenedByTyping = true
+	mode.acOpenedByTyping = true
 	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
 	}
@@ -376,8 +376,8 @@ func TestCommandModeNavTabClosesWithoutRewriting(t *testing.T) {
 	// Tab: should close dropdown, leave text as-is.
 	updated, _ = updated.Update(tea.KeyPressMsg{Code: tea.KeyTab}, query)
 
-	if updated.autocompleteNavActive {
-		t.Fatal("autocompleteNavActive should be false after tab")
+	if updated.acNav != nil {
+		t.Fatal("acNav should be nil after tab")
 	}
 	if got := updated.Value(); got != populatedValue {
 		t.Fatalf("Value() after tab = %q, want %q (text should stay)", got, populatedValue)
@@ -389,7 +389,7 @@ func TestCommandModeViewRendersAutocompletePanel(t *testing.T) {
 	mode.SetSize(80, 20)
 	mode.editor.SetValue("SELECT * FROM us")
 	mode.editor.CursorEnd()
-	mode.autocompleteOpenedByTyping = true
+	mode.acOpenedByTyping = true
 	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}}},
 	}
@@ -634,7 +634,7 @@ func TestCommandModeAutocompleteDropdownHeightCappedAtFive(t *testing.T) {
 	mode.SetSize(80, 20)
 	mode.editor.SetValue("SELECT * FROM ")
 	mode.editor.CursorEnd()
-	mode.autocompleteOpenedByTyping = true
+	mode.acOpenedByTyping = true
 
 	// 10 tables → dropdown must show at most autocompletePanelRows rows.
 	tables := make([]AutocompleteTableContext, 10)
@@ -661,7 +661,7 @@ func TestCommandModeAutocompleteOpensAboveCursorPreservingLinesBelowCursor(t *te
 	mode.editor.SetValue("SELECT * FROM us\nWHERE id = 1;")
 	mode.editor.CursorEnd()
 	mode.editor.CursorUp()
-	mode.autocompleteOpenedByTyping = true
+	mode.acOpenedByTyping = true
 
 	if line := mode.editor.Line(); line != 0 {
 		t.Skipf("cursor ended on line %d instead of 0 — skipping overlay geometry test", line)
@@ -774,7 +774,7 @@ func TestCommandModeAutocompleteVisibleWhenCursorIsAtBufferEnd(t *testing.T) {
 	}
 	mode.editor.SetValue("SELECT * FROM us")
 	mode.editor.CursorEnd()
-	mode.autocompleteOpenedByTyping = true
+	mode.acOpenedByTyping = true
 
 	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{
@@ -812,7 +812,7 @@ func TestCommandModeAutocompleteOpensAboveMidBufferCursorInMultiLinePrompt(t *te
 	// must overlay rows inside the buffer, not after the last line.
 	mode.editor.SetValue("SELECT * FROM us\nWHERE id = 1\nORDER BY id\nLIMIT 10;")
 	mode.setCursorOffset(len([]rune("SELECT * FROM us")))
-	mode.autocompleteOpenedByTyping = true
+	mode.acOpenedByTyping = true
 
 	if line := mode.editor.Line(); line != 0 {
 		t.Skipf("cursor ended on line %d instead of 0 — skipping", line)
