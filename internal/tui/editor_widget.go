@@ -540,7 +540,12 @@ func (w EditorWidget) renderEditorLine(line editorRenderedLine, ghostText string
 		content = w.highlighter.renderLineContentWithGhost(line.runes, line.cursorCol, ctx.Width, true, "")
 	}
 
-	prompt := w.highlighter.promptStyle.Render(ctx.Prompt)
+	var prompt string
+	if line.logicalLine == 0 && line.lineNumber != 0 {
+		prompt = w.highlighter.promptStyle.Render(ctx.Prompt)
+	} else {
+		prompt = strings.Repeat(" ", ansi.StringWidth(ctx.Prompt))
+	}
 	lineNumber := ""
 	if ctx.ShowLineNumbers {
 		label := editorFormatLineNumber(" ", ctx.MaxHeight)
