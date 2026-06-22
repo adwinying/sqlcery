@@ -493,20 +493,7 @@ func currentQuerySourceTokens(tokens []sqlToken) []sqlToken {
 }
 
 func parseQuerySourceTableReference(tokens []sqlToken, start int) (db.TableRef, int, bool) {
-	parts := make([]string, 0, 3)
-	i := start
-	for i < len(tokens) {
-		if !tokens[i].Ident {
-			break
-		}
-		parts = append(parts, tokens[i].Text)
-		i++
-		if i >= len(tokens) || !tokens[i].Symbol || tokens[i].Text != "." {
-			break
-		}
-		i++
-	}
-
+	parts, next := scanDottedIdentifier(tokens, start)
 	if len(parts) == 0 {
 		return db.TableRef{}, start, false
 	}
@@ -523,7 +510,7 @@ func parseQuerySourceTableReference(tokens []sqlToken, start int) (db.TableRef, 
 		ref.Namespace = parts[len(parts)-2]
 		ref.Name = parts[len(parts)-1]
 	}
-	return ref, i, true
+	return ref, next, true
 }
 
 func querySourceHasAdditionalTables(tokens []sqlToken, start int) bool {

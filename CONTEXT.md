@@ -142,7 +142,7 @@ The SQL positional context at the cursor, used to decide which Autocomplete sugg
 
 ### SQL Analysis Strategy
 The approach used by SQL Assistance features to understand the SQL text in the Command Pane. Two tiers:
-- **Lightweight tokenization** — fast cursor-local token scanning; handles keywords, identifiers, and clause boundaries without building an AST. Currently used by all SQL Assistance features.
+- **Lightweight tokenization** — fast token scanning; handles keywords, identifiers, and clause boundaries without building an AST. Currently used by all SQL Assistance features. Implemented by a single tokenizer in `internal/sql` (a leaf package) shared by the editor's syntax highlighter, autocomplete scope/table analysis, and the statement-completion check — so all four read SQL the same way.
 - **Full parser** — AST-level understanding; not yet used. Warranted only when a feature needs nested subquery awareness, table alias resolution, dialect grammar validation, or semantic SQL rewriting.
 
 ### Statement Expansion

@@ -1,87 +1,41 @@
 package app
 
+import "github.com/adwinying/sqlcery/internal/sql"
+
+// isCompleteSQLStatement reports whether input is a submittable SQL statement:
+// it carries meaningful content and the last meaningful token is a semicolon,
+// with no unterminated quote/identifier or block comment. Comments and
+// whitespace are not meaningful content. (ADR-0001.)
 func isCompleteSQLStatement(input string) bool {
-	runes := []rune(input)
-	hasStatementContent := false
-	lastMeaningfulWasSemicolon := false
+	tokens, inBlockComment := sql.Lex(input, false)
+	if inBlockComment {
+		return false
+	}
 
-	for i := 0; i < len(runes); {
-		switch {
-		case isSQLSpaceRune(runes[i]):
-			i++
-		case hasSQLRunePrefix(runes, i, '-', '-'):
-			i += 2
-			for i < len(runes) && runes[i] != '\n' {
-				i++
-			}
-		case hasSQLRunePrefix(runes, i, '/', '*'):
-			next, closed := consumeSQLBlockComment(runes, i)
-			if !closed {
+	hasContent := false
+	lastWasSemicolon := false
+	for _, token := range tokens {
+		switch token.Kind {
+		case sql.KindWhitespace, sql.KindComment:
+			continue
+		case sql.KindString, sql.KindQuotedIdentifier:
+			if token.Unterminated {
 				return false
 			}
-			i = next
-		case runes[i] == '\'' || runes[i] == '"' || runes[i] == '`':
-			next, closed := consumeSQLQuotedRunes(runes, i, runes[i])
-			if !closed {
-				return false
+			hasContent = true
+			lastWasSemicolon = false
+		case sql.KindPunctuation:
+			if token.Text == ";" {
+				lastWasSemicolon = true
+				continue
 			}
-			hasStatementContent = true
-			lastMeaningfulWasSemicolon = false
-			i = next
-		case runes[i] == '[':
-			next, closed := consumeSQLBracketIdentifier(runes, i)
-			if !closed {
-				return false
-			}
-			hasStatementContent = true
-			lastMeaningfulWasSemicolon = false
-			i = next
-		case runes[i] == ';':
-			lastMeaningfulWasSemicolon = true
-			i++
+			hasContent = true
+			lastWasSemicolon = false
 		default:
-			hasStatementContent = true
-			lastMeaningfulWasSemicolon = false
-			i++
+			hasContent = true
+			lastWasSemicolon = false
 		}
 	}
 
-	return hasStatementContent && lastMeaningfulWasSemicolon
-}
-
-func consumeSQLBlockComment(runes []rune, start int) (int, bool) {
-	for i := start + 2; i < len(runes); i++ {
-		if hasSQLRunePrefix(runes, i, '*', '/') {
-			return i + 2, true
-		}
-	}
-
-	return len(runes), false
-}
-
-func consumeSQLQuotedRunes(runes []rune, start int, quote rune) (int, bool) {
-	for i := start + 1; i < len(runes); i++ {
-		if runes[i] != quote {
-			continue
-		}
-
-		if i+1 < len(runes) && runes[i+1] == quote {
-			i++
-			continue
-		}
-
-		return i + 1, true
-	}
-
-	return len(runes), false
-}
-
-func consumeSQLBracketIdentifier(runes []rune, start int) (int, bool) {
-	for i := start + 1; i < len(runes); i++ {
-		if runes[i] == ']' {
-			return i + 1, true
-		}
-	}
-
-	return len(runes), false
+	return hasContent && lastWasSemicolon
 }

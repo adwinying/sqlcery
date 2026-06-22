@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/adwinying/sqlcery/internal/tui"
+	"github.com/adwinying/sqlcery/internal/sql"
 )
 
 const autocompleteLimit = 6
@@ -65,28 +65,6 @@ type autocompleteTable struct {
 }
 
 var slashCommandList = defaultSlashCommandRegistry.Names()
-
-var sqlKeywordList = []string{
-	"ALL", "AND", "AS", "ASC", "BETWEEN", "BY", "CASE", "CREATE",
-	"CROSS", "DELETE", "DESC", "DISTINCT", "DROP", "ELSE", "END",
-	"EXISTS", "FALSE", "FROM", "FULL", "GROUP", "HAVING", "IN",
-	"INNER", "INSERT", "INTO", "IS", "JOIN", "LEFT", "LIKE",
-	"LIMIT", "NOT", "NULL", "OFFSET", "ON", "OR", "ORDER",
-	"OUTER", "PRIMARY", "REPLACE", "RETURNING", "RIGHT", "SELECT",
-	"SET", "TABLE", "THEN", "TRUE", "UNION", "UNIQUE", "UPDATE",
-	"VALUES", "VIEW", "WHEN", "WHERE", "WITH",
-}
-
-var autocompleteSQLKeywords = keywordSet(sqlKeywordList)
-
-func keywordSet(keywords []string) map[string]struct{} {
-	set := make(map[string]struct{}, len(keywords))
-	for _, keyword := range keywords {
-		set[keyword] = struct{}{}
-	}
-
-	return set
-}
 
 func buildAutocompleteItems(value string, cursor int, schema *AutocompleteSchemaContext, latestResult *LatestResultContext) []autocompleteItem {
 	ctx := analyzeAutocompleteContext(value, cursor)
@@ -169,7 +147,7 @@ func buildAutocompleteItems(value string, cursor int, schema *AutocompleteSchema
 	}
 
 	if wantsKeywordSuggestions(ctx) {
-		for _, keyword := range sqlKeywordList {
+		for _, keyword := range sql.Keywords {
 			if !matchesAutocompletePrefix(keyword, ctx.Prefix) {
 				continue
 			}
@@ -303,7 +281,7 @@ func analyzeAutocompleteContext(value string, cursor int) autocompleteContext {
 	}
 
 	start := cursor
-	for start > 0 && tui.IsIdentifierPart(runes[start-1]) {
+	for start > 0 && sql.IsIdentifierPart(runes[start-1]) {
 		start--
 	}
 	ctx.ReplaceStart = start
@@ -330,7 +308,7 @@ func analyzeAutocompleteContext(value string, cursor int) autocompleteContext {
 
 func scanIdentifierBackward(runes []rune, end int) string {
 	start := end
-	for start > 0 && tui.IsIdentifierPart(runes[start-1]) {
+	for start > 0 && sql.IsIdentifierPart(runes[start-1]) {
 		start--
 	}
 
@@ -641,18 +619,8 @@ func referencedTables(tokens []sqlToken) []string {
 }
 
 func parseTableReference(tokens []sqlToken, start int) (string, int) {
-	if start >= len(tokens) || !tokens[start].Ident {
-		return "", start
-	}
-
-	name := tokens[start].Text
-	next := start + 1
-	if next+1 < len(tokens) && tokens[next].Text == "." && tokens[next+1].Ident {
-		name += "." + tokens[next+1].Text
-		next += 2
-	}
-
-	return name, next
+	parts, next := scanDottedIdentifier(tokens, start)
+	return strings.Join(parts, "."), next
 }
 
 func buildAutocompleteCatalog(schema *AutocompleteSchemaContext, result *LatestResultContext) autocompleteCatalog {

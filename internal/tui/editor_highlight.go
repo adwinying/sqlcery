@@ -2,10 +2,11 @@ package tui
 
 import (
 	"strings"
-	"unicode"
 
 	"github.com/charmbracelet/lipgloss"
 	rw "github.com/mattn/go-runewidth"
+
+	"github.com/adwinying/sqlcery/internal/sql"
 )
 
 type sqlTokenKind int
@@ -223,204 +224,40 @@ func (h sqlSyntaxHighlighter) highlightLines(lines []string) []sqlStyledLine {
 
 func (h sqlSyntaxHighlighter) highlightLine(line string, state sqlLexerState) (sqlStyledLine, sqlLexerState) {
 	runes := []rune(line)
+	tokens, endInBlockComment := sql.Lex(line, state.inBlockComment)
+
 	styled := make(sqlStyledLine, 0, len(runes))
-
-	for i := 0; i < len(runes); {
-		if state.inBlockComment {
-			end := editorIndexOfBlockCommentEnd(runes, i)
-			if end < 0 {
-				styled = editorAppendStyledRunes(styled, runes[i:], sqlTokenComment)
-				return styled, state
-			}
-			styled = editorAppendStyledRunes(styled, runes[i:end], sqlTokenComment)
-			state.inBlockComment = false
-			i = end
-			continue
-		}
-
-		switch {
-		case editorStartsWithRunes(runes, i, '-', '-'):
-			styled = editorAppendStyledRunes(styled, runes[i:], sqlTokenComment)
-			return styled, state
-		case editorStartsWithRunes(runes, i, '/', '*'):
-			end := editorIndexOfBlockCommentEnd(runes, i)
-			if end < 0 {
-				styled = editorAppendStyledRunes(styled, runes[i:], sqlTokenComment)
-				state.inBlockComment = true
-				return styled, state
-			}
-			styled = editorAppendStyledRunes(styled, runes[i:end], sqlTokenComment)
-			i = end
-		case runes[i] == '\'':
-			end := editorConsumeQuotedLiteral(runes, i, '\'')
-			styled = editorAppendStyledRunes(styled, runes[i:end], sqlTokenString)
-			i = end
-		case runes[i] == '"' || runes[i] == '`':
-			end := editorConsumeQuotedLiteral(runes, i, runes[i])
-			styled = editorAppendStyledRunes(styled, runes[i:end], sqlTokenQuotedIdentifier)
-			i = end
-		case runes[i] == '[':
-			end := editorConsumeBracketIdentifier(runes, i)
-			styled = editorAppendStyledRunes(styled, runes[i:end], sqlTokenQuotedIdentifier)
-			i = end
-		case editorIsNamedParameterStart(runes, i):
-			end := editorConsumeNamedParameter(runes, i)
-			styled = editorAppendStyledRunes(styled, runes[i:end], sqlTokenParameter)
-			i = end
-		case runes[i] == '?':
-			styled = editorAppendStyledRunes(styled, runes[i:i+1], sqlTokenParameter)
-			i++
-		case unicode.IsDigit(runes[i]):
-			end := editorConsumeNumber(runes, i)
-			styled = editorAppendStyledRunes(styled, runes[i:end], sqlTokenNumber)
-			i = end
-		case IsIdentifierStart(runes[i]):
-			end := ConsumeIdentifier(runes, i)
-			kind := sqlTokenPlain
-			if _, ok := editorSQLKeywords[strings.ToUpper(string(runes[i:end]))]; ok {
-				kind = sqlTokenKeyword
-			}
-			styled = editorAppendStyledRunes(styled, runes[i:end], kind)
-			i = end
-		case editorIsOperatorRune(runes[i]):
-			styled = editorAppendStyledRunes(styled, runes[i:i+1], sqlTokenOperator)
-			i++
-		default:
-			styled = editorAppendStyledRunes(styled, runes[i:i+1], sqlTokenPlain)
-			i++
+	for _, token := range tokens {
+		kind := highlightTokenKind(token.Kind)
+		for j := token.Start; j < token.End; j++ {
+			styled = append(styled, sqlStyledRune{rune: runes[j], kind: kind})
 		}
 	}
 
+	state.inBlockComment = endInBlockComment
 	return styled, state
 }
 
-// IsIdentifierStart reports whether r can start a SQL identifier.
-// Exported so internal/app's sql_lex.go can call it without a circular import.
-func IsIdentifierStart(r rune) bool {
-	return unicode.IsLetter(r) || r == '_'
-}
-
-// IsIdentifierPart reports whether r can appear inside a SQL identifier.
-func IsIdentifierPart(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '$'
-}
-
-// ConsumeIdentifier returns the end index after consuming a SQL identifier
-// starting at start. Exported for use by internal/app's sql_lex.go.
-func ConsumeIdentifier(runes []rune, start int) int {
-	i := start + 1
-	for i < len(runes) && IsIdentifierPart(runes[i]) {
-		i++
-	}
-	return i
-}
-
-func editorAppendStyledRunes(line sqlStyledLine, runes []rune, kind sqlTokenKind) sqlStyledLine {
-	for _, r := range runes {
-		line = append(line, sqlStyledRune{rune: r, kind: kind})
-	}
-	return line
-}
-
-func editorStartsWithRunes(runes []rune, index int, prefix ...rune) bool {
-	if index+len(prefix) > len(runes) {
-		return false
-	}
-	for i, r := range prefix {
-		if runes[index+i] != r {
-			return false
-		}
-	}
-	return true
-}
-
-func editorIndexOfBlockCommentEnd(runes []rune, start int) int {
-	for i := start + 2; i < len(runes); i++ {
-		if runes[i-1] == '*' && runes[i] == '/' {
-			return i + 1
-		}
-	}
-	return -1
-}
-
-func editorConsumeQuotedLiteral(runes []rune, start int, quote rune) int {
-	for i := start + 1; i < len(runes); i++ {
-		if runes[i] != quote {
-			continue
-		}
-		if i+1 < len(runes) && runes[i+1] == quote {
-			i++
-			continue
-		}
-		return i + 1
-	}
-	return len(runes)
-}
-
-func editorConsumeBracketIdentifier(runes []rune, start int) int {
-	for i := start + 1; i < len(runes); i++ {
-		if runes[i] == ']' {
-			return i + 1
-		}
-	}
-	return len(runes)
-}
-
-func editorIsNamedParameterStart(runes []rune, index int) bool {
-	if index >= len(runes) {
-		return false
-	}
-	switch runes[index] {
-	case ':', '@':
-		return index+1 < len(runes) && IsIdentifierPart(runes[index+1])
-	case '$':
-		return index+1 < len(runes) && (IsIdentifierPart(runes[index+1]) || unicode.IsDigit(runes[index+1]))
+// highlightTokenKind maps a sql.TokenKind to the editor's styling kind.
+// Identifiers and whitespace render unstyled, as does any unclassified rune;
+// operators and punctuation share the operator style.
+func highlightTokenKind(kind sql.TokenKind) sqlTokenKind {
+	switch kind {
+	case sql.KindKeyword:
+		return sqlTokenKeyword
+	case sql.KindString:
+		return sqlTokenString
+	case sql.KindNumber:
+		return sqlTokenNumber
+	case sql.KindComment:
+		return sqlTokenComment
+	case sql.KindQuotedIdentifier:
+		return sqlTokenQuotedIdentifier
+	case sql.KindParameter:
+		return sqlTokenParameter
+	case sql.KindOperator, sql.KindPunctuation:
+		return sqlTokenOperator
 	default:
-		return false
+		return sqlTokenPlain
 	}
-}
-
-func editorConsumeNamedParameter(runes []rune, start int) int {
-	i := start + 1
-	for i < len(runes) && (IsIdentifierPart(runes[i]) || unicode.IsDigit(runes[i])) {
-		i++
-	}
-	return i
-}
-
-func editorConsumeNumber(runes []rune, start int) int {
-	i := start
-	hasDot := false
-	for i < len(runes) {
-		switch {
-		case unicode.IsDigit(runes[i]):
-			i++
-		case runes[i] == '.' && !hasDot:
-			hasDot = true
-			i++
-		case (runes[i] == 'e' || runes[i] == 'E') && i+1 < len(runes):
-			i++
-			if i < len(runes) && (runes[i] == '+' || runes[i] == '-') {
-				i++
-			}
-		default:
-			return i
-		}
-	}
-	return i
-}
-
-func editorIsOperatorRune(r rune) bool {
-	return strings.ContainsRune("*+-/%<>=!|.,;()", r)
-}
-
-var editorSQLKeywords = map[string]struct{}{
-	"ALL": {}, "AND": {}, "AS": {}, "ASC": {}, "BETWEEN": {}, "BY": {}, "CASE": {}, "CREATE": {},
-	"CROSS": {}, "DELETE": {}, "DESC": {}, "DISTINCT": {}, "DROP": {}, "ELSE": {}, "END": {},
-	"EXISTS": {}, "FALSE": {}, "FROM": {}, "FULL": {}, "GROUP": {}, "HAVING": {}, "IN": {},
-	"INNER": {}, "INSERT": {}, "INTO": {}, "IS": {}, "JOIN": {}, "LEFT": {}, "LIKE": {},
-	"LIMIT": {}, "NOT": {}, "NULL": {}, "OFFSET": {}, "ON": {}, "OR": {}, "ORDER": {},
-	"OUTER": {}, "PRIMARY": {}, "REPLACE": {}, "RETURNING": {}, "RIGHT": {}, "SELECT": {},
-	"SET": {}, "TABLE": {}, "THEN": {}, "TRUE": {}, "UNION": {}, "UNIQUE": {}, "UPDATE": {},
-	"VALUES": {}, "VIEW": {}, "WHEN": {}, "WHERE": {}, "WITH": {},
 }
