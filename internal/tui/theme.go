@@ -55,32 +55,29 @@ type tuiTheme struct {
 }
 
 func newTUITheme() tuiTheme {
-	accent := lipgloss.AdaptiveColor{Light: "25", Dark: "117"}
-	accentSoft := lipgloss.AdaptiveColor{Light: "31", Dark: "111"}
-	accentWarm := lipgloss.AdaptiveColor{Light: "130", Dark: "221"}
-	success := lipgloss.AdaptiveColor{Light: "28", Dark: "114"}
-	danger := lipgloss.AdaptiveColor{Light: "160", Dark: "203"}
-	muted := lipgloss.AdaptiveColor{Light: "240", Dark: "246"}
-	mutedSoft := lipgloss.AdaptiveColor{Light: "245", Dark: "243"}
-	panelForeground := lipgloss.AdaptiveColor{Light: "237", Dark: "252"}
-	statusBarForeground := lipgloss.AdaptiveColor{Light: "238", Dark: "252"}
-	selectedForeground := lipgloss.AdaptiveColor{Light: "17", Dark: "231"}
-	selectedBackground := lipgloss.AdaptiveColor{Light: "153", Dark: "24"}
+	accent := lipgloss.Color("12")
+	accentSoft := lipgloss.Color("6")
+	accentWarm := lipgloss.Color("3")
+	success := lipgloss.Color("2")
+	danger := lipgloss.Color("1")
+	muted := lipgloss.Color("8")
+	selectedForeground := lipgloss.Color("15")
+	selectedBackground := lipgloss.Color("4")
 	return tuiTheme{
 		AppTitle:                 lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
-		MetaLine:                 lipgloss.NewStyle().Foreground(panelForeground),
-		StatusBar:                lipgloss.NewStyle().Foreground(statusBarForeground),
+		MetaLine:                 lipgloss.NewStyle(),
+		StatusBar:                lipgloss.NewStyle(),
 		PaneBorderActive:         lipgloss.NewStyle().Foreground(accent),
-		PaneBorderInactive:       lipgloss.NewStyle().Foreground(mutedSoft),
+		PaneBorderInactive:       lipgloss.NewStyle().Foreground(muted),
 		ModalBorder:              lipgloss.NewStyle().Foreground(accent),
 		SectionHeading:           lipgloss.NewStyle().Foreground(accentSoft).Bold(true),
 		ActiveSectionHeading:     lipgloss.NewStyle().Foreground(accentWarm).Bold(true).Underline(true),
-		Separator:                lipgloss.NewStyle().Foreground(mutedSoft),
+		Separator:                lipgloss.NewStyle().Foreground(muted),
 		PanelTitle:               lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
-		PanelText:                lipgloss.NewStyle().Foreground(panelForeground),
+		PanelText:                lipgloss.NewStyle(),
 		PanelMuted:               lipgloss.NewStyle().Foreground(muted),
 		PanelSelected:            lipgloss.NewStyle().Foreground(selectedForeground).Background(selectedBackground).Bold(true),
-		PanelHint:                lipgloss.NewStyle().Foreground(mutedSoft).Italic(true),
+		PanelHint:                lipgloss.NewStyle().Foreground(muted).Italic(true),
 		InfoNotice:               lipgloss.NewStyle().Foreground(accentSoft).Bold(true),
 		WarningNotice:            lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
 		ErrorNotice:              lipgloss.NewStyle().Foreground(danger).Bold(true),
@@ -89,13 +86,13 @@ func newTUITheme() tuiTheme {
 		NotificationError:        lipgloss.NewStyle().Foreground(danger).Bold(true),
 		ResultTitle:              lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
 		ResultHeader:             lipgloss.NewStyle().Foreground(accentSoft).Bold(true),
-		ResultSeparator:          lipgloss.NewStyle().Foreground(mutedSoft),
+		ResultSeparator:          lipgloss.NewStyle().Foreground(muted),
 		ResultSummary:            lipgloss.NewStyle().Foreground(success),
 		ResultsPaneTitle:         lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
-		ResultsPaneMeta:          lipgloss.NewStyle().Foreground(panelForeground),
+		ResultsPaneMeta:          lipgloss.NewStyle(),
 		ResultsPaneSelection:     lipgloss.NewStyle().Foreground(accentSoft).Bold(true),
 		ResultsPaneEmpty:         lipgloss.NewStyle().Foreground(muted).Italic(true),
-		ResultsPaneEmptyLogo:     lipgloss.NewStyle().Foreground(panelForeground).Bold(true),
+		ResultsPaneEmptyLogo:     lipgloss.NewStyle().Bold(true),
 		ResultsPaneEmptySubtitle: lipgloss.NewStyle().Foreground(accentSoft),
 		ResultsActiveRow:         lipgloss.NewStyle().Foreground(selectedForeground).Background(selectedBackground),
 		ResultsMarkedRow:         lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
@@ -110,9 +107,9 @@ func newTUITheme() tuiTheme {
 		PromptStyle:              lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
 		LineNumberStyle:          lipgloss.NewStyle().Foreground(muted),
 		CursorLineNumberStyle:    lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
-		PlaceholderStyle:         lipgloss.NewStyle().Foreground(mutedSoft).Italic(true),
+		PlaceholderStyle:         lipgloss.NewStyle().Foreground(muted).Italic(true),
 		CursorLineStyle:          lipgloss.NewStyle(),
 		CursorStyle:              lipgloss.NewStyle().Reverse(true),
-		GhostTextStyle:           lipgloss.NewStyle().Foreground(mutedSoft).Italic(true),
+		GhostTextStyle:           lipgloss.NewStyle().Foreground(muted).Italic(true),
 	}
 }
