@@ -158,7 +158,7 @@ func (m *resultsPaneModeModel) View(ctx tui.ResultsPaneViewContext) string {
 
 func (m resultsPaneModeModel) StatusBarHints(interaction InteractionState) []string {
 	parts := []string{"arrows/hjkl navigate", "space toggle row", "ctrl+c quit"}
-	parts = append(parts, "ctrl+e export", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+t keybindings")
+	parts = append(parts, "ctrl+e export", "ctrl+u scroll up", "ctrl+d scroll down", "gg top", "G bottom", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+t keybindings")
 	return parts
 }
 

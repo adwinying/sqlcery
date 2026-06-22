@@ -283,6 +283,8 @@ func buildHelpRows(pane Pane, modal AppModal) []helpRow {
 		case PaneResults:
 			contextRows = []helpRow{
 				{keyText: "arrows or hjkl", desc: "move cell"},
+				{keyText: "gg", desc: "jump to top of page", actionKey: "gg"},
+				{keyText: "G", desc: "jump to bottom of page", actionKey: "G"},
 				{keyText: "space", desc: "toggle selected row"},
 				{keyText: "yy", desc: "load INSERT into command pane", actionKey: "yy"},
 				{keyText: "cc", desc: "load UPDATE into command pane", actionKey: "cc"},
@@ -348,6 +350,10 @@ func keyToMsgFn(actionKey string) func() tea.Msg {
 		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneCommand} }
 	case "ctrl+3":
 		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
+	case "gg":
+		return func() tea.Msg { return jumpResultsPaneTopIntentMsg{} }
+	case "G":
+		return func() tea.Msg { return jumpResultsPaneBottomIntentMsg{} }
 	case "yy":
 		return func() tea.Msg { return composeResultsPaneIntentMsg{action: "insert"} }
 	case "cc":

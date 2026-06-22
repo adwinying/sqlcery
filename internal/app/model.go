@@ -56,6 +56,10 @@ type composeResultsPaneIntentMsg struct {
 	action string // "insert", "update", "delete"
 }
 
+type jumpResultsPaneTopIntentMsg struct{}
+
+type jumpResultsPaneBottomIntentMsg struct{}
+
 type cancelRunningIntentMsg struct{}
 
 type notificationClearMsg struct {
@@ -227,6 +231,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "delete":
 			m.composeResultsPaneDelete()
 		}
+		return m, nil
+	case jumpResultsPaneTopIntentMsg:
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
+		m.jumpResultsPaneTop()
+		return m, nil
+	case jumpResultsPaneBottomIntentMsg:
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
+		m.jumpResultsPaneBottom()
 		return m, nil
 	case clearInputIntentMsg:
 		m.closeModal()
@@ -1010,6 +1022,16 @@ func (m *Model) handleResultsPaneComposeKey(msg tea.KeyPressMsg) bool {
 	}
 
 	switch []rune(msg.Text)[0] {
+	case 'g':
+		if m.resultsPane.pendingAction != resultsPanePendingActionGotoTop {
+			m.resultsPane.pendingAction = resultsPanePendingActionGotoTop
+			return true
+		}
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
+		return m.jumpResultsPaneTop()
+	case 'G':
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
+		return m.jumpResultsPaneBottom()
 	case 'y':
 		if m.resultsPane.pendingAction != resultsPanePendingActionComposeInsert {
 			m.resultsPane.pendingAction = resultsPanePendingActionComposeInsert
@@ -1114,6 +1136,30 @@ func (m *Model) composeResultsPaneDelete() bool {
 		sql, status = result.SQL, resultsPaneComposeStatus(result)
 	}
 	m.applyComposition(sql, status)
+	return true
+}
+
+func (m *Model) jumpResultsPaneTop() bool {
+	latest := m.state.Interaction.LatestResult
+	if latest == nil || latest.PreservedResult == nil || len(latest.PreservedResult.Rows) == 0 {
+		return true
+	}
+	m.resultsPane.syncSelection(m.state.Interaction)
+	page := tui.ResultsPanePageContextFor(m.state.Interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
+	m.resultsPane.selectedRow = page.StartRow - 1
+	m.resultsPane.selectionActive = true
+	return true
+}
+
+func (m *Model) jumpResultsPaneBottom() bool {
+	latest := m.state.Interaction.LatestResult
+	if latest == nil || latest.PreservedResult == nil || len(latest.PreservedResult.Rows) == 0 {
+		return true
+	}
+	m.resultsPane.syncSelection(m.state.Interaction)
+	page := tui.ResultsPanePageContextFor(m.state.Interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
+	m.resultsPane.selectedRow = page.EndRow - 1
+	m.resultsPane.selectionActive = true
 	return true
 }
 
