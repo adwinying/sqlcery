@@ -97,6 +97,7 @@ type InteractionState struct {
 	ActivePane         Pane
 	ActiveModal        AppModal
 	ResultsPanePage    int
+	WindowFocused      bool
 	MarkedRows         []int
 	History            []HistoryEntryContext
 	AutocompleteSchema *AutocompleteSchemaContext
@@ -196,6 +197,7 @@ func NewSharedAppState() SharedAppState {
 			Layout:          LayoutSplit,
 			ActivePane:      PaneCommand,
 			ResultsPanePage: 0,
+			WindowFocused:   true,
 		},
 		Notification: Notification{Text: "Starting SQLcery.", Level: NotificationInfo, CreatedAt: time.Now()},
 	}

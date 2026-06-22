@@ -388,7 +388,6 @@ func (m *commandModeModel) AppendReplEntry(prompt, sql, output string) {
 // into an EditorViewContext for stateless rendering by the EditorWidget.
 func (m commandModeModel) buildViewContext(interaction InteractionState) tui.EditorViewContext {
 	lineInfo := m.editor.LineInfo()
-	_ = interaction // suggestions already cached; interaction used only for legacy callers
 	return tui.EditorViewContext{
 		Value:           m.editor.Value(),
 		Lines:           tui.SplitEditorLines(m.editor.Value()),
@@ -406,6 +405,7 @@ func (m commandModeModel) buildViewContext(interaction InteractionState) tui.Edi
 		GhostText:               m.ghostText(),
 		PromptWidth:             ansi.StringWidth(m.editor.Prompt),
 		AutocompleteTokenCol:    m.autocompleteTokenCol(),
+		ShowCursor:              interaction.ActivePane == PaneCommand && interaction.WindowFocused,
 	}
 }
 

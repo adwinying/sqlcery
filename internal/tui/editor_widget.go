@@ -50,6 +50,7 @@ type EditorViewContext struct {
 	GhostText               string // pre-computed suffix to show after cursor
 	PromptWidth             int    // display width of Prompt, for dropdown indent
 	AutocompleteTokenCol    int    // column of the token start, for stable dropdown anchor
+	ShowCursor              bool   // whether to render the block cursor
 }
 
 // EditorWidget owns cosmetic state for the command-mode editor: transcript,
@@ -478,7 +479,9 @@ func (w EditorWidget) renderedLines(ctx EditorViewContext) ([]editorRenderedLine
 			}
 			if lineIndex == currentLine && segmentIndex == ctx.RowOffset {
 				visualLine.isCursor = true
-				visualLine.cursorCol = ctx.ColOffset
+				if ctx.ShowCursor {
+					visualLine.cursorCol = ctx.ColOffset
+				}
 				cursorVisualRow = len(wrappedLines)
 			}
 			wrappedLines = append(wrappedLines, visualLine)
@@ -486,7 +489,11 @@ func (w EditorWidget) renderedLines(ctx EditorViewContext) ([]editorRenderedLine
 	}
 
 	if len(wrappedLines) == 0 {
-		wrappedLines = append(wrappedLines, editorRenderedLine{lineNumber: 1, isCursor: true, cursorCol: 0})
+		cursorCol := 0
+		if !ctx.ShowCursor {
+			cursorCol = -1
+		}
+		wrappedLines = append(wrappedLines, editorRenderedLine{lineNumber: 1, isCursor: true, cursorCol: cursorCol})
 	}
 
 	return wrappedLines, cursorVisualRow, len(wrappedLines)
@@ -505,12 +512,16 @@ func (w EditorWidget) renderAllEditorLines(lines []editorRenderedLine, ctx Edito
 }
 
 func (w EditorWidget) renderPlaceholderLine(ctx EditorViewContext) string {
+	cursorCol := -1
+	if ctx.ShowCursor {
+		cursorCol = 0
+	}
 	line := editorRenderedLine{
 		logicalLine: 0,
 		lineNumber:  1,
 		runes:       sqlStyledLine{},
 		isCursor:    true,
-		cursorCol:   0,
+		cursorCol:   cursorCol,
 	}
 	return w.renderEditorLine(line, "", ctx)
 }

@@ -336,6 +336,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.syncPaneSizes()
+	case tea.FocusMsg:
+		m.state.Interaction.WindowFocused = true
+		return m, nil
+	case tea.BlurMsg:
+		m.state.Interaction.WindowFocused = false
+		return m, nil
 	}
 
 	if m.state.Interaction.ActivePane == PaneResults && !layoutShowsCommand(m.state.Interaction.Layout) {
@@ -609,6 +615,7 @@ func (m Model) View() tea.View {
 
 	v := tea.NewView(content + "\n" + statusBar)
 	v.KeyboardEnhancements.ReportAllKeysAsEscapeCodes = true
+	v.ReportFocus = true
 	return v
 }
 
