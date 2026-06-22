@@ -35,7 +35,9 @@ type tuiTheme struct {
 	ResultsPaneEmpty         lipgloss.Style
 	ResultsPaneEmptyLogo     lipgloss.Style
 	ResultsPaneEmptySubtitle lipgloss.Style
-	SelectedRowMarker        lipgloss.Style
+	ResultsActiveRow         lipgloss.Style
+	ResultsMarkedRow         lipgloss.Style
+	ResultsMarkedActiveRow   lipgloss.Style
 	KeywordStyle             lipgloss.Style
 	StringStyle              lipgloss.Style
 	NumberStyle              lipgloss.Style
@@ -97,7 +99,9 @@ func newTUITheme() tuiTheme {
 		ResultsPaneEmpty:         lipgloss.NewStyle().Foreground(muted).Italic(true),
 		ResultsPaneEmptyLogo:     lipgloss.NewStyle().Foreground(panelForeground).Bold(true),
 		ResultsPaneEmptySubtitle: lipgloss.NewStyle().Foreground(accentSoft),
-		SelectedRowMarker:        lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
+		ResultsActiveRow:         lipgloss.NewStyle().Foreground(selectedForeground).Background(selectedBackground),
+		ResultsMarkedRow:         lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
+		ResultsMarkedActiveRow:   lipgloss.NewStyle().Foreground(accentWarm).Background(selectedBackground).Bold(true),
 		KeywordStyle:             lipgloss.NewStyle().Foreground(accent).Bold(true),
 		StringStyle:              lipgloss.NewStyle().Foreground(success),
 		NumberStyle:              lipgloss.NewStyle().Foreground(accentSoft),

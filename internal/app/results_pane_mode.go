@@ -146,7 +146,7 @@ func (m *resultsPaneModeModel) View(ctx tui.ResultsPaneViewContext) string {
 	}
 
 	if ctx.IsSplit {
-		preparedPage := m.preparePage(ctx.Result, ctx.Page, len(ctx.MarkedRows) > 0)
+		preparedPage := m.preparePage(ctx.Result, ctx.Page)
 		body := tui.RenderPreparedResultsPanePage(preparedPage, ctx.Width, ctx.Height, tui.ResultsPaneRenderState{
 			Active:          tui.ResultsPaneSelection{Row: ctx.SelectedRow, Column: ctx.SelectedColumn, Active: ctx.SelectionActive},
 			SelectedRows:    tui.ResultsPaneSelectedRowSet(ctx.MarkedRows),
@@ -169,7 +169,7 @@ func (m *resultsPaneModeModel) View(ctx tui.ResultsPaneViewContext) string {
 		header = append(header, tui.AppTheme.ResultsPaneSelection.Render(fmt.Sprintf("Selected: %d", selectedCount)))
 	}
 
-	preparedPage := m.preparePage(ctx.Result, ctx.Page, len(ctx.MarkedRows) > 0)
+	preparedPage := m.preparePage(ctx.Result, ctx.Page)
 	body := tui.RenderPreparedResultsPanePage(preparedPage, ctx.Width, ctx.Height-len(header)-2, tui.ResultsPaneRenderState{
 		Active:          tui.ResultsPaneSelection{Row: ctx.SelectedRow, Column: ctx.SelectedColumn, Active: ctx.SelectionActive},
 		SelectedRows:    tui.ResultsPaneSelectedRowSet(ctx.MarkedRows),
@@ -250,12 +250,12 @@ func (m *resultsPaneModeModel) syncSelection(interaction InteractionState) {
 	}
 }
 
-func (m *resultsPaneModeModel) preparePage(result *db.ResultSet, page int, showSelectionMarker bool) *tui.ResultsPanePreparedPage {
-	key := tui.ResultsPanePreparedPageKey{Result: result, Page: page, ShowSelectionMarker: showSelectionMarker}
+func (m *resultsPaneModeModel) preparePage(result *db.ResultSet, page int) *tui.ResultsPanePreparedPage {
+	key := tui.ResultsPanePreparedPageKey{Result: result, Page: page}
 	if m.cachedPage != nil && m.cachedPage.Key == key {
 		return m.cachedPage
 	}
-	prepared := tui.PrepareResultsPanePage(result, page, showSelectionMarker)
+	prepared := tui.PrepareResultsPanePage(result, page)
 	m.cachedPage = prepared
 	return prepared
 }
@@ -313,7 +313,7 @@ func (m *resultsPaneModeModel) ToggleSelectedRow(interaction InteractionState) (
 }
 
 func renderResultsPaneTable(result *db.ResultSet, page, width, height int, state tui.ResultsPaneRenderState) string {
-	prepared := tui.PrepareResultsPanePage(result, page, len(state.SelectedRows) > 0)
+	prepared := tui.PrepareResultsPanePage(result, page)
 	return tui.RenderPreparedResultsPanePage(prepared, width, height, state)
 }
 

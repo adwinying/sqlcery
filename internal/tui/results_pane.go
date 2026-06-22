@@ -56,9 +56,8 @@ type ResultsPaneRenderState struct {
 }
 
 type ResultsPanePreparedPageKey struct {
-	Result              *db.ResultSet
-	Page                int
-	ShowSelectionMarker bool
+	Result *db.ResultSet
+	Page   int
 }
 
 type ResultsPanePreparedPage struct {
@@ -70,7 +69,7 @@ type ResultsPanePreparedPage struct {
 }
 
 // PrepareResultsPanePage computes a page of results from result, ready to render.
-func PrepareResultsPanePage(result *db.ResultSet, page int, showSelectionMarker bool) *ResultsPanePreparedPage {
+func PrepareResultsPanePage(result *db.ResultSet, page int) *ResultsPanePreparedPage {
 	if result == nil {
 		return &ResultsPanePreparedPage{}
 	}
@@ -78,7 +77,7 @@ func PrepareResultsPanePage(result *db.ResultSet, page int, showSelectionMarker 
 	columns := resultsPaneColumns(result.Columns)
 	pageRows, context := resultsPaneRowsForPage(result.Rows, page)
 	prepared := &ResultsPanePreparedPage{
-		Key:     ResultsPanePreparedPageKey{Result: result, Page: page, ShowSelectionMarker: showSelectionMarker},
+		Key:     ResultsPanePreparedPageKey{Result: result, Page: page},
 		Context: context,
 		Headers: make([]string, len(columns)),
 		Widths:  make([]int, len(columns)),
@@ -89,9 +88,6 @@ func PrepareResultsPanePage(result *db.ResultSet, page int, showSelectionMarker 
 		prepared.Headers[i] = column.Header
 		prepared.Widths[i] = ansi.StringWidth(column.Header)
 	}
-	if showSelectionMarker && len(prepared.Widths) > 0 {
-		prepared.Widths[0] += 2
-	}
 
 	for _, row := range pageRows {
 		values := make([]string, len(columns))
@@ -101,12 +97,7 @@ func PrepareResultsPanePage(result *db.ResultSet, page int, showSelectionMarker 
 				formatted = resultsPaneFormatValue(row.Values[i])
 			}
 			values[i] = formatted
-
-			widthValue := formatted
-			if showSelectionMarker && i == 0 {
-				widthValue = "  " + widthValue
-			}
-			if width := ansi.StringWidth(widthValue); width > prepared.Widths[i] {
+			if width := ansi.StringWidth(formatted); width > prepared.Widths[i] {
 				prepared.Widths[i] = width
 			}
 		}
@@ -148,16 +139,17 @@ func RenderPreparedResultsPanePage(prepared *ResultsPanePreparedPage, width, hei
 		absoluteRowIndex := prepared.Context.StartRow - 1 + rowIndex
 		values := append([]string(nil), prepared.Rows[rowIndex][colOffset:]...)
 		isActiveRow := state.Active.Active && state.Active.Row == absoluteRowIndex
-		for columnIndex := range values {
-			absoluteColumnIndex := colOffset + columnIndex
-			if absoluteColumnIndex == 0 && resultsPaneRowSelectedSet(state.SelectedRows, absoluteRowIndex) {
-				values[columnIndex] = AppTheme.SelectedRowMarker.Render("* ") + values[columnIndex]
-			}
-			if isActiveRow {
-				values[columnIndex] = renderResultsPaneActiveRowCell(values[columnIndex])
-			}
+		isMarked := resultsPaneRowSelectedSet(state.SelectedRows, absoluteRowIndex)
+		line := renderResultsPaneInlineResultLine(values, widths)
+		switch {
+		case isMarked && isActiveRow:
+			line = AppTheme.ResultsMarkedActiveRow.Render(line)
+		case isMarked:
+			line = AppTheme.ResultsMarkedRow.Render(line)
+		case isActiveRow:
+			line = AppTheme.ResultsActiveRow.Render(line)
 		}
-		lines = append(lines, renderResultsPaneInlineResultLine(values, widths))
+		lines = append(lines, line)
 	}
 
 	ctx := prepared.Context
@@ -317,10 +309,6 @@ func resultsPaneVisibleRowWindow(context ResultsPanePageContext, totalRows, heig
 	}
 	start = max(0, min(start, totalRows-visibleRows))
 	return start, start + visibleRows
-}
-
-func renderResultsPaneActiveRowCell(value string) string {
-	return "\x1b[1;38;5;221m" + value + "\x1b[0m"
 }
 
 func resultsPaneRowSelectedSet(rows map[int]struct{}, row int) bool {
