@@ -158,7 +158,7 @@ func (e *exportWizardModal) Render(interaction InteractionState, _ int) string {
 func (e *exportWizardModal) renderFormatStep() string {
 	filtered := e.filteredFormats()
 	if len(filtered) == 0 {
-		return tui.AppTheme.PanelMuted.Render("No matching formats.")
+		return tui.AppTheme.PanelText.Render("No matching formats.")
 	}
 
 	selected := wrapSelection(e.selectedFormat, len(filtered))
@@ -181,18 +181,18 @@ func (e *exportWizardModal) renderPathStep(interaction InteractionState) string 
 		marked := len(interaction.MarkedRows)
 		total := len(latest.PreservedResult.Rows)
 		if marked > 0 {
-			lines = append(lines, tui.AppTheme.PanelMuted.Render(fmt.Sprintf("Exporting %d selected rows", marked)))
+			lines = append(lines, tui.AppTheme.PanelText.Render(fmt.Sprintf("Exporting %d selected rows", marked)))
 		} else {
-			lines = append(lines, tui.AppTheme.PanelMuted.Render(fmt.Sprintf("Exporting %d rows", total)))
+			lines = append(lines, tui.AppTheme.PanelText.Render(fmt.Sprintf("Exporting %d rows", total)))
 		}
 	}
 
-	lines = append(lines, tui.AppTheme.PanelMuted.Render("Relative or absolute path supported"))
-	lines = append(lines, tui.AppTheme.PanelMuted.Render("Leave blank to copy to clipboard"))
+	lines = append(lines, tui.AppTheme.PanelText.Render("Relative or absolute path supported"))
+	lines = append(lines, tui.AppTheme.PanelText.Render("Leave blank to copy to clipboard"))
 
 	if e.cwd != "" {
 		lines = append(lines, "")
-		lines = append(lines, tui.AppTheme.PanelMuted.Render("cwd: "+e.cwd))
+		lines = append(lines, tui.AppTheme.PanelText.Render("cwd: "+e.cwd))
 	}
 
 	return strings.Join(lines, "\n")
