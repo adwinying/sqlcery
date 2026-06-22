@@ -145,32 +145,8 @@ func (m *resultsPaneModeModel) View(ctx tui.ResultsPaneViewContext) string {
 		return m.renderEmptyState()
 	}
 
-	if ctx.IsSplit {
-		preparedPage := m.preparePage(ctx.Result, ctx.Page)
-		body := tui.RenderPreparedResultsPanePage(preparedPage, ctx.Width, ctx.Height, tui.ResultsPaneRenderState{
-			Active:          tui.ResultsPaneSelection{Row: ctx.SelectedRow, Column: ctx.SelectedColumn, Active: ctx.SelectionActive},
-			SelectedRows:    tui.ResultsPaneSelectedRowSet(ctx.MarkedRows),
-			ColScrollOffset: ctx.ColScrollOffset,
-		})
-		if body == "" {
-			body = tui.AppTheme.ResultsPaneEmpty.Render("(no visible rows)")
-		}
-		return body
-	}
-
-	page := tui.ResultsPanePageContextFor(ctx.Page, len(ctx.Result.Rows))
-	header := []string{
-		tui.AppTheme.ResultsPaneTitle.Render("Results Pane"),
-		tui.AppTheme.ResultsPaneMeta.Render(fmt.Sprintf("Query: %s", summarizeResultsPaneStatement(ctx.Statement, ctx.Width))),
-		tui.AppTheme.ResultsPaneMeta.Render(fmt.Sprintf("Rows: %d  Columns: %d", len(ctx.Result.Rows), len(ctx.Result.Columns))),
-		tui.AppTheme.ResultsPaneMeta.Render(fmt.Sprintf("Page: %d/%d  Showing rows %s", page.Number, page.TotalPages, tui.ResultsPaneFormatRowRange(page))),
-	}
-	if selectedCount := len(ctx.MarkedRows); selectedCount > 0 {
-		header = append(header, tui.AppTheme.ResultsPaneSelection.Render(fmt.Sprintf("Selected: %d", selectedCount)))
-	}
-
 	preparedPage := m.preparePage(ctx.Result, ctx.Page)
-	body := tui.RenderPreparedResultsPanePage(preparedPage, ctx.Width, ctx.Height-len(header)-2, tui.ResultsPaneRenderState{
+	body := tui.RenderPreparedResultsPanePage(preparedPage, ctx.Width, ctx.Height, tui.ResultsPaneRenderState{
 		Active:          tui.ResultsPaneSelection{Row: ctx.SelectedRow, Column: ctx.SelectedColumn, Active: ctx.SelectionActive},
 		SelectedRows:    tui.ResultsPaneSelectedRowSet(ctx.MarkedRows),
 		ColScrollOffset: ctx.ColScrollOffset,
@@ -178,8 +154,7 @@ func (m *resultsPaneModeModel) View(ctx tui.ResultsPaneViewContext) string {
 	if body == "" {
 		body = tui.AppTheme.ResultsPaneEmpty.Render("(no visible rows)")
 	}
-
-	return strings.Join(append(header, "", body), "\n")
+	return body
 }
 
 func (m resultsPaneModeModel) FooterHints(interaction InteractionState) []string {
@@ -187,9 +162,6 @@ func (m resultsPaneModeModel) FooterHints(interaction InteractionState) []string
 	if latest := interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
 		page := tui.ResultsPanePageContextFor(interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
 		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
-		if selectedCount := len(interaction.MarkedRows); selectedCount > 0 {
-			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
-		}
 	}
 	parts = append(parts, "ctrl+e export", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+t keybindings")
 	return parts

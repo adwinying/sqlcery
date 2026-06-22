@@ -129,11 +129,13 @@ func ApplyHScroll(s string, offset, width int) string {
 	return left + cut + right
 }
 
-// RenderPane wraps content in a rounded border with an optional title. active
-// panes receive the accent border colour; inactive panes receive the muted
-// colour. outerWidth is the full column width including the two border
-// characters; innerHeight is the number of content rows between borders.
-func RenderPane(content, title string, active bool, outerWidth, innerHeight int) string {
+// RenderPane wraps content in a rounded border with an optional title and
+// counter. active panes receive the accent border colour; inactive panes
+// receive the muted colour. outerWidth is the full column width including the
+// two border characters; innerHeight is the number of content rows between
+// borders. If counter is non-empty it is embedded in the bottom border as
+// ╰────counter─╯.
+func RenderPane(content, title string, active bool, outerWidth, innerHeight int, counter string) string {
 	borderColor := AppTheme.PaneBorderInactive.GetForeground()
 	if active {
 		borderColor = AppTheme.PaneBorderActive.GetForeground()
@@ -160,7 +162,17 @@ func RenderPane(content, title string, active bool, outerWidth, innerHeight int)
 	} else {
 		topLine = borderStyle.Render("╭" + strings.Repeat("─", innerWidth) + "╮")
 	}
-	bottomLine := borderStyle.Render("╰" + strings.Repeat("─", innerWidth) + "╯")
+	var bottomLine string
+	if counter == "" {
+		bottomLine = borderStyle.Render("╰" + strings.Repeat("─", innerWidth) + "╯")
+	} else {
+		counterW := ansi.StringWidth(counter)
+		dashes := innerWidth - counterW - 1
+		if dashes < 0 {
+			dashes = 0
+		}
+		bottomLine = borderStyle.Render("╰"+strings.Repeat("─", dashes)) + AppTheme.PanelMuted.Render(counter) + borderStyle.Render("─╯")
+	}
 
 	contentLines := strings.Split(content, "\n")
 	for len(contentLines) < innerHeight {

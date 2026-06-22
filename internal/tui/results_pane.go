@@ -152,9 +152,6 @@ func RenderPreparedResultsPanePage(prepared *ResultsPanePreparedPage, width, hei
 		lines = append(lines, line)
 	}
 
-	ctx := prepared.Context
-	lines = append(lines, AppTheme.PanelHint.Render(fmt.Sprintf("Showing rows %s of %d", ResultsPaneFormatRowRange(ctx), ctx.TotalRows)))
-
 	return resultsPaneTrimWidth(strings.Join(lines, "\n"), width)
 }
 
@@ -289,9 +286,6 @@ func resultsPaneVisibleRowWindow(context ResultsPanePageContext, totalRows, heig
 	visibleRows := totalRows
 	if height > 0 {
 		visibleRows = max(1, height-2)
-		if totalRows > visibleRows && height > 3 {
-			visibleRows = max(1, height-3)
-		}
 		visibleRows = min(visibleRows, totalRows)
 	}
 

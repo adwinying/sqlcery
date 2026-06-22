@@ -648,12 +648,30 @@ func (m *Model) syncPaneSizes() {
 	}
 }
 
+func resultsPaneBorderCounter(interaction InteractionState) string {
+	latest := interaction.LatestResult
+	if latest == nil || latest.PreservedResult == nil {
+		return ""
+	}
+	page := tui.ResultsPanePageContextFor(interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
+	if page.TotalRows == 0 {
+		return ""
+	}
+	rowRange := fmt.Sprintf("Rows %s of %d", tui.ResultsPaneFormatRowRange(page), page.TotalRows)
+	if selectedCount := len(interaction.MarkedRows); selectedCount > 0 {
+		return fmt.Sprintf("%d selected · %s", selectedCount, rowRange)
+	}
+	return rowRange
+}
+
 func (m Model) readyStateView(totalHeight int) string {
 	interaction := m.state.Interaction
 	w := m.width
 	if w < 4 {
 		w = 4
 	}
+
+	resultsPaneCounter := resultsPaneBorderCounter(interaction)
 
 	var base string
 	switch interaction.Layout {
@@ -668,15 +686,15 @@ func (m Model) readyStateView(totalHeight int) string {
 		resultsPaneContent := m.resultsPane.View(m.resultsPane.buildViewContext(interaction))
 		commandContent := m.command.View(interaction)
 		resultsPaneActive := interaction.ActivePane == PaneResults
-		resultsPanePane := tui.RenderPane(resultsPaneContent, "Results", resultsPaneActive, w, resultsPaneOuterH-2)
-		commandPane := tui.RenderPane(commandContent, "Commands", !resultsPaneActive, w, commandOuterH-2)
+		resultsPanePane := tui.RenderPane(resultsPaneContent, "Results", resultsPaneActive, w, resultsPaneOuterH-2, resultsPaneCounter)
+		commandPane := tui.RenderPane(commandContent, "Commands", !resultsPaneActive, w, commandOuterH-2, "")
 		base = resultsPanePane + "\n" + commandPane
 	case LayoutResultsOnly:
 		resultsPaneContent := m.resultsPane.View(m.resultsPane.buildViewContext(interaction))
-		base = tui.RenderPane(resultsPaneContent, "Results", true, w, totalHeight-2)
+		base = tui.RenderPane(resultsPaneContent, "Results", true, w, totalHeight-2, resultsPaneCounter)
 	default: // LayoutCommandOnly
 		commandContent := m.command.View(interaction)
-		base = tui.RenderPane(commandContent, "Commands", true, w, totalHeight-2)
+		base = tui.RenderPane(commandContent, "Commands", true, w, totalHeight-2, "")
 	}
 
 	if modal := m.currentModal(); modal != nil {

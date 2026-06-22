@@ -60,9 +60,6 @@ func TestResultsPaneModeViewRendersFullResultSet(t *testing.T) {
 	plainView := ansi.Strip(view)
 
 	for _, want := range []string{
-		"Results Pane",
-		"Rows: 3  Columns: 3",
-		"Page: 1/1  Showing rows 1-3",
 		"id | name  | created_at",
 		"1  | Ada   | 2026-04-07 11:30:00",
 		"2  | Grace | 2026-04-08 09:00:00",
@@ -97,8 +94,6 @@ func TestResultsPaneModeViewRendersSelectedPage(t *testing.T) {
 	view := mode.View(mode.buildViewContext(interaction))
 
 	for _, want := range []string{
-		"Rows: 305  Columns: 1",
-		"Page: 2/2  Showing rows 301-305",
 		"301",
 		"305",
 	} {
@@ -136,7 +131,7 @@ func TestResultsPaneModeViewClipsRowsToVisibleViewport(t *testing.T) {
 	}
 	view := ansi.Strip(mode.View(mode.buildViewContext(interaction)))
 
-	for _, want := range []string{"row-014", "row-018", "Showing rows 1-30 of 30"} {
+	for _, want := range []string{"row-014", "row-018"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
 		}
@@ -430,10 +425,7 @@ func TestRenderResultsPaneTableHighlightsSelectedCell(t *testing.T) {
 	}
 }
 
-func TestResultsPaneModeViewShowsSelectedRowCount(t *testing.T) {
-	mode := newResultsPaneModeModel()
-	mode.SetSize(80, 8)
-
+func TestResultsPaneBorderCounterShowsSelectedRowCount(t *testing.T) {
 	interaction := InteractionState{
 		MarkedRows: []int{0, 2},
 		LatestResult: &LatestResultContext{
@@ -448,10 +440,13 @@ func TestResultsPaneModeViewShowsSelectedRowCount(t *testing.T) {
 			},
 		},
 	}
-	view := ansi.Strip(mode.View(mode.buildViewContext(interaction)))
+	counter := resultsPaneBorderCounter(interaction)
 
-	if !strings.Contains(view, "Selected: 2") {
-		t.Fatalf("View() = %q, want to contain %q", view, "Selected: 2")
+	if !strings.Contains(counter, "2 selected") {
+		t.Fatalf("resultsPaneBorderCounter() = %q, want to contain %q", counter, "2 selected")
+	}
+	if !strings.Contains(counter, "Rows 1-3 of 3") {
+		t.Fatalf("resultsPaneBorderCounter() = %q, want to contain %q", counter, "Rows 1-3 of 3")
 	}
 }
 
