@@ -155,6 +155,9 @@ func (h *historySearchModal) Render(interaction InteractionState, innerWidth int
 			isSelected := i == selected
 			var rendered string
 			if isSelected {
+				if pad := innerWidth - ansi.StringWidth(text); pad > 0 {
+					text = text + strings.Repeat(" ", pad)
+				}
 				rendered = tui.AppTheme.PanelSelected.Render(text)
 			} else {
 				rendered = tui.AppTheme.PanelText.Render(text)

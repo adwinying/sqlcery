@@ -141,6 +141,11 @@ func RenderPreparedResultsPanePage(prepared *ResultsPanePreparedPage, width, hei
 		isActiveRow := state.Active.Active && state.Active.Row == absoluteRowIndex
 		isMarked := resultsPaneRowSelectedSet(state.SelectedRows, absoluteRowIndex)
 		line := renderResultsPaneInlineResultLine(values, widths)
+		if isActiveRow && width > 0 {
+			if pad := width - ansi.StringWidth(line); pad > 0 {
+				line = line + strings.Repeat(" ", pad)
+			}
+		}
 		switch {
 		case isMarked && isActiveRow:
 			line = AppTheme.ResultsMarkedActiveRow.Render(line)

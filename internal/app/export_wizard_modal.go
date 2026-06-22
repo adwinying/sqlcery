@@ -6,6 +6,7 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/adwinying/sqlcery/internal/export"
 	"github.com/adwinying/sqlcery/internal/tui"
@@ -148,14 +149,14 @@ func (e *exportWizardModal) handlePathKey(msg tea.KeyPressMsg, keys commandModeK
 	return modalResultNone{}
 }
 
-func (e *exportWizardModal) Render(interaction InteractionState, _ int) string {
+func (e *exportWizardModal) Render(interaction InteractionState, innerWidth int) string {
 	if e.step == exportWizardStepFormat {
-		return e.renderFormatStep()
+		return e.renderFormatStep(innerWidth)
 	}
 	return e.renderPathStep(interaction)
 }
 
-func (e *exportWizardModal) renderFormatStep() string {
+func (e *exportWizardModal) renderFormatStep(innerWidth int) string {
 	filtered := e.filteredFormats()
 	if len(filtered) == 0 {
 		return tui.AppTheme.PanelText.Render("No matching formats.")
@@ -166,6 +167,9 @@ func (e *exportWizardModal) renderFormatStep() string {
 	for i, f := range filtered {
 		content := string(f)
 		if i == selected {
+			if pad := innerWidth - ansi.StringWidth(content); pad > 0 {
+				content = content + strings.Repeat(" ", pad)
+			}
 			lines = append(lines, tui.AppTheme.PanelSelected.Render(content))
 		} else {
 			lines = append(lines, tui.AppTheme.PanelText.Render(content))

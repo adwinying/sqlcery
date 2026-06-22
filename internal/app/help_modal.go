@@ -103,7 +103,7 @@ func (h *helpModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) ModalResult
 	}
 }
 
-func (h *helpModal) Render(_ InteractionState, _ int) string {
+func (h *helpModal) Render(_ InteractionState, innerWidth int) string {
 	rows := h.filteredRows()
 
 	if len(rows) == 0 {
@@ -125,6 +125,9 @@ func (h *helpModal) Render(_ InteractionState, _ int) string {
 	for i := vpStart; i < vpEnd; i++ {
 		content := helpRowLine(rows[i].keyText, rows[i].desc, colWidth)
 		if i == selected {
+			if pad := innerWidth - lipgloss.Width(content); pad > 0 {
+				content = content + strings.Repeat(" ", pad)
+			}
 			lines = append(lines, tui.AppTheme.PanelSelected.Render(content))
 		} else {
 			lines = append(lines, tui.AppTheme.PanelText.Render(content))

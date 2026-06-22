@@ -88,6 +88,39 @@ func TestRenderPreparedResultsPanePageHighlightsActiveRow(t *testing.T) {
 	}
 }
 
+func TestRenderPreparedResultsPanePageActiveRowSpansFullWidth(t *testing.T) {
+	result := &db.ResultSet{
+		Columns: []db.ResultColumn{{Name: "id"}, {Name: "name"}},
+		Rows: []db.ResultRow{
+			{Values: []db.ResultValue{
+				{Kind: db.ValueKindInteger, Value: int64(1)},
+				{Kind: db.ValueKindString, Value: "Ada"},
+			}},
+		},
+	}
+
+	const paneWidth = 80
+	prepared := tui.PrepareResultsPanePage(result, 0)
+	output := tui.RenderPreparedResultsPanePage(prepared, paneWidth, 10, tui.ResultsPaneRenderState{
+		Active: tui.ResultsPaneSelection{Row: 0, Active: true},
+	})
+
+	lines := strings.Split(ansi.Strip(output), "\n")
+	var activeRowLine string
+	for _, l := range lines {
+		if strings.Contains(l, "Ada") {
+			activeRowLine = l
+			break
+		}
+	}
+	if activeRowLine == "" {
+		t.Fatalf("RenderPreparedResultsPanePage() = %q, could not find active row line", output)
+	}
+	if got := tui.RuneWidth(activeRowLine); got != paneWidth {
+		t.Fatalf("active row display width = %d, want %d (must span full pane width)", got, paneWidth)
+	}
+}
+
 func TestPrepareResultsPanePageCJKColumnWidths(t *testing.T) {
 	// "名前" = 2 CJK chars → display width 4
 	// "テスト長い値" = 6 CJK chars → display width 12
