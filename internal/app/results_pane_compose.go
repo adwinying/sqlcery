@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -138,6 +139,151 @@ func composeResultsPaneDeleteSQL(dialect db.Dialect, latest *LatestResultContext
 		Source:          source,
 		Action:          resultsPaneComposeActionDelete,
 	}, nil
+}
+
+type resultsPaneComposeBulkResult struct {
+	SQL    string
+	Count  int
+	Source db.TableRef
+	Action resultsPaneComposeAction
+}
+
+func sortedRowIndices(rows []int) []int {
+	sorted := append([]int(nil), rows...)
+	sort.Ints(sorted)
+	return sorted
+}
+
+func composeResultsPaneInsertBulkSQL(dialect db.Dialect, latest *LatestResultContext, rowIndices []int) (resultsPaneComposeBulkResult, error) {
+	if latest == nil || latest.PreservedResult == nil {
+		return resultsPaneComposeBulkResult{}, fmt.Errorf("Results Pane has no rows to compose")
+	}
+
+	result := latest.PreservedResult
+	source, ok := resultsPaneResultSource(latest)
+	if !ok {
+		return resultsPaneComposeBulkResult{}, fmt.Errorf("result source table is unknown")
+	}
+
+	columns := resultsPaneInsertColumns(dialect, result)
+	if len(columns) == 0 {
+		return resultsPaneComposeBulkResult{}, fmt.Errorf("rows have no columns to insert")
+	}
+
+	indices := sortedRowIndices(rowIndices)
+	tuples := make([]string, 0, len(indices))
+	for _, idx := range indices {
+		if idx < 0 || idx >= len(result.Rows) {
+			return resultsPaneComposeBulkResult{}, fmt.Errorf("row %d is out of range", idx+1)
+		}
+		vals := resultsPaneInsertValues(dialect, result, result.Rows[idx])
+		tuples = append(tuples, "  ("+strings.Join(trimLeadingSpaces(vals), ", ")+")")
+	}
+
+	return resultsPaneComposeBulkResult{
+		SQL: fmt.Sprintf("INSERT INTO %s (\n%s\n) VALUES\n%s;",
+			quoteSlashTableRef(dialect, source),
+			strings.Join(columns, ",\n"),
+			strings.Join(tuples, ",\n"),
+		),
+		Count:  len(indices),
+		Source: source,
+		Action: resultsPaneComposeActionInsert,
+	}, nil
+}
+
+func composeResultsPaneUpdateBulkSQL(dialect db.Dialect, latest *LatestResultContext, rowIndices []int) (resultsPaneComposeBulkResult, error) {
+	if latest == nil || latest.PreservedResult == nil {
+		return resultsPaneComposeBulkResult{}, fmt.Errorf("Results Pane has no rows to compose")
+	}
+
+	indices := sortedRowIndices(rowIndices)
+	stmts := make([]string, 0, len(indices))
+	var source db.TableRef
+	for _, idx := range indices {
+		r, err := composeResultsPaneUpdateSQL(dialect, latest, idx)
+		if err != nil {
+			return resultsPaneComposeBulkResult{}, fmt.Errorf("row %d: %w", idx+1, err)
+		}
+		stmts = append(stmts, r.SQL)
+		source = r.Source
+	}
+
+	return resultsPaneComposeBulkResult{
+		SQL:    strings.Join(stmts, "\n"),
+		Count:  len(indices),
+		Source: source,
+		Action: resultsPaneComposeActionUpdate,
+	}, nil
+}
+
+func composeResultsPaneDeleteBulkSQL(dialect db.Dialect, latest *LatestResultContext, rowIndices []int) (resultsPaneComposeBulkResult, error) {
+	if latest == nil || latest.PreservedResult == nil {
+		return resultsPaneComposeBulkResult{}, fmt.Errorf("Results Pane has no rows to compose")
+	}
+
+	result := latest.PreservedResult
+	source, ok := resultsPaneResultSource(latest)
+	if !ok {
+		return resultsPaneComposeBulkResult{}, fmt.Errorf("result source table is unknown")
+	}
+
+	pkIndices := make([]int, 0)
+	for i, col := range result.Columns {
+		if col.PrimaryKey != nil {
+			pkIndices = append(pkIndices, i)
+		}
+	}
+	if len(pkIndices) > 1 {
+		sortResultsPanePredicateIndices(result.Columns, pkIndices)
+	}
+
+	indices := sortedRowIndices(rowIndices)
+
+	var whereClause string
+	if len(pkIndices) == 1 {
+		pkCol := quoteSlashIdentifier(dialect, resultsPaneColumnName(result.Columns, pkIndices[0]))
+		vals := make([]string, 0, len(indices))
+		for _, idx := range indices {
+			if idx < 0 || idx >= len(result.Rows) {
+				return resultsPaneComposeBulkResult{}, fmt.Errorf("row %d is out of range", idx+1)
+			}
+			vals = append(vals, resultsPaneValueLiteral(dialect, resultsPaneRowValue(result.Rows[idx], pkIndices[0])))
+		}
+		whereClause = fmt.Sprintf("  %s IN (%s)", pkCol, strings.Join(vals, ", "))
+	} else {
+		rowClauses := make([]string, 0, len(indices))
+		for _, idx := range indices {
+			if idx < 0 || idx >= len(result.Rows) {
+				return resultsPaneComposeBulkResult{}, fmt.Errorf("row %d is out of range", idx+1)
+			}
+			predicates, _ := resultsPaneRowPredicates(dialect, result, result.Rows[idx])
+			rowClauses = append(rowClauses, "("+strings.Join(trimLeadingSpaces(predicates), " AND ")+")")
+		}
+		whereClause = "  " + strings.Join(rowClauses, "\n  OR ")
+	}
+
+	return resultsPaneComposeBulkResult{
+		SQL: fmt.Sprintf("DELETE FROM %s\nWHERE\n%s;",
+			quoteSlashTableRef(dialect, source),
+			whereClause,
+		),
+		Count:  len(indices),
+		Source: source,
+		Action: resultsPaneComposeActionDelete,
+	}, nil
+}
+
+func trimLeadingSpaces(ss []string) []string {
+	out := make([]string, len(ss))
+	for i, s := range ss {
+		out[i] = strings.TrimLeft(s, " \t")
+	}
+	return out
+}
+
+func resultsPaneComposeBulkStatus(result resultsPaneComposeBulkResult) string {
+	return fmt.Sprintf("Loaded %s for %d rows from %s into command mode.", result.Action, result.Count, displaySlashTableRef(result.Source))
 }
 
 func resultsPaneComposeStatus(result resultsPaneComposeResult) string {

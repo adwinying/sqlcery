@@ -249,3 +249,147 @@ func TestComposeResultsPaneUpdateSQLQuotesTimestampColumns(t *testing.T) {
 		t.Fatalf("SQL = %q, want to contain %q", result.SQL, want)
 	}
 }
+
+func bulkWidgetLatest(source *db.TableRef) *LatestResultContext {
+	return &LatestResultContext{
+		Statement: "select id, name from widgets;",
+		PreservedResult: &db.ResultSet{
+			Source: source,
+			Columns: []db.ResultColumn{
+				{Name: "id", PrimaryKey: &db.PrimaryKey{Column: "id", Position: 1}},
+				{Name: "name"},
+			},
+			Rows: []db.ResultRow{
+				{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}, {Kind: db.ValueKindString, Value: "Alice"}}},
+				{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(2)}, {Kind: db.ValueKindString, Value: "Bob"}}},
+				{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(3)}, {Kind: db.ValueKindString, Value: "Carol"}}},
+			},
+		},
+	}
+}
+
+func TestComposeResultsPaneInsertBulkSQLMultipleRows(t *testing.T) {
+	latest := bulkWidgetLatest(&db.TableRef{Name: "widgets"})
+	result, err := composeResultsPaneInsertBulkSQL(db.SQLiteDialect(), latest, []int{2, 0, 1})
+	if err != nil {
+		t.Fatalf("composeResultsPaneInsertBulkSQL() error = %v", err)
+	}
+	if result.Count != 3 {
+		t.Fatalf("Count = %d, want 3", result.Count)
+	}
+	if result.Action != resultsPaneComposeActionInsert {
+		t.Fatalf("Action = %q, want INSERT", result.Action)
+	}
+	wantContains := []string{
+		`INSERT INTO "widgets"`,
+		`"id"`,
+		`"name"`,
+		`(1, 'Alice')`,
+		`(2, 'Bob')`,
+		`(3, 'Carol')`,
+	}
+	for _, want := range wantContains {
+		if !containsLine(result.SQL, want) {
+			t.Fatalf("SQL = %q, want to contain %q", result.SQL, want)
+		}
+	}
+	// rows must appear in result-set order (0, 1, 2) not mark order (2, 0, 1)
+	alicePos := indexOf(result.SQL, "Alice")
+	bobPos := indexOf(result.SQL, "Bob")
+	carolPos := indexOf(result.SQL, "Carol")
+	if !(alicePos < bobPos && bobPos < carolPos) {
+		t.Fatalf("rows not in result-set order: Alice=%d Bob=%d Carol=%d", alicePos, bobPos, carolPos)
+	}
+}
+
+func TestComposeResultsPaneUpdateBulkSQLMultipleRows(t *testing.T) {
+	latest := bulkWidgetLatest(&db.TableRef{Name: "widgets"})
+	result, err := composeResultsPaneUpdateBulkSQL(db.SQLiteDialect(), latest, []int{0, 2})
+	if err != nil {
+		t.Fatalf("composeResultsPaneUpdateBulkSQL() error = %v", err)
+	}
+	if result.Count != 2 {
+		t.Fatalf("Count = %d, want 2", result.Count)
+	}
+	if result.Action != resultsPaneComposeActionUpdate {
+		t.Fatalf("Action = %q, want UPDATE", result.Action)
+	}
+	wantContains := []string{
+		`UPDATE "widgets"`,
+		`"name" = 'Alice'`,
+		`"id" = 1`,
+		`"name" = 'Carol'`,
+		`"id" = 3`,
+	}
+	for _, want := range wantContains {
+		if !containsLine(result.SQL, want) {
+			t.Fatalf("SQL = %q, want to contain %q", result.SQL, want)
+		}
+	}
+}
+
+func TestComposeResultsPaneDeleteBulkSQLSinglePKUsesIN(t *testing.T) {
+	latest := bulkWidgetLatest(&db.TableRef{Name: "widgets"})
+	result, err := composeResultsPaneDeleteBulkSQL(db.SQLiteDialect(), latest, []int{0, 2})
+	if err != nil {
+		t.Fatalf("composeResultsPaneDeleteBulkSQL() error = %v", err)
+	}
+	if result.Count != 2 {
+		t.Fatalf("Count = %d, want 2", result.Count)
+	}
+	if result.Action != resultsPaneComposeActionDelete {
+		t.Fatalf("Action = %q, want DELETE", result.Action)
+	}
+	wantContains := []string{
+		`DELETE FROM "widgets"`,
+		`"id" IN (1, 3)`,
+	}
+	for _, want := range wantContains {
+		if !containsLine(result.SQL, want) {
+			t.Fatalf("SQL = %q, want to contain %q", result.SQL, want)
+		}
+	}
+}
+
+func TestComposeResultsPaneDeleteBulkSQLCompositePKUsesOR(t *testing.T) {
+	latest := &LatestResultContext{
+		Statement: "select user_id, org_id, name from memberships;",
+		PreservedResult: &db.ResultSet{
+			Source: &db.TableRef{Name: "memberships"},
+			Columns: []db.ResultColumn{
+				{Name: "user_id", PrimaryKey: &db.PrimaryKey{Column: "user_id", Position: 1}},
+				{Name: "org_id", PrimaryKey: &db.PrimaryKey{Column: "org_id", Position: 2}},
+				{Name: "name"},
+			},
+			Rows: []db.ResultRow{
+				{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}, {Kind: db.ValueKindInteger, Value: int64(10)}, {Kind: db.ValueKindString, Value: "admin"}}},
+				{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(2)}, {Kind: db.ValueKindInteger, Value: int64(10)}, {Kind: db.ValueKindString, Value: "member"}}},
+			},
+		},
+	}
+	result, err := composeResultsPaneDeleteBulkSQL(db.SQLiteDialect(), latest, []int{0, 1})
+	if err != nil {
+		t.Fatalf("composeResultsPaneDeleteBulkSQL() error = %v", err)
+	}
+	wantContains := []string{
+		`DELETE FROM "memberships"`,
+		`"user_id" = 1`,
+		`"org_id" = 10`,
+		`"user_id" = 2`,
+		`OR`,
+	}
+	for _, want := range wantContains {
+		if !containsLine(result.SQL, want) {
+			t.Fatalf("SQL = %q, want to contain %q", result.SQL, want)
+		}
+	}
+}
+
+func indexOf(s, substr string) int {
+	for i := range s {
+		if len(s)-i >= len(substr) && s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
+}

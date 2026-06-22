@@ -1085,20 +1085,31 @@ func (m *Model) composeResultsPaneInsert() bool {
 		return true
 	}
 
-	result, err := composeResultsPaneInsertSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
-	if err != nil {
-		m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose INSERT: %v", err), NotificationError)
-		return true
+	var sql, status string
+	if marked := m.state.Interaction.MarkedRows; len(marked) > 0 {
+		bulk, err := composeResultsPaneInsertBulkSQL(m.adapterDialect(), m.state.Interaction.LatestResult, marked)
+		if err != nil {
+			m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose INSERT: %v", err), NotificationError)
+			return true
+		}
+		sql, status = bulk.SQL, resultsPaneComposeBulkStatus(bulk)
+	} else {
+		result, err := composeResultsPaneInsertSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
+		if err != nil {
+			m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose INSERT: %v", err), NotificationError)
+			return true
+		}
+		sql, status = result.SQL, resultsPaneComposeStatus(result)
 	}
 
-	m.command.SetEditorValue(result.SQL)
+	m.command.SetEditorValue(sql)
 	m.syncCurrentSQL()
 	m.closeModal()
 	m.command.Focus()
 	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, PaneResults))
 	m.state.SetActivePane(PaneCommand)
 	m.state.SetPendingPaneSwitch(nil)
-	m.state.SetPendingIntent(IntentNone, "results-pane-compose", resultsPaneComposeStatus(result), NotificationSuccess)
+	m.state.SetPendingIntent(IntentNone, "results-pane-compose", status, NotificationSuccess)
 	m.syncPaneSizes()
 	return true
 }
@@ -1109,20 +1120,31 @@ func (m *Model) composeResultsPaneUpdate() bool {
 		return true
 	}
 
-	result, err := composeResultsPaneUpdateSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
-	if err != nil {
-		m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose UPDATE: %v", err), NotificationError)
-		return true
+	var sql, status string
+	if marked := m.state.Interaction.MarkedRows; len(marked) > 0 {
+		bulk, err := composeResultsPaneUpdateBulkSQL(m.adapterDialect(), m.state.Interaction.LatestResult, marked)
+		if err != nil {
+			m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose UPDATE: %v", err), NotificationError)
+			return true
+		}
+		sql, status = bulk.SQL, resultsPaneComposeBulkStatus(bulk)
+	} else {
+		result, err := composeResultsPaneUpdateSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
+		if err != nil {
+			m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose UPDATE: %v", err), NotificationError)
+			return true
+		}
+		sql, status = result.SQL, resultsPaneComposeStatus(result)
 	}
 
-	m.command.SetEditorValue(result.SQL)
+	m.command.SetEditorValue(sql)
 	m.syncCurrentSQL()
 	m.closeModal()
 	m.command.Focus()
 	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, PaneResults))
 	m.state.SetActivePane(PaneCommand)
 	m.state.SetPendingPaneSwitch(nil)
-	m.state.SetPendingIntent(IntentNone, "results-pane-compose", resultsPaneComposeStatus(result), NotificationSuccess)
+	m.state.SetPendingIntent(IntentNone, "results-pane-compose", status, NotificationSuccess)
 	m.syncPaneSizes()
 	return true
 }
@@ -1133,20 +1155,31 @@ func (m *Model) composeResultsPaneDelete() bool {
 		return true
 	}
 
-	result, err := composeResultsPaneDeleteSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
-	if err != nil {
-		m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose DELETE: %v", err), NotificationError)
-		return true
+	var sql, status string
+	if marked := m.state.Interaction.MarkedRows; len(marked) > 0 {
+		bulk, err := composeResultsPaneDeleteBulkSQL(m.adapterDialect(), m.state.Interaction.LatestResult, marked)
+		if err != nil {
+			m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose DELETE: %v", err), NotificationError)
+			return true
+		}
+		sql, status = bulk.SQL, resultsPaneComposeBulkStatus(bulk)
+	} else {
+		result, err := composeResultsPaneDeleteSQL(m.adapterDialect(), m.state.Interaction.LatestResult, m.resultsPane.selectedRow)
+		if err != nil {
+			m.state.SetPendingIntent(IntentNone, "results-pane-compose", fmt.Sprintf("Could not compose DELETE: %v", err), NotificationError)
+			return true
+		}
+		sql, status = result.SQL, resultsPaneComposeStatus(result)
 	}
 
-	m.command.SetEditorValue(result.SQL)
+	m.command.SetEditorValue(sql)
 	m.syncCurrentSQL()
 	m.closeModal()
 	m.command.Focus()
 	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, PaneResults))
 	m.state.SetActivePane(PaneCommand)
 	m.state.SetPendingPaneSwitch(nil)
-	m.state.SetPendingIntent(IntentNone, "results-pane-compose", resultsPaneComposeStatus(result), NotificationSuccess)
+	m.state.SetPendingIntent(IntentNone, "results-pane-compose", status, NotificationSuccess)
 	m.syncPaneSizes()
 	return true
 }
