@@ -414,7 +414,7 @@ func TestCommandModeViewRendersSlashWizard(t *testing.T) {
 	}}
 	modal := m.Render(InteractionState{}, 62)
 
-	for _, want := range []string{"Step 1/2: choose a slash command", "> /tables - list tables in the current database"} {
+	for _, want := range []string{"Step 1/2: choose a slash command", "/tables - list tables in the current database"} {
 		if !strings.Contains(modal, want) {
 			t.Fatalf("slashWizardModal.Render() = %q, want to contain %q", modal, want)
 		}
@@ -435,7 +435,7 @@ func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 	}
 	modal := h.Render(interaction, 62)
 
-	for _, want := range []string{"> select * from users"} {
+	for _, want := range []string{"select * from users"} {
 		if !strings.Contains(modal, want) {
 			t.Fatalf("historySearchModal.Render() = %q, want to contain %q", modal, want)
 		}

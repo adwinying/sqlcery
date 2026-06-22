@@ -153,15 +153,11 @@ func (h *historySearchModal) Render(interaction InteractionState, innerWidth int
 				break
 			}
 			isSelected := i == selected
-			prefix := "  "
-			if isSelected && j == 0 {
-				prefix = "> "
-			}
 			var rendered string
 			if isSelected {
-				rendered = tui.AppTheme.PanelSelected.Render(prefix + text)
+				rendered = tui.AppTheme.PanelSelected.Render(text)
 			} else {
-				rendered = tui.AppTheme.PanelText.Render(prefix + text)
+				rendered = tui.AppTheme.PanelText.Render(text)
 			}
 			displayLines = append(displayLines, rendered)
 		}

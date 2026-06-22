@@ -115,11 +115,7 @@ func (h *helpModal) Render(_ InteractionState, _ int) string {
 	vpEnd := min(len(rows), vpStart+helpContentRows)
 
 	for i := vpStart; i < vpEnd; i++ {
-		prefix := "  "
-		if i == selected {
-			prefix = "> "
-		}
-		content := prefix + rows[i].display
+		content := rows[i].display
 		if i == selected {
 			lines = append(lines, tui.AppTheme.PanelSelected.Render(content))
 		} else {

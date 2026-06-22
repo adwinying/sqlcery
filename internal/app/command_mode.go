@@ -656,10 +656,10 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext, hScrollOffset *
 					content = fmt.Sprintf("%s %s", check, col.Name)
 				}
 				if i == selected {
-					*hScrollOffset = tui.ClampHScrollOffset(ansi.StringWidth("> "+content), *hScrollOffset, innerWidth)
-					lines = append(lines, tui.AppTheme.PanelSelected.Render(tui.ApplyHScroll("> "+content, *hScrollOffset, innerWidth)))
+					*hScrollOffset = tui.ClampHScrollOffset(ansi.StringWidth(content), *hScrollOffset, innerWidth)
+					lines = append(lines, tui.AppTheme.PanelSelected.Render(tui.ApplyHScroll(content, *hScrollOffset, innerWidth)))
 				} else {
-					lines = append(lines, tui.AppTheme.PanelText.Render("  "+content))
+					lines = append(lines, tui.AppTheme.PanelText.Render(content))
 				}
 			}
 		}
@@ -699,11 +699,10 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext, hScrollOffset *
 			for i := scrollOffset; i < viewEnd; i++ {
 				target := filteredTargets[i]
 				if i == selected {
-					content := "> " + target.Display
-					*hScrollOffset = tui.ClampHScrollOffset(ansi.StringWidth(content), *hScrollOffset, innerWidth)
-					lines = append(lines, tui.AppTheme.PanelSelected.Render(tui.ApplyHScroll(content, *hScrollOffset, innerWidth)))
+					*hScrollOffset = tui.ClampHScrollOffset(ansi.StringWidth(target.Display), *hScrollOffset, innerWidth)
+					lines = append(lines, tui.AppTheme.PanelSelected.Render(tui.ApplyHScroll(target.Display, *hScrollOffset, innerWidth)))
 				} else {
-					lines = append(lines, tui.AppTheme.PanelText.Render("  "+target.Display))
+					lines = append(lines, tui.AppTheme.PanelText.Render(target.Display))
 				}
 			}
 		}
@@ -727,10 +726,10 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext, hScrollOffset *
 			command := wizard.Commands[i]
 			line := fmt.Sprintf("%s - %s", command.DisplayName, command.Summary)
 			if i == selected {
-				*hScrollOffset = tui.ClampHScrollOffset(ansi.StringWidth("> "+line), *hScrollOffset, innerWidth)
-				lines = append(lines, tui.AppTheme.PanelSelected.Render(tui.ApplyHScroll("> "+line, *hScrollOffset, innerWidth)))
+				*hScrollOffset = tui.ClampHScrollOffset(ansi.StringWidth(line), *hScrollOffset, innerWidth)
+				lines = append(lines, tui.AppTheme.PanelSelected.Render(tui.ApplyHScroll(line, *hScrollOffset, innerWidth)))
 			} else {
-				lines = append(lines, tui.AppTheme.PanelText.Render("  "+line))
+				lines = append(lines, tui.AppTheme.PanelText.Render(line))
 			}
 		}
 	}

@@ -491,7 +491,7 @@ func TestModelSubmitCommandsOpensWizard(t *testing.T) {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	view := model.View().Content
-	for _, want := range []string{"Choose Command", "Step 1/2: choose a slash command", "> /tables - list tables in the current database", "enter confirm", "ctrl+n next", "ctrl+p prev", "esc close"} {
+	for _, want := range []string{"Choose Command", "Step 1/2: choose a slash command", "/tables - list tables in the current database", "enter confirm", "ctrl+n next", "ctrl+p prev", "esc close"} {
 		if !containsLine(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
 		}
@@ -635,7 +635,7 @@ func TestModelSubmitCommandsWizardAdvancesToTargetSelection(t *testing.T) {
 		t.Fatalf("state.Status = %q, want %q", got, want)
 	}
 	view := model.View().Content
-	for _, want := range []string{"Step 1/2 complete: /select", "Step 2/2: choose a table for /select", "> main.widgets", "esc back"} {
+	for _, want := range []string{"Step 1/2 complete: /select", "Step 2/2: choose a table for /select", "main.widgets", "esc back"} {
 		if !containsLine(view, want) {
 			t.Fatalf("View() = %q, want to contain %q", view, want)
 		}
@@ -795,7 +795,7 @@ func TestModelSubmitNeedsTargetCommandWithoutArgOpensTableSelection(t *testing.T
 
 	// The modal should render with a simpler header (no step labels) and "esc close".
 	view := model.View().Content
-	for _, want := range []string{"Choose a table for /select:", "> main.widgets", "esc close"} {
+	for _, want := range []string{"Choose a table for /select:", "main.widgets", "esc close"} {
 		if !containsLine(view, want) {
 			t.Fatalf("View() does not contain %q\nFull view:\n%s", want, view)
 		}

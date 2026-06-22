@@ -164,11 +164,7 @@ func (e *exportWizardModal) renderFormatStep() string {
 	selected := wrapSelection(e.selectedFormat, len(filtered))
 	lines := make([]string, 0, len(filtered))
 	for i, f := range filtered {
-		prefix := "  "
-		if i == selected {
-			prefix = "> "
-		}
-		content := prefix + string(f)
+		content := string(f)
 		if i == selected {
 			lines = append(lines, tui.AppTheme.PanelSelected.Render(content))
 		} else {

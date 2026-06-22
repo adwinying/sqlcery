@@ -321,9 +321,9 @@ func (w EditorWidget) RenderAutocompletePanel(suggestions []AutocompleteSuggesti
 		}
 		content := row.left + strings.Repeat(" ", gap) + row.right
 		if row.isSelect {
-			lines = append(lines, AppTheme.PanelSelected.Render("> "+content))
+			lines = append(lines, AppTheme.PanelSelected.Render(content))
 		} else {
-			lines = append(lines, AppTheme.PanelText.Render("  "+content))
+			lines = append(lines, AppTheme.PanelText.Render(content))
 		}
 	}
 
