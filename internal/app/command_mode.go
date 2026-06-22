@@ -66,7 +66,7 @@ type commandModeKeyMap struct {
 
 func defaultCommandModeKeys() commandModeKeyMap {
 	return commandModeKeyMap{
-		Submit:               key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit")),
+		Submit:               key.NewBinding(key.WithKeys("enter", "ctrl+o"), key.WithHelp("enter/ctrl+o", "submit")),
 		Cancel:               key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
 		Help:                 key.NewBinding(key.WithKeys("ctrl+t"), key.WithHelp("ctrl+t", "keybindings")),
 		History:              key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "history")),
