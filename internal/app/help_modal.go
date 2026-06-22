@@ -283,6 +283,8 @@ func buildHelpRows(pane Pane, modal AppModal) []helpRow {
 				{display: "enter submit SQL or slash command", actionKey: "enter"},
 				{display: "ctrl+r open history search", actionKey: "ctrl+r"},
 				{display: "ctrl+e open command in $EDITOR", actionKey: "ctrl+e"},
+				{display: "ctrl+u scroll up"},
+				{display: "ctrl+d scroll down"},
 				{display: "ctrl+n next autocomplete suggestion"},
 				{display: "ctrl+p previous autocomplete suggestion"},
 				{display: "ctrl+x switch focus", actionKey: "ctrl+x"},
