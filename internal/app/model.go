@@ -52,6 +52,10 @@ var nopCmd tea.Cmd = func() tea.Msg { return nil }
 
 type submitIntentMsg struct{}
 
+type composeResultsPaneIntentMsg struct {
+	action string // "insert", "update", "delete"
+}
+
 type cancelRunningIntentMsg struct{}
 
 type notificationClearMsg struct {
@@ -105,9 +109,6 @@ type focusPaneIntentMsg struct {
 
 type clearInputIntentMsg struct{}
 
-type composeResultsPaneIntentMsg struct {
-	action string // "insert", "update", "delete"
-}
 
 type statementExecutedMsg struct {
 	Statement     string
@@ -647,70 +648,6 @@ func (m *Model) syncPaneSizes() {
 	}
 }
 
-// renderBorderedPane wraps content in a rounded border with an optional title; active pane gets accent colour.
-func (m Model) renderBorderedPane(content string, title string, active bool, outerWidth, innerHeight int) string {
-	borderColor := tui.AppTheme.PaneBorderInactive.GetForeground()
-	if active {
-		borderColor = tui.AppTheme.PaneBorderActive.GetForeground()
-	}
-	innerWidth := outerWidth - 2
-	if innerWidth < 1 {
-		innerWidth = 1
-	}
-	if innerHeight < 0 {
-		innerHeight = 0
-	}
-
-	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
-
-	// Top line with optional title
-	var topLine string
-	if title != "" {
-		titleRendered := tui.AppTheme.PanelTitle.Render(title)
-		titleVisualWidth := ansi.StringWidth(title)
-		dashesAfter := innerWidth - 1 - titleVisualWidth - 1 // "─" + title + " " + dashes
-		if dashesAfter < 0 {
-			dashesAfter = 0
-		}
-		topLine = borderStyle.Render("╭─") + titleRendered + borderStyle.Render(" "+strings.Repeat("─", dashesAfter)+"╮")
-	} else {
-		topLine = borderStyle.Render("╭" + strings.Repeat("─", innerWidth) + "╮")
-	}
-
-	// Bottom line
-	bottomLine := borderStyle.Render("╰" + strings.Repeat("─", innerWidth) + "╯")
-
-	// Split content into lines
-	contentLines := strings.Split(content, "\n")
-
-	// Pad or truncate to innerHeight lines
-	for len(contentLines) < innerHeight {
-		contentLines = append(contentLines, "")
-	}
-	if len(contentLines) > innerHeight {
-		contentLines = contentLines[:innerHeight]
-	}
-
-	// Build the pane
-	lines := make([]string, 0, innerHeight+2)
-	lines = append(lines, topLine)
-	for _, cl := range contentLines {
-		visibleWidth := ansi.StringWidth(cl)
-		padding := ""
-		if visibleWidth < innerWidth {
-			padding = strings.Repeat(" ", innerWidth-visibleWidth)
-		}
-		if visibleWidth > innerWidth {
-			cl = ansi.Truncate(cl, innerWidth, "")
-			padding = ""
-		}
-		lines = append(lines, borderStyle.Render("│")+cl+padding+borderStyle.Render("│"))
-	}
-	lines = append(lines, bottomLine)
-
-	return strings.Join(lines, "\n")
-}
-
 func (m Model) readyStateView(totalHeight int) string {
 	interaction := m.state.Interaction
 	w := m.width
@@ -731,15 +668,15 @@ func (m Model) readyStateView(totalHeight int) string {
 		resultsPaneContent := m.resultsPane.View(m.resultsPane.buildViewContext(interaction))
 		commandContent := m.command.View(interaction)
 		resultsPaneActive := interaction.ActivePane == PaneResults
-		resultsPanePane := m.renderBorderedPane(resultsPaneContent, "Results", resultsPaneActive, w, resultsPaneOuterH-2)
-		commandPane := m.renderBorderedPane(commandContent, "Commands", !resultsPaneActive, w, commandOuterH-2)
+		resultsPanePane := tui.RenderPane(resultsPaneContent, "Results", resultsPaneActive, w, resultsPaneOuterH-2)
+		commandPane := tui.RenderPane(commandContent, "Commands", !resultsPaneActive, w, commandOuterH-2)
 		base = resultsPanePane + "\n" + commandPane
 	case LayoutResultsOnly:
 		resultsPaneContent := m.resultsPane.View(m.resultsPane.buildViewContext(interaction))
-		base = m.renderBorderedPane(resultsPaneContent, "Results", true, w, totalHeight-2)
+		base = tui.RenderPane(resultsPaneContent, "Results", true, w, totalHeight-2)
 	default: // LayoutCommandOnly
 		commandContent := m.command.View(interaction)
-		base = m.renderBorderedPane(commandContent, "Commands", true, w, totalHeight-2)
+		base = tui.RenderPane(commandContent, "Commands", true, w, totalHeight-2)
 	}
 
 	if modal := m.currentModal(); modal != nil {
@@ -1084,7 +1021,6 @@ func (m *Model) composeResultsPaneInsert() bool {
 		m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Results Pane has no rows to compose.", NotificationInfo)
 		return true
 	}
-
 	var sql, status string
 	if marked := m.state.Interaction.MarkedRows; len(marked) > 0 {
 		bulk, err := composeResultsPaneInsertBulkSQL(m.adapterDialect(), m.state.Interaction.LatestResult, marked)
@@ -1101,16 +1037,7 @@ func (m *Model) composeResultsPaneInsert() bool {
 		}
 		sql, status = result.SQL, resultsPaneComposeStatus(result)
 	}
-
-	m.command.SetEditorValue(sql)
-	m.syncCurrentSQL()
-	m.closeModal()
-	m.command.Focus()
-	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, PaneResults))
-	m.state.SetActivePane(PaneCommand)
-	m.state.SetPendingPaneSwitch(nil)
-	m.state.SetPendingIntent(IntentNone, "results-pane-compose", status, NotificationSuccess)
-	m.syncPaneSizes()
+	m.applyComposition(sql, status)
 	return true
 }
 
@@ -1119,7 +1046,6 @@ func (m *Model) composeResultsPaneUpdate() bool {
 		m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Results Pane has no rows to compose.", NotificationInfo)
 		return true
 	}
-
 	var sql, status string
 	if marked := m.state.Interaction.MarkedRows; len(marked) > 0 {
 		bulk, err := composeResultsPaneUpdateBulkSQL(m.adapterDialect(), m.state.Interaction.LatestResult, marked)
@@ -1136,16 +1062,7 @@ func (m *Model) composeResultsPaneUpdate() bool {
 		}
 		sql, status = result.SQL, resultsPaneComposeStatus(result)
 	}
-
-	m.command.SetEditorValue(sql)
-	m.syncCurrentSQL()
-	m.closeModal()
-	m.command.Focus()
-	m.state.SetLayout(nextLayoutForModeIntent(m.state.Interaction.Layout, PaneResults))
-	m.state.SetActivePane(PaneCommand)
-	m.state.SetPendingPaneSwitch(nil)
-	m.state.SetPendingIntent(IntentNone, "results-pane-compose", status, NotificationSuccess)
-	m.syncPaneSizes()
+	m.applyComposition(sql, status)
 	return true
 }
 
@@ -1154,7 +1071,6 @@ func (m *Model) composeResultsPaneDelete() bool {
 		m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Results Pane has no rows to compose.", NotificationInfo)
 		return true
 	}
-
 	var sql, status string
 	if marked := m.state.Interaction.MarkedRows; len(marked) > 0 {
 		bulk, err := composeResultsPaneDeleteBulkSQL(m.adapterDialect(), m.state.Interaction.LatestResult, marked)
@@ -1171,7 +1087,11 @@ func (m *Model) composeResultsPaneDelete() bool {
 		}
 		sql, status = result.SQL, resultsPaneComposeStatus(result)
 	}
+	m.applyComposition(sql, status)
+	return true
+}
 
+func (m *Model) applyComposition(sql, status string) {
 	m.command.SetEditorValue(sql)
 	m.syncCurrentSQL()
 	m.closeModal()
@@ -1181,7 +1101,6 @@ func (m *Model) composeResultsPaneDelete() bool {
 	m.state.SetPendingPaneSwitch(nil)
 	m.state.SetPendingIntent(IntentNone, "results-pane-compose", status, NotificationSuccess)
 	m.syncPaneSizes()
-	return true
 }
 
 func (m *Model) syncCurrentSQL() {

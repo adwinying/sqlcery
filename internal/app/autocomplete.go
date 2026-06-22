@@ -88,9 +88,9 @@ func keywordSet(keywords []string) map[string]struct{} {
 	return set
 }
 
-func buildAutocompleteItems(value string, cursor int, interaction InteractionState) []autocompleteItem {
+func buildAutocompleteItems(value string, cursor int, schema *AutocompleteSchemaContext, latestResult *LatestResultContext) []autocompleteItem {
 	ctx := analyzeAutocompleteContext(value, cursor)
-	catalog := buildAutocompleteCatalog(interaction.AutocompleteSchema, interaction.LatestResult)
+	catalog := buildAutocompleteCatalog(schema, latestResult)
 	if ctx.Prefix == "" && ctx.Qualifier == "" && !ctx.SlashMode && ctx.Scope == autocompleteScopeUnknown {
 		return nil
 	}

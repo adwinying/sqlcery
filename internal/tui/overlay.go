@@ -129,6 +129,66 @@ func ApplyHScroll(s string, offset, width int) string {
 	return left + cut + right
 }
 
+// RenderPane wraps content in a rounded border with an optional title. active
+// panes receive the accent border colour; inactive panes receive the muted
+// colour. outerWidth is the full column width including the two border
+// characters; innerHeight is the number of content rows between borders.
+func RenderPane(content, title string, active bool, outerWidth, innerHeight int) string {
+	borderColor := AppTheme.PaneBorderInactive.GetForeground()
+	if active {
+		borderColor = AppTheme.PaneBorderActive.GetForeground()
+	}
+	innerWidth := outerWidth - 2
+	if innerWidth < 1 {
+		innerWidth = 1
+	}
+	if innerHeight < 0 {
+		innerHeight = 0
+	}
+
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+
+	var topLine string
+	if title != "" {
+		titleRendered := AppTheme.PanelTitle.Render(title)
+		titleVisualWidth := ansi.StringWidth(title)
+		dashesAfter := innerWidth - 1 - titleVisualWidth - 1
+		if dashesAfter < 0 {
+			dashesAfter = 0
+		}
+		topLine = borderStyle.Render("╭─") + titleRendered + borderStyle.Render(" "+strings.Repeat("─", dashesAfter)+"╮")
+	} else {
+		topLine = borderStyle.Render("╭" + strings.Repeat("─", innerWidth) + "╮")
+	}
+	bottomLine := borderStyle.Render("╰" + strings.Repeat("─", innerWidth) + "╯")
+
+	contentLines := strings.Split(content, "\n")
+	for len(contentLines) < innerHeight {
+		contentLines = append(contentLines, "")
+	}
+	if len(contentLines) > innerHeight {
+		contentLines = contentLines[:innerHeight]
+	}
+
+	lines := make([]string, 0, innerHeight+2)
+	lines = append(lines, topLine)
+	for _, cl := range contentLines {
+		visibleWidth := ansi.StringWidth(cl)
+		padding := ""
+		if visibleWidth < innerWidth {
+			padding = strings.Repeat(" ", innerWidth-visibleWidth)
+		}
+		if visibleWidth > innerWidth {
+			cl = ansi.Truncate(cl, innerWidth, "")
+			padding = ""
+		}
+		lines = append(lines, borderStyle.Render("│")+cl+padding+borderStyle.Render("│"))
+	}
+	lines = append(lines, bottomLine)
+
+	return strings.Join(lines, "\n")
+}
+
 // OverlayCenter composites modal centered over bg.
 // bgW and bgH are the visual dimensions of bg (width in columns, height in rows).
 // If the terminal is too small to fit the modal with at least one column of

@@ -107,7 +107,7 @@ func (m commandModeModel) Init() tea.Cmd {
 
 func (m commandModeModel) Update(msg tea.Msg, interaction InteractionState) (commandModeModel, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
-		suggestions := m.computeSuggestions(interaction)
+		suggestions := m.computeSuggestions(interaction.AutocompleteSchema, interaction.LatestResult)
 		switch {
 		case key.Matches(keyMsg, m.keys.AcceptSuggestion), keyMsg.String() == "enter":
 			if len(suggestions) > 0 {
@@ -206,7 +206,7 @@ func (m commandModeModel) Update(msg tea.Msg, interaction InteractionState) (com
 		}
 	}
 
-	m.cachedSuggestions = m.computeSuggestions(interaction)
+	m.cachedSuggestions = m.computeSuggestions(interaction.AutocompleteSchema, interaction.LatestResult)
 	m.widget.ClampSuggestionSelection(len(m.cachedSuggestions))
 	return m, cmd
 }
@@ -230,7 +230,7 @@ func (m commandModeModel) AutocompleteVisible(interaction InteractionState) bool
 		return true
 	}
 	// Fallback: compute inline for callers that haven't gone through Update.
-	return len(m.computeSuggestions(interaction)) > 0
+	return len(m.computeSuggestions(interaction.AutocompleteSchema, interaction.LatestResult)) > 0
 }
 
 // DismissAutocomplete suppresses the autocomplete dropdown. If vim-style
@@ -323,7 +323,7 @@ func (m commandModeModel) View(interaction InteractionState) string {
 }
 
 func (m commandModeModel) FooterHints(interaction InteractionState) []string {
-	autocompleteActive := len(m.cachedSuggestions) > 0 || len(m.computeSuggestions(interaction)) > 0
+	autocompleteActive := len(m.cachedSuggestions) > 0 || len(m.computeSuggestions(interaction.AutocompleteSchema, interaction.LatestResult)) > 0
 	var parts []string
 	if autocompleteActive {
 		// enter accepts the suggestion here, not submits; ctrl+c closes the dropdown
@@ -372,7 +372,7 @@ func (m commandModeModel) Footer(connectionName, dialect string, interaction Int
 		parts = append(parts, running)
 		parts = append(parts, "esc cancel query")
 	}
-	if len(m.cachedSuggestions) > 0 || len(m.computeSuggestions(interaction)) > 0 {
+	if len(m.cachedSuggestions) > 0 || len(m.computeSuggestions(interaction.AutocompleteSchema, interaction.LatestResult)) > 0 {
 		parts = append(parts, bindingSummary(m.keys.AcceptSuggestion), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
 	}
 	parts = append(parts, "ctrl+c quit")
@@ -448,7 +448,7 @@ func lineColFromOffset(value string, offset int) int {
 // computeSuggestions computes the current autocomplete suggestions from the
 // editor state and interaction context. The result is cached in Update so that
 // View rendering never calls buildAutocompleteItems.
-func (m commandModeModel) computeSuggestions(interaction InteractionState) []tui.AutocompleteSuggestion {
+func (m commandModeModel) computeSuggestions(schema *AutocompleteSchemaContext, latestResult *LatestResultContext) []tui.AutocompleteSuggestion {
 	if m.autocompleteNavActive {
 		return m.autocompleteNavFrozenList
 	}
@@ -460,7 +460,7 @@ func (m commandModeModel) computeSuggestions(interaction InteractionState) []tui
 		m.cursorOffset() == m.autocompleteSuppressedCursor {
 		return nil
 	}
-	items := buildAutocompleteItems(m.editor.Value(), m.cursorOffset(), interaction)
+	items := buildAutocompleteItems(m.editor.Value(), m.cursorOffset(), schema, latestResult)
 	result := make([]tui.AutocompleteSuggestion, len(items))
 	for i, item := range items {
 		result[i] = tui.AutocompleteSuggestion{
@@ -578,14 +578,14 @@ func (m commandModeModel) computeNaturalScrollTop(viewportH int) int {
 // Kept as a thin wrapper for test access; callers in production code should
 // use cachedSuggestions instead.
 func (m commandModeModel) autocompleteItems(interaction InteractionState) []tui.AutocompleteSuggestion {
-	return m.computeSuggestions(interaction)
+	return m.computeSuggestions(interaction.AutocompleteSchema, interaction.LatestResult)
 }
 
 // renderAutocompleteDropdown renders the dropdown overlay for tests that call
 // it directly. In production, the widget.View() handles this internally.
 func (m commandModeModel) renderAutocompleteDropdown(interaction InteractionState) string {
 	ctx := m.buildViewContext(interaction)
-	ctx.AutocompleteSuggestions = m.computeSuggestions(interaction)
+	ctx.AutocompleteSuggestions = m.computeSuggestions(interaction.AutocompleteSchema, interaction.LatestResult)
 	return m.widget.RenderDropdown(ctx)
 }
 

@@ -285,11 +285,11 @@ func (s *SharedAppState) SetLayout(layout AppLayout) {
 }
 
 func (s *SharedAppState) SetRunningStatementContext(context *RunningStatementContext) {
-	s.Interaction.Running = cloneRunningStatementContext(context)
+	s.Interaction.Running = context
 }
 
 func (s *SharedAppState) SetHistory(entries []HistoryEntryContext) {
-	s.Interaction.History = cloneHistoryEntries(entries)
+	s.Interaction.History = entries
 }
 
 func (s *SharedAppState) SetLatestResultContext(context *LatestResultContext) {
@@ -323,7 +323,7 @@ func (s *SharedAppState) SetPendingPaneSwitch(context *PaneSwitchContext) {
 }
 
 func (s *SharedAppState) SetAutocompleteSchema(schema *AutocompleteSchemaContext) {
-	s.Interaction.AutocompleteSchema = cloneAutocompleteSchemaContext(schema)
+	s.Interaction.AutocompleteSchema = schema
 }
 
 func (q InteractionState) snapshot() InteractionState {

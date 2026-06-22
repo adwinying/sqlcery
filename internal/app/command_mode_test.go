@@ -42,7 +42,7 @@ func TestCommandModeBuildViewContextDelegatesToWidget(t *testing.T) {
 }
 
 func TestBuildAutocompleteItemsSuggestsSlashCommands(t *testing.T) {
-	items := buildAutocompleteItems("/se", len([]rune("/se")), InteractionState{})
+	items := buildAutocompleteItems("/se", len([]rune("/se")), nil, nil)
 
 	if len(items) == 0 {
 		t.Fatal("buildAutocompleteItems() = no items, want slash command suggestions")
@@ -54,9 +54,9 @@ func TestBuildAutocompleteItemsSuggestsSlashCommands(t *testing.T) {
 }
 
 func TestBuildAutocompleteItemsSuggestsTablesAfterFrom(t *testing.T) {
-	items := buildAutocompleteItems("SELECT * FROM us", len([]rune("SELECT * FROM us")), InteractionState{
-		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}, {Name: "orders"}}},
-	})
+	items := buildAutocompleteItems("SELECT * FROM us", len([]rune("SELECT * FROM us")),
+		&AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}, {Name: "orders"}}},
+		nil)
 
 	if len(items) == 0 {
 		t.Fatal("buildAutocompleteItems() = no items, want table suggestions")
@@ -68,9 +68,9 @@ func TestBuildAutocompleteItemsSuggestsTablesAfterFrom(t *testing.T) {
 }
 
 func TestBuildAutocompleteItemsSuggestsColumnsForQualifier(t *testing.T) {
-	items := buildAutocompleteItems("SELECT users.na", len([]rune("SELECT users.na")), InteractionState{
-		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users", Columns: []string{"id", "name", "email"}}}},
-	})
+	items := buildAutocompleteItems("SELECT users.na", len([]rune("SELECT users.na")),
+		&AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users", Columns: []string{"id", "name", "email"}}}},
+		nil)
 
 	if len(items) == 0 {
 		t.Fatal("buildAutocompleteItems() = no items, want column suggestions")
@@ -82,9 +82,9 @@ func TestBuildAutocompleteItemsSuggestsColumnsForQualifier(t *testing.T) {
 }
 
 func TestBuildAutocompleteItemsSuggestsColumnsFromActiveTables(t *testing.T) {
-	items := buildAutocompleteItems("SELECT * FROM users WHERE na", len([]rune("SELECT * FROM users WHERE na")), InteractionState{
-		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users", Columns: []string{"id", "name", "email"}}}},
-	})
+	items := buildAutocompleteItems("SELECT * FROM users WHERE na", len([]rune("SELECT * FROM users WHERE na")),
+		&AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users", Columns: []string{"id", "name", "email"}}}},
+		nil)
 
 	if len(items) == 0 {
 		t.Fatal("buildAutocompleteItems() = no items, want active table columns")
@@ -96,32 +96,32 @@ func TestBuildAutocompleteItemsSuggestsColumnsFromActiveTables(t *testing.T) {
 }
 
 func TestBuildAutocompleteItemsRanksColumnsBeforeKeywordsInWhere(t *testing.T) {
-	items := buildAutocompleteItems("SELECT * FROM users WHERE ", len([]rune("SELECT * FROM users WHERE ")), InteractionState{
-		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users", Columns: []string{"id", "name", "email"}}}},
-	})
+	items := buildAutocompleteItems("SELECT * FROM users WHERE ", len([]rune("SELECT * FROM users WHERE ")),
+		&AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users", Columns: []string{"id", "name", "email"}}}},
+		nil)
 
 	assertAutocompleteLabelsPrefix(t, items, []string{"email", "id", "name"})
 	assertAutocompleteLabelBefore(t, items, "name", "AND")
 }
 
 func TestBuildAutocompleteItemsRanksJoinAndWhereAfterTable(t *testing.T) {
-	items := buildAutocompleteItems("SELECT * FROM users ", len([]rune("SELECT * FROM users ")), InteractionState{
-		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}, {Name: "user_sessions"}}},
-	})
+	items := buildAutocompleteItems("SELECT * FROM users ", len([]rune("SELECT * FROM users ")),
+		&AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}, {Name: "user_sessions"}}},
+		nil)
 
 	assertAutocompleteLabelsPrefix(t, items, []string{"JOIN", "WHERE"})
 }
 
 func TestBuildAutocompleteItemsRanksSetFirstAfterUpdateTarget(t *testing.T) {
-	items := buildAutocompleteItems("UPDATE users ", len([]rune("UPDATE users ")), InteractionState{
-		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}}},
-	})
+	items := buildAutocompleteItems("UPDATE users ", len([]rune("UPDATE users ")),
+		&AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}}},
+		nil)
 
 	assertAutocompleteLabelsPrefix(t, items, []string{"SET", "WHERE", "RETURNING"})
 }
 
 func TestBuildAutocompleteItemsRanksIntoFirstAfterInsert(t *testing.T) {
-	items := buildAutocompleteItems("INS", len([]rune("INS")), InteractionState{})
+	items := buildAutocompleteItems("INS", len([]rune("INS")), nil, nil)
 
 	if len(items) == 0 {
 		t.Fatal("buildAutocompleteItems() = no items, want keyword suggestions")
@@ -131,7 +131,7 @@ func TestBuildAutocompleteItemsRanksIntoFirstAfterInsert(t *testing.T) {
 		t.Fatalf("items[0].Label = %q, want %q", got, want)
 	}
 
-	items = buildAutocompleteItems("INSERT ", len([]rune("INSERT ")), InteractionState{})
+	items = buildAutocompleteItems("INSERT ", len([]rune("INSERT ")), nil, nil)
 	if len(items) == 0 {
 		t.Fatal("buildAutocompleteItems() = no items, want post-insert suggestions")
 	}
@@ -142,30 +142,29 @@ func TestBuildAutocompleteItemsRanksIntoFirstAfterInsert(t *testing.T) {
 }
 
 func TestBuildAutocompleteItemsRanksActiveTableColumnsBeforeFallbackColumns(t *testing.T) {
-	items := buildAutocompleteItems("SELECT * FROM users WHERE ", len([]rune("SELECT * FROM users WHERE ")), InteractionState{
-		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users", Columns: []string{"id", "name"}}}},
-		LatestResult:       &LatestResultContext{PreservedResult: &db.ResultSet{Columns: []db.ResultColumn{{Name: "archived_at"}, {Name: "id"}, {Name: "name"}}}},
-	})
+	items := buildAutocompleteItems("SELECT * FROM users WHERE ", len([]rune("SELECT * FROM users WHERE ")),
+		&AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users", Columns: []string{"id", "name"}}}},
+		&LatestResultContext{PreservedResult: &db.ResultSet{Columns: []db.ResultColumn{{Name: "archived_at"}, {Name: "id"}, {Name: "name"}}}})
 
 	assertAutocompleteLabelBefore(t, items, "name", "archived_at")
 	assertAutocompleteLabelBefore(t, items, "id", "archived_at")
 }
 
 func TestBuildAutocompleteItemsRanksUnqualifiedTablesBeforeSchemaQualifiedMatches(t *testing.T) {
-	items := buildAutocompleteItems("SELECT * FROM us", len([]rune("SELECT * FROM us")), InteractionState{
-		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}, {Namespace: "public", Name: "users"}}},
-	})
+	items := buildAutocompleteItems("SELECT * FROM us", len([]rune("SELECT * FROM us")),
+		&AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "users"}, {Namespace: "public", Name: "users"}}},
+		nil)
 
 	assertAutocompleteLabelsPrefix(t, items, []string{"users", "public.users"})
 }
 
 func TestBuildAutocompleteItemsUsesSchemaQualifiedActiveTableColumns(t *testing.T) {
-	items := buildAutocompleteItems("SELECT * FROM warehouse.users WHERE ", len([]rune("SELECT * FROM warehouse.users WHERE ")), InteractionState{
-		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{
+	items := buildAutocompleteItems("SELECT * FROM warehouse.users WHERE ", len([]rune("SELECT * FROM warehouse.users WHERE ")),
+		&AutocompleteSchemaContext{Tables: []AutocompleteTableContext{
 			{Namespace: "warehouse", Name: "users", Columns: []string{"id", "name"}},
 			{Namespace: "public", Name: "users", Columns: []string{"id", "public_name"}},
 		}},
-	})
+		nil)
 
 	assertAutocompleteLabelsPrefix(t, items, []string{"id", "name"})
 	for _, item := range items {
@@ -182,7 +181,7 @@ func TestBuildAutocompleteItemsSuppressedImmediatelyAfterSemicolon(t *testing.T)
 		"SELECT * FROM users; ",
 		"SELECT * FROM users;\n",
 	} {
-		items := buildAutocompleteItems(value, len([]rune(value)), InteractionState{})
+		items := buildAutocompleteItems(value, len([]rune(value)), nil, nil)
 		if len(items) != 0 {
 			t.Fatalf("buildAutocompleteItems(%q) = %d items, want 0 (suppressed after semicolon)", value, len(items))
 		}
@@ -190,7 +189,7 @@ func TestBuildAutocompleteItemsSuppressedImmediatelyAfterSemicolon(t *testing.T)
 }
 
 func TestBuildAutocompleteItemsResetsContextAfterSemicolon(t *testing.T) {
-	items := buildAutocompleteItems("SELECT * FROM users; DE", len([]rune("SELECT * FROM users; DE")), InteractionState{})
+	items := buildAutocompleteItems("SELECT * FROM users; DE", len([]rune("SELECT * FROM users; DE")), nil, nil)
 
 	if len(items) == 0 {
 		t.Fatal("buildAutocompleteItems() = no items, want new statement suggestions")
@@ -231,7 +230,7 @@ func TestCommandModeNavFirstCtrlNAdvancesFromHighlight(t *testing.T) {
 	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
 	}
-	mode.cachedSuggestions = mode.computeSuggestions(query)
+	mode.cachedSuggestions = mode.computeSuggestions(query.AutocompleteSchema, query.LatestResult)
 
 	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}, query)
 
@@ -258,7 +257,7 @@ func TestCommandModeNavCtrlNWrapsToRestoreSlotAfterAllItems(t *testing.T) {
 	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
 	}
-	mode.cachedSuggestions = mode.computeSuggestions(query)
+	mode.cachedSuggestions = mode.computeSuggestions(query.AutocompleteSchema, query.LatestResult)
 	count := len(mode.cachedSuggestions)
 
 	// count presses from initial sel=0 cycles through all items and hits restore.
@@ -286,7 +285,7 @@ func TestCommandModeNavFirstCtrlPGoesToRestoreSlot(t *testing.T) {
 	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
 	}
-	mode.cachedSuggestions = mode.computeSuggestions(query)
+	mode.cachedSuggestions = mode.computeSuggestions(query.AutocompleteSchema, query.LatestResult)
 
 	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl}, query)
 
@@ -311,7 +310,7 @@ func TestCommandModeNavEscRestoresOriginalPrefix(t *testing.T) {
 	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
 	}
-	mode.cachedSuggestions = mode.computeSuggestions(query)
+	mode.cachedSuggestions = mode.computeSuggestions(query.AutocompleteSchema, query.LatestResult)
 
 	// Activate nav — first ctrl+n advances from sel=0 to sel=1, populating item 1.
 	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}, query)
@@ -339,7 +338,7 @@ func TestCommandModeNavTypingAcceptsAndClearsNav(t *testing.T) {
 	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
 	}
-	mode.cachedSuggestions = mode.computeSuggestions(query)
+	mode.cachedSuggestions = mode.computeSuggestions(query.AutocompleteSchema, query.LatestResult)
 
 	// Activate nav — first ctrl+n populates item 1.
 	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}, query)
@@ -368,7 +367,7 @@ func TestCommandModeNavTabClosesWithoutRewriting(t *testing.T) {
 	query := InteractionState{
 		AutocompleteSchema: &AutocompleteSchemaContext{Tables: []AutocompleteTableContext{{Name: "orders"}, {Name: "users"}}},
 	}
-	mode.cachedSuggestions = mode.computeSuggestions(query)
+	mode.cachedSuggestions = mode.computeSuggestions(query.AutocompleteSchema, query.LatestResult)
 
 	// Activate nav — first ctrl+n populates item 1.
 	updated, _ := mode.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}, query)
@@ -396,7 +395,7 @@ func TestCommandModeViewRendersAutocompletePanel(t *testing.T) {
 	}
 
 	// Ghost text should show completion for "users" after typing "us"
-	mode.cachedSuggestions = mode.computeSuggestions(query)
+	mode.cachedSuggestions = mode.computeSuggestions(query.AutocompleteSchema, query.LatestResult)
 	ghost := mode.ghostText()
 	if ghost != "ers" {
 		t.Fatalf("ghostText() = %q, want %q", ghost, "ers")
