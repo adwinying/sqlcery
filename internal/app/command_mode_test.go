@@ -435,7 +435,7 @@ func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 	}
 	modal := h.Render(interaction, 62)
 
-	for _, want := range []string{"2 match(es); newest first.", "> select * from users"} {
+	for _, want := range []string{"> select * from users"} {
 		if !strings.Contains(modal, want) {
 			t.Fatalf("historySearchModal.Render() = %q, want to contain %q", modal, want)
 		}

@@ -12,7 +12,7 @@ import (
 	"github.com/adwinying/sqlcery/internal/tui"
 )
 
-const historySearchPreviewRows = tui.ModalSplitListRows - 1 // 1 = match-count line
+const historySearchPreviewRows = tui.ModalSplitListRows
 
 // historySearchModal implements Modal for the reverse-history search overlay.
 // It owns the filter text and selection index; History entries are read from
@@ -110,7 +110,6 @@ func (h *historySearchModal) Render(interaction InteractionState, innerWidth int
 	var lines []string
 
 	selected := wrapHistorySearchIndex(h.selectedIndex, len(matches))
-	lines = append(lines, tui.AppTheme.PanelMuted.Render(fmt.Sprintf("%d match(es); newest first.", len(matches))))
 
 	// contentW is the display columns available for SQL text after the 2-char prefix.
 	contentW := max(1, innerWidth-2)
