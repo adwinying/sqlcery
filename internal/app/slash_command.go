@@ -820,22 +820,7 @@ func displaySlashTableRef(table db.TableRef) string {
 }
 
 func quoteSlashTableRef(dialect db.Dialect, table db.TableRef) string {
-	parts := make([]string, 0, 3)
-	if strings.TrimSpace(table.Catalog) != "" {
-		parts = append(parts, table.Catalog)
-	}
-	if strings.TrimSpace(table.Namespace) != "" {
-		parts = append(parts, table.Namespace)
-	}
-	if strings.TrimSpace(table.Name) != "" {
-		parts = append(parts, table.Name)
-	}
-	if len(parts) == 0 {
-		return ""
-	}
-
-	dialect = slashDialectOrFallback(dialect)
-	return dialect.QuoteIdentifier(parts...)
+	return db.QuoteTable(slashDialectOrFallback(dialect), table)
 }
 
 func quoteSlashIdentifier(dialect db.Dialect, value string) string {

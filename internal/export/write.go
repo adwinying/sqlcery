@@ -28,7 +28,8 @@ type ExportOptions struct {
 	Filename   string
 	Result     *db.ResultSet
 	RowIndices []int
-	Format     Format // when non-empty, skips DetectFormat so the chosen format wins over the file extension
+	Format     Format     // when non-empty, skips DetectFormat so the chosen format wins over the file extension
+	Dialect    db.Dialect // used by the SQL format to render dialect-correct literals and quoting; nil falls back to SQLite
 }
 
 type ExportResult struct {
@@ -59,7 +60,7 @@ func Export(options ExportOptions) (ExportResult, error) {
 		}
 	}
 
-	data, rowCount, err := Marshal(options.Result, options.RowIndices, format)
+	data, rowCount, err := Marshal(options.Result, options.RowIndices, format, options.Dialect)
 	if err != nil {
 		return ExportResult{}, err
 	}
@@ -146,7 +147,7 @@ func DetectFormat(path string) (Format, error) {
 	}
 }
 
-func Marshal(result *db.ResultSet, rowIndices []int, format Format) ([]byte, int, error) {
+func Marshal(result *db.ResultSet, rowIndices []int, format Format, dialect db.Dialect) ([]byte, int, error) {
 	if result == nil {
 		return nil, 0, fmt.Errorf("result is required")
 	}
@@ -170,7 +171,7 @@ func Marshal(result *db.ResultSet, rowIndices []int, format Format) ([]byte, int
 	case FormatMarkdown:
 		data, err = marshalMarkdown(result, rows)
 	case FormatSQL:
-		data, err = marshalSQL(result, rows)
+		data, err = marshalSQL(result, rows, dialect)
 	default:
 		err = fmt.Errorf("unsupported export format %q", format)
 	}
@@ -351,59 +352,33 @@ func jsonValue(value db.ResultValue) any {
 	return value.Value
 }
 
-func marshalSQL(result *db.ResultSet, rows []db.ResultRow) ([]byte, error) {
-	cols := make([]string, len(result.Columns))
+// marshalSQL renders one INSERT statement per row via the shared SQL Composer,
+// so byte literals, timestamps, and identifier quoting match the Statement
+// Expander exactly. The target table is a "table_name" placeholder for the
+// user to replace — an export has no single source table.
+func marshalSQL(result *db.ResultSet, rows []db.ResultRow, dialect db.Dialect) ([]byte, error) {
+	columns := make([]string, len(result.Columns))
 	for i := range result.Columns {
-		name := columnName(result.Columns, i)
-		cols[i] = `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+		columns[i] = columnName(result.Columns, i)
 	}
-	colList := strings.Join(cols, ", ")
+
+	composer := db.NewComposer(dialect)
+	table := db.TableRef{Name: "table_name"}
 
 	var buf strings.Builder
 	for _, row := range rows {
-		vals := make([]string, len(result.Columns))
+		values := make([]db.ResultValue, len(result.Columns))
 		for i := range result.Columns {
-			vals[i] = sqlLiteral(rowValue(row, i))
+			values[i] = rowValue(row, i)
 		}
-		buf.WriteString("INSERT INTO table_name (")
-		buf.WriteString(colList)
-		buf.WriteString(") VALUES (")
-		buf.WriteString(strings.Join(vals, ", "))
-		buf.WriteString(");\n")
+		buf.WriteString(composer.Insert(db.InsertSpec{
+			Table:   table,
+			Columns: columns,
+			Rows:    [][]db.ResultValue{values},
+		}))
+		buf.WriteString("\n")
 	}
 	return []byte(buf.String()), nil
-}
-
-func sqlLiteral(value db.ResultValue) string {
-	switch value.Kind {
-	case db.ValueKindNull:
-		return "NULL"
-	case db.ValueKindBool:
-		if typed, ok := value.Value.(bool); ok {
-			if typed {
-				return "TRUE"
-			}
-			return "FALSE"
-		}
-	case db.ValueKindInteger, db.ValueKindFloat, db.ValueKindDecimal:
-		return fmt.Sprint(value.Value)
-	case db.ValueKindString:
-		if s, ok := value.Value.(string); ok {
-			return "'" + strings.ReplaceAll(s, "'", "''") + "'"
-		}
-	case db.ValueKindBytes:
-		if b, ok := value.Value.([]byte); ok {
-			return fmt.Sprintf("X'%x'", b)
-		}
-	case db.ValueKindTime:
-		if t, ok := value.Value.(time.Time); ok {
-			return "'" + t.Format("2006-01-02 15:04:05") + "'"
-		}
-	}
-	if value.Value == nil {
-		return "NULL"
-	}
-	return "'" + strings.ReplaceAll(fmt.Sprint(value.Value), "'", "''") + "'"
 }
 
 func escapeMarkdownCell(value string) string {

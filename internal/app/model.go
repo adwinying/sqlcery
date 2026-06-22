@@ -1399,7 +1399,7 @@ func (m *Model) executeExportWizard(format export.Format, path string) tea.Cmd {
 	}
 
 	if strings.TrimSpace(path) == "" {
-		data, rowCount, err := export.Marshal(latest.PreservedResult, rowIndices, format)
+		data, rowCount, err := export.Marshal(latest.PreservedResult, rowIndices, format, m.adapterDialect())
 		if err != nil {
 			m.state.SetPendingIntent(IntentNone, "export", fmt.Sprintf("Could not export rows: %v", err), NotificationError)
 			return m.notificationClearCmdIfSet()
@@ -1420,6 +1420,7 @@ func (m *Model) executeExportWizard(format export.Format, path string) tea.Cmd {
 		Result:     latest.PreservedResult,
 		RowIndices: rowIndices,
 		Format:     format,
+		Dialect:    m.adapterDialect(),
 	})
 	if err != nil {
 		m.state.SetPendingIntent(IntentNone, "export", fmt.Sprintf("Could not export rows: %v", err), NotificationError)

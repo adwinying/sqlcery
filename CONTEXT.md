@@ -39,6 +39,9 @@ The tabular data (columns + rows) returned by a Query. Each cell carries a Value
 ### Value Kind
 SQLcery's normalised semantic type classification for a single cell value in a Result Set. One of: **null**, **bool**, **integer**, **float**, **decimal**, **string**, **bytes**, **time**, **unknown**. Assigned when the driver's raw value is normalised into a Result Set — distinct from Driver Column Type, which is the raw SQL type name the driver reports for the column.
 
+### Value Literal
+The dialect-aware SQL literal rendering of a single Result Set value, keyed off its Value Kind (e.g. `NULL`, `TRUE`, a quote-escaped string, a canonical timestamp). Produced by the Dialect. Most kinds render identically across dialects; the bytes kind is the one that diverges (PostgreSQL `decode('…','hex')` vs `X'…'` elsewhere). Distinct from how a value is *displayed* in the Results Pane.
+
 ### Results Pane
 The top pane of the TUI. Displays the Result Set from the most recently executed Query. Supports interactive navigation, row selection, SQL composition from rows, and export. Can be maximized (results-only Layout). Some row actions are queued as a Pending Action rather than executed immediately.
 
@@ -117,7 +120,10 @@ The database engine a Connection targets. One of: SQLite, PostgreSQL, MySQL. Use
 The raw SQL type name reported by the database driver for a result column (e.g. `"VARCHAR"`, `"TIMESTAMPTZ"`, `"INT"`). This is a driver-level detail surfaced in a Result Set — it is distinct from Database Type (the engine) and from the Schema column type (which comes from schema introspection).
 
 ### Dialect
-The internal implementation of SQL syntax rules and behavior specific to a Database Type — identifier quoting, timestamp formatting, SQL generation, etc. Maps 1-to-1 with Database Type but is an implementation concept, not a user-facing one.
+The internal implementation of SQL syntax rules specific to a Database Type. Concretely it owns three primitives: identifier quoting, placeholder generation (`$1` vs `?`), and Value Literal rendering. Maps 1-to-1 with Database Type but is an implementation concept, not a user-facing one. Statement assembly is not the Dialect's job — that belongs to the SQL Composer, which uses a Dialect for these primitives.
+
+### SQL Composer
+The internal module that assembles complete INSERT/UPDATE/DELETE statement text from a resolved spec (target table, ordered columns, row values, predicate columns), using a Dialect for identifier quoting and Value Literal rendering. Mechanical only: it renders strings and makes no decisions about which columns are keys, what the source table is, or whether a statement is safe — that policy stays with its callers. Shared by the Statement Expander and the SQL Export Format. Distinct from the Dialect (primitives) and the Statement Expander (policy).
 
 ### Schema
 The overall structure of the connected database: its tables, columns, and types. SQLcery introspects the Schema at Session startup to power SQL Assistance. When the PostgreSQL-specific namespace qualifier on a table (e.g. `public` in `public.users`) must be named, call it a **Namespace**.
@@ -145,7 +151,7 @@ The act of SQLcery generating a SQL Statement and loading it into the Command Pa
 - **Row action path** — the Statement Expander composes INSERT/UPDATE/DELETE from a selected Result Set row (e.g. `yy`/`cc`/`dd`)
 
 ### Statement Expander
-The module that performs Statement Expansion via the row action path. Given a selected row in the Results Pane, it composes a dialect-aware INSERT, UPDATE, or DELETE statement from the row's values and the inferred or declared source table. For UPDATE and DELETE it uses primary key columns in the WHERE predicate when available, falling back to all visible columns. Bulk variants compose one statement per selected row (UPDATE/DELETE) or a single multi-row statement (INSERT). The Slash Command path does not go through the Statement Expander.
+The module that performs Statement Expansion via the row action path. Given a selected row in the Results Pane, it resolves the policy for a dialect-aware INSERT, UPDATE, or DELETE — the source table (inferred or declared), which primary key columns form the WHERE predicate (falling back to all visible columns), and the refusal of an unsafe UPDATE with no identifying key — then delegates the actual statement text to the SQL Composer. Bulk variants compose one statement per selected row (UPDATE/DELETE), a `pk IN (…)` form for same-key DELETEs, or a single multi-row statement (INSERT). The Slash Command path does not go through the Statement Expander.
 
 ### Widget
 A type in `internal/tui` that carries only cosmetic state — scroll offsets, suggestion-selection indices, transcript buffers — and exposes a `View(*ViewContext)` method for rendering. A widget never reads or writes `InteractionState`; all application data arrives through its View Context.

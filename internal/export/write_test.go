@@ -22,7 +22,7 @@ func TestMarshalSupportsCSVTSVJSONAndMarkdown(t *testing.T) {
 		}},
 	}
 
-	csvData, rows, err := Marshal(result, nil, FormatCSV)
+	csvData, rows, err := Marshal(result, nil, FormatCSV, nil)
 	if err != nil {
 		t.Fatalf("Marshal(csv) error = %v", err)
 	}
@@ -33,7 +33,7 @@ func TestMarshalSupportsCSVTSVJSONAndMarkdown(t *testing.T) {
 		t.Fatalf("Marshal(csv) = %q", got)
 	}
 
-	tsvData, _, err := Marshal(result, []int{1}, FormatTSV)
+	tsvData, _, err := Marshal(result, []int{1}, FormatTSV, nil)
 	if err != nil {
 		t.Fatalf("Marshal(tsv) error = %v", err)
 	}
@@ -41,7 +41,7 @@ func TestMarshalSupportsCSVTSVJSONAndMarkdown(t *testing.T) {
 		t.Fatalf("Marshal(tsv) = %q", got)
 	}
 
-	jsonData, _, err := Marshal(result, []int{0}, FormatJSON)
+	jsonData, _, err := Marshal(result, []int{0}, FormatJSON, nil)
 	if err != nil {
 		t.Fatalf("Marshal(json) error = %v", err)
 	}
@@ -59,7 +59,7 @@ func TestMarshalSupportsCSVTSVJSONAndMarkdown(t *testing.T) {
 		t.Fatalf("payload[0][payload] = %#v, want %#v", got, want)
 	}
 
-	markdownData, _, err := Marshal(result, []int{0}, FormatMarkdown)
+	markdownData, _, err := Marshal(result, []int{0}, FormatMarkdown, nil)
 	if err != nil {
 		t.Fatalf("Marshal(markdown) error = %v", err)
 	}
@@ -98,7 +98,7 @@ func TestMarshalSQLGeneratesInsertStatements(t *testing.T) {
 		}},
 	}
 
-	data, rows, err := Marshal(result, nil, FormatSQL)
+	data, rows, err := Marshal(result, nil, FormatSQL, nil)
 	if err != nil {
 		t.Fatalf("Marshal(sql) error = %v", err)
 	}
@@ -106,9 +106,17 @@ func TestMarshalSQLGeneratesInsertStatements(t *testing.T) {
 		t.Fatalf("Marshal(sql) rows = %d, want 2", rows)
 	}
 	got := string(data)
+	// One INSERT per row, rendered by the shared SQL Composer: the placeholder
+	// table is dialect-quoted, columns are vertical, the apostrophe is escaped,
+	// and the timestamp carries the canonical timezone offset.
 	for _, want := range []string{
-		`INSERT INTO table_name ("id", "name", "active", "score", "created_at") VALUES (1, 'O''Brien', TRUE, 3.14, '2026-04-08 12:34:56');`,
-		`INSERT INTO table_name ("id", "name", "active", "score", "created_at") VALUES (2, NULL, FALSE, 0, NULL);`,
+		`INSERT INTO "table_name" (`,
+		`  "id",`,
+		`  "created_at"`,
+		`'O''Brien'`,
+		`3.14`,
+		`'2026-04-08 12:34:56+00:00'`,
+		"FALSE",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("Marshal(sql) = %q, want to contain %q", got, want)

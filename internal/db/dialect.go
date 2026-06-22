@@ -9,6 +9,7 @@ type Dialect interface {
 	Name() string
 	Placeholder(index int) string
 	QuoteIdentifier(parts ...string) string
+	ValueLiteral(value ResultValue) string
 }
 
 func DialectByName(name string) (Dialect, error) {
@@ -69,6 +70,10 @@ func (d dialect) Name() string {
 
 func (d dialect) Placeholder(index int) string {
 	return d.placeholder(index)
+}
+
+func (d dialect) ValueLiteral(value ResultValue) string {
+	return renderValueLiteral(d.name, value)
 }
 
 func (d dialect) QuoteIdentifier(parts ...string) string {
