@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/adwinying/sqlcery/internal/tui"
 )
@@ -18,7 +19,8 @@ const helpContentRows = tui.ModalSplitListRows
 // and "/tables" etc. for slash command rows. needsWizard is set when the slash
 // command requires a target table and should open the Slash Command Wizard.
 type helpRow struct {
-	display     string
+	keyText     string
+	desc        string
 	actionKey   string
 	needsWizard bool
 }
@@ -108,14 +110,20 @@ func (h *helpModal) Render(_ InteractionState, _ int) string {
 		return tui.AppTheme.PanelMuted.Render("No matching actions.")
 	}
 
-	var lines []string
-
 	selected := wrapSelection(h.selectedIndex, len(rows))
 	vpStart := max(0, selected+1-helpContentRows)
 	vpEnd := min(len(rows), vpStart+helpContentRows)
 
+	colWidth := 0
+	for _, r := range rows {
+		if w := lipgloss.Width(r.keyText); w > colWidth {
+			colWidth = w
+		}
+	}
+
+	var lines []string
 	for i := vpStart; i < vpEnd; i++ {
-		content := rows[i].display
+		content := helpRowLine(rows[i].keyText, rows[i].desc, colWidth)
 		if i == selected {
 			lines = append(lines, tui.AppTheme.PanelSelected.Render(content))
 		} else {
@@ -124,6 +132,15 @@ func (h *helpModal) Render(_ InteractionState, _ int) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// helpRowLine right-aligns keyText within colWidth and appends two spaces and desc.
+func helpRowLine(keyText, desc string, colWidth int) string {
+	pad := colWidth - lipgloss.Width(keyText)
+	if pad < 0 {
+		pad = 0
+	}
+	return strings.Repeat(" ", pad) + keyText + "  " + desc
 }
 
 func (h *helpModal) FooterHints(_ InteractionState) []string {
@@ -161,7 +178,7 @@ func (h *helpModal) filteredRows() []helpRow {
 	}
 	matches := make([]scored, 0, len(all))
 	for _, row := range all {
-		if score, ok := fuzzyMatch(trimmed, row.display); ok {
+		if score, ok := fuzzyMatch(trimmed, row.keyText+" "+row.desc); ok {
 			matches = append(matches, scored{row, score})
 		}
 	}
@@ -234,8 +251,8 @@ func (h *helpModal) execute(ctx ModalContext, rows []helpRow) ModalResult {
 // Global rows (always present) are followed by context-specific rows.
 func buildHelpRows(pane Pane, modal AppModal) []helpRow {
 	global := []helpRow{
-		{display: "ctrl+t toggle keybindings"},
-		{display: "ctrl+c quit"},
+		{keyText: "ctrl+t", desc: "toggle keybindings"},
+		{keyText: "ctrl+c", desc: "quit"},
 	}
 
 	var contextRows []helpRow
@@ -243,60 +260,61 @@ func buildHelpRows(pane Pane, modal AppModal) []helpRow {
 	switch modal {
 	case ModalHistorySearch:
 		contextRows = []helpRow{
-			{display: "enter restore selected entry"},
-			{display: "ctrl+p or up select newer match"},
-			{display: "ctrl+n or down select older match"},
-			{display: "esc close history search"},
+			{keyText: "enter", desc: "restore selected entry"},
+			{keyText: "ctrl+p or up", desc: "select newer match"},
+			{keyText: "ctrl+n or down", desc: "select older match"},
+			{keyText: "esc", desc: "close history search"},
 		}
 	case ModalSlashWizard:
 		contextRows = []helpRow{
-			{display: "enter confirm selection"},
-			{display: "ctrl+n next item"},
-			{display: "ctrl+p previous item"},
-			{display: "space toggle column (column step)"},
-			{display: "a toggle all columns (column step)"},
-			{display: "alt+← → scroll long lines"},
-			{display: "esc back or close"},
+			{keyText: "enter", desc: "confirm selection"},
+			{keyText: "ctrl+n", desc: "next item"},
+			{keyText: "ctrl+p", desc: "previous item"},
+			{keyText: "space", desc: "toggle column (column step)"},
+			{keyText: "a", desc: "toggle all columns (column step)"},
+			{keyText: "alt+← →", desc: "scroll long lines"},
+			{keyText: "esc", desc: "back or close"},
 		}
 	default:
 		switch pane {
 		case PaneResults:
 			contextRows = []helpRow{
-				{display: "arrows or hjkl move cell"},
-				{display: "space toggle selected row"},
-				{display: "yy load INSERT into command pane", actionKey: "yy"},
-				{display: "cc load UPDATE into command pane", actionKey: "cc"},
-				{display: "dd load DELETE into command pane", actionKey: "dd"},
-				{display: "ctrl+e export selected or current rows"},
-				{display: "ctrl+u scroll up"},
-				{display: "ctrl+d scroll down"},
-				{display: "ctrl+p previous page"},
-				{display: "ctrl+n next page"},
-				{display: "ctrl+x focus command pane", actionKey: "ctrl+x"},
-				{display: "ctrl+z zoom / unzoom", actionKey: "ctrl+z"},
-				{display: "ctrl+1 focus results pane", actionKey: "ctrl+1"},
-				{display: "ctrl+2 focus command pane", actionKey: "ctrl+2"},
-				{display: "ctrl+3 command-only layout", actionKey: "ctrl+3"},
+				{keyText: "arrows or hjkl", desc: "move cell"},
+				{keyText: "space", desc: "toggle selected row"},
+				{keyText: "yy", desc: "load INSERT into command pane", actionKey: "yy"},
+				{keyText: "cc", desc: "load UPDATE into command pane", actionKey: "cc"},
+				{keyText: "dd", desc: "load DELETE into command pane", actionKey: "dd"},
+				{keyText: "ctrl+e", desc: "export selected or current rows"},
+				{keyText: "ctrl+u", desc: "scroll up"},
+				{keyText: "ctrl+d", desc: "scroll down"},
+				{keyText: "ctrl+p", desc: "previous page"},
+				{keyText: "ctrl+n", desc: "next page"},
+				{keyText: "ctrl+x", desc: "focus command pane", actionKey: "ctrl+x"},
+				{keyText: "ctrl+z", desc: "zoom / unzoom", actionKey: "ctrl+z"},
+				{keyText: "ctrl+1", desc: "focus results pane", actionKey: "ctrl+1"},
+				{keyText: "ctrl+2", desc: "focus command pane", actionKey: "ctrl+2"},
+				{keyText: "ctrl+3", desc: "command-only layout", actionKey: "ctrl+3"},
 			}
 		default: // PaneCommand
 			contextRows = []helpRow{
-				{display: "enter submit SQL or slash command", actionKey: "enter"},
-				{display: "ctrl+r open history search", actionKey: "ctrl+r"},
-				{display: "ctrl+e open command in $EDITOR", actionKey: "ctrl+e"},
-				{display: "ctrl+u scroll up"},
-				{display: "ctrl+d scroll down"},
-				{display: "ctrl+n next autocomplete suggestion"},
-				{display: "ctrl+p previous autocomplete suggestion"},
-				{display: "ctrl+x switch focus", actionKey: "ctrl+x"},
-				{display: "ctrl+z zoom / unzoom", actionKey: "ctrl+z"},
-				{display: "ctrl+1 focus results pane", actionKey: "ctrl+1"},
-				{display: "ctrl+2 focus command pane", actionKey: "ctrl+2"},
-				{display: "ctrl+3 command-only layout", actionKey: "ctrl+3"},
+				{keyText: "enter", desc: "submit SQL or slash command", actionKey: "enter"},
+				{keyText: "ctrl+r", desc: "open history search", actionKey: "ctrl+r"},
+				{keyText: "ctrl+e", desc: "open command in $EDITOR", actionKey: "ctrl+e"},
+				{keyText: "ctrl+u", desc: "scroll up"},
+				{keyText: "ctrl+d", desc: "scroll down"},
+				{keyText: "ctrl+n", desc: "next autocomplete suggestion"},
+				{keyText: "ctrl+p", desc: "previous autocomplete suggestion"},
+				{keyText: "ctrl+x", desc: "switch focus", actionKey: "ctrl+x"},
+				{keyText: "ctrl+z", desc: "zoom / unzoom", actionKey: "ctrl+z"},
+				{keyText: "ctrl+1", desc: "focus results pane", actionKey: "ctrl+1"},
+				{keyText: "ctrl+2", desc: "focus command pane", actionKey: "ctrl+2"},
+				{keyText: "ctrl+3", desc: "command-only layout", actionKey: "ctrl+3"},
 			}
 			for _, spec := range slashCommandSpecs() {
 				s := spec
 				contextRows = append(contextRows, helpRow{
-					display:     fmt.Sprintf("%s - %s", "/"+s.Name, s.Summary),
+					keyText:     "/" + s.Name,
+					desc:        s.Summary,
 					actionKey:   "/" + s.Name,
 					needsWizard: s.NeedsTarget,
 				})

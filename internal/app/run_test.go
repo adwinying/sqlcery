@@ -2506,7 +2506,7 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 	rows := buildHelpRows(PaneCommand, ModalNone)
 	displays := make([]string, len(rows))
 	for i, r := range rows {
-		displays[i] = r.display
+		displays[i] = r.keyText + " " + r.desc
 	}
 	combined := strings.Join(displays, "\n")
 	for _, want := range []string{
@@ -2514,8 +2514,8 @@ func TestModelToggleHelpShowsContextualHelpSurfaceInCommandMode(t *testing.T) {
 		"ctrl+c quit",
 		"enter submit SQL or slash command",
 		"ctrl+r open history search",
-		"/select - compose a SELECT statement",
-		"/tables - list tables in the current database",
+		"/select compose a SELECT statement",
+		"/tables list tables in the current database",
 	} {
 		if !strings.Contains(combined, want) {
 			t.Fatalf("buildHelpRows(PaneCommand) missing %q\ngot:\n%s", want, combined)
@@ -2546,7 +2546,7 @@ func TestModelToggleHelpShowsSplitAndWizardSpecificGuidance(t *testing.T) {
 	rows := buildHelpRows(PaneResults, ModalSlashWizard)
 	displays := make([]string, len(rows))
 	for i, r := range rows {
-		displays[i] = r.display
+		displays[i] = r.keyText + " " + r.desc
 	}
 	combined := strings.Join(displays, "\n")
 	for _, want := range []string{
@@ -2598,7 +2598,7 @@ func TestModelToggleHelpShowsHistorySearchGuidance(t *testing.T) {
 	rows := buildHelpRows(hm.contextPane, hm.contextModal)
 	displays := make([]string, len(rows))
 	for i, r := range rows {
-		displays[i] = r.display
+		displays[i] = r.keyText + " " + r.desc
 	}
 	combined := strings.Join(displays, "\n")
 	for _, want := range []string{
