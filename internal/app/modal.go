@@ -119,9 +119,9 @@ type Modal interface {
 	// CounterText returns a "N of M" string embedded in the bottom-right of
 	// the suggestions box border. Return "" to suppress the counter.
 	CounterText(interaction InteractionState) string
-	// FooterHints returns hints for the status bar, ordered by priority
+	// StatusBarHints returns hints for the status bar, ordered by priority
 	// (most important first). The caller drops from the tail to fit the width.
-	FooterHints(interaction InteractionState) []string
+	StatusBarHints(interaction InteractionState) []string
 	// Name returns the AppModal tag, kept on InteractionState so sub-models
 	// can read which modal is on top of the stack.
 	Name() AppModal

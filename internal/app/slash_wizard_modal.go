@@ -63,7 +63,7 @@ func (s *slashWizardModal) CounterText(_ InteractionState) string {
 	}
 }
 
-func (s *slashWizardModal) FooterHints(_ InteractionState) []string {
+func (s *slashWizardModal) StatusBarHints(_ InteractionState) []string {
 	keys := defaultCommandModeKeys()
 	switch s.wizard.Step {
 	case SlashCommandWizardStepColumn:

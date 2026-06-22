@@ -322,7 +322,7 @@ func (m commandModeModel) View(interaction InteractionState) string {
 	return m.widget.View(m.buildViewContext(interaction))
 }
 
-func (m commandModeModel) FooterHints(interaction InteractionState) []string {
+func (m commandModeModel) StatusBarHints(interaction InteractionState) []string {
 	autocompleteActive := len(m.cachedSuggestions) > 0 || len(m.computeSuggestions(interaction.AutocompleteSchema, interaction.LatestResult)) > 0
 	var parts []string
 	if autocompleteActive {
@@ -336,48 +336,6 @@ func (m commandModeModel) FooterHints(interaction InteractionState) []string {
 	}
 	parts = append(parts, bindingSummary(m.keys.History), bindingSummary(m.keys.OpenEditor), bindingSummary(m.keys.Help))
 	return parts
-}
-
-func (m commandModeModel) Footer(connectionName, dialect string, interaction InteractionState) string {
-	modeLabel := "Command mode"
-	if interaction.ActiveModal == ModalHistorySearch {
-		modeLabel = "History search"
-	} else if interaction.ActivePane == PaneResults && interaction.Layout == LayoutSplit {
-		modeLabel = "Command line hidden focus"
-	}
-	parts := []string{modeLabel, fmt.Sprintf("layout %s", layoutLabel(interaction.Layout))}
-
-	if label := strings.TrimSpace(connectionName); label != "" {
-		parts = append(parts, fmt.Sprintf("connection %s", label))
-	}
-	if label := strings.TrimSpace(dialect); label != "" {
-		parts = append(parts, label)
-	}
-	if selectedCount := len(interaction.MarkedRows); selectedCount > 0 {
-		parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
-	}
-
-	parts = append(parts, fmt.Sprintf("line %d col %d", m.editor.Line()+1, m.editor.LineInfo().ColumnOffset+1))
-	parts = append(parts, bindingSummary(m.keys.Submit), bindingSummary(m.keys.Cancel), bindingSummary(m.keys.History), bindingSummary(m.keys.OpenEditor), bindingSummary(m.keys.SwitchMode), bindingSummary(m.keys.LayoutCommandOnly), bindingSummary(m.keys.Help))
-	if interaction.ActivePane == PaneResults {
-		parts = append(parts, "ctrl+u scroll up", "ctrl+d scroll down")
-	}
-	if interaction.ActiveModal == ModalHistorySearch {
-		parts = append(parts, bindingSummary(m.keys.RestoreHistory), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
-	}
-	if interaction.ActiveModal == ModalSlashWizard {
-		parts = append(parts, "wizard /commands")
-	}
-	if running := formatRunningIndicator(interaction.Running); running != "" {
-		parts = append(parts, running)
-		parts = append(parts, "esc cancel query")
-	}
-	if len(m.cachedSuggestions) > 0 || len(m.computeSuggestions(interaction.AutocompleteSchema, interaction.LatestResult)) > 0 {
-		parts = append(parts, bindingSummary(m.keys.AcceptSuggestion), bindingSummary(m.keys.NextSuggestion), bindingSummary(m.keys.PrevSuggestion))
-	}
-	parts = append(parts, "ctrl+c quit")
-
-	return tui.AppTheme.Footer.Render(strings.Join(parts, " | "))
 }
 
 func (m *commandModeModel) AppendReplEntry(prompt, sql, output string) {

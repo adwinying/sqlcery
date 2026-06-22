@@ -143,7 +143,7 @@ func helpRowLine(keyText, desc string, colWidth int) string {
 	return strings.Repeat(" ", pad) + keyText + "  " + desc
 }
 
-func (h *helpModal) FooterHints(_ InteractionState) []string {
+func (h *helpModal) StatusBarHints(_ InteractionState) []string {
 	keys := defaultCommandModeKeys()
 	rows := h.filteredRows()
 	escHint := "esc close"

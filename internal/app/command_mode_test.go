@@ -419,10 +419,10 @@ func TestCommandModeViewRendersSlashWizard(t *testing.T) {
 			t.Fatalf("slashWizardModal.Render() = %q, want to contain %q", modal, want)
 		}
 	}
-	hintsStr := strings.Join(m.FooterHints(InteractionState{}), " | ")
+	hintsStr := strings.Join(m.StatusBarHints(InteractionState{}), " | ")
 	for _, want := range []string{"enter confirm", "ctrl+n next", "ctrl+p prev", "esc close", "ctrl+t keybindings"} {
 		if !strings.Contains(hintsStr, want) {
-			t.Fatalf("slashWizardModal.FooterHints() = %q, want to contain %q", hintsStr, want)
+			t.Fatalf("slashWizardModal.StatusBarHints() = %q, want to contain %q", hintsStr, want)
 		}
 	}
 }
@@ -440,10 +440,10 @@ func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 			t.Fatalf("historySearchModal.Render() = %q, want to contain %q", modal, want)
 		}
 	}
-	hintsStr := strings.Join(h.FooterHints(interaction), " | ")
+	hintsStr := strings.Join(h.StatusBarHints(interaction), " | ")
 	for _, want := range []string{"enter restore", "ctrl+p up", "ctrl+n down", "esc", "ctrl+t keybindings"} {
 		if !strings.Contains(hintsStr, want) {
-			t.Fatalf("historySearchModal.FooterHints() = %q, want to contain %q", hintsStr, want)
+			t.Fatalf("historySearchModal.StatusBarHints() = %q, want to contain %q", hintsStr, want)
 		}
 	}
 }
@@ -497,52 +497,6 @@ func TestCommandModeViewShowsWarningForDestructiveGeneratedCommands(t *testing.T
 	warning := renderGeneratedStatementWarning(sql)
 	if !strings.Contains(warning, "Warning: generated DELETE statement. Review carefully before submitting.") {
 		t.Fatalf("renderGeneratedStatementWarning() = %q, want destructive warning", warning)
-	}
-}
-
-func TestCommandModeFooterShowsRunningIndicator(t *testing.T) {
-	mode := newCommandModeModel()
-	mode.SetSize(80, 20)
-	footer := mode.Footer("local", "sqlite", InteractionState{
-		Layout:  LayoutCommandOnly,
-		Running: &RunningStatementContext{Label: "SQL", Elapsed: 1500 * time.Millisecond},
-	})
-
-	for _, want := range []string{"Command mode", "layout command only", "connection local", "sqlite", "ctrl+t keybindings", "ctrl+3 command", "- SQL 1.5s", "esc cancel query"} {
-		if !strings.Contains(footer, want) {
-			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
-		}
-	}
-}
-
-func TestCommandModeFooterShowsResultsPanePagingWhenResultsPaneFocusedInSplit(t *testing.T) {
-	mode := newCommandModeModel()
-	mode.SetSize(80, 20)
-	footer := mode.Footer("local", "sqlite", InteractionState{
-		Layout:     LayoutSplit,
-		ActivePane: PaneResults,
-	})
-
-	for _, want := range []string{"Command line hidden focus", "layout split", "ctrl+t keybindings", "ctrl+u scroll up", "ctrl+d scroll down"} {
-		if !strings.Contains(footer, want) {
-			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
-		}
-	}
-}
-
-func TestCommandModeFooterShowsSelectionCountFromResultsPaneResult(t *testing.T) {
-	mode := newCommandModeModel()
-	mode.SetSize(80, 20)
-	footer := mode.Footer("local", "sqlite", InteractionState{
-		Layout:     LayoutSplit,
-		ActivePane: PaneCommand,
-		MarkedRows: []int{0, 2},
-	})
-
-	for _, want := range []string{"Command mode", "connection local", "sqlite", "2 selected"} {
-		if !strings.Contains(footer, want) {
-			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
-		}
 	}
 }
 

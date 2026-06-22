@@ -7,7 +7,7 @@ var AppTheme = newTUITheme()
 type tuiTheme struct {
 	AppTitle                 lipgloss.Style
 	MetaLine                 lipgloss.Style
-	Footer                   lipgloss.Style
+	StatusBar                lipgloss.Style
 	PaneBorderActive         lipgloss.Style
 	PaneBorderInactive       lipgloss.Style
 	ModalBorder              lipgloss.Style
@@ -63,13 +63,13 @@ func newTUITheme() tuiTheme {
 	muted := lipgloss.AdaptiveColor{Light: "240", Dark: "246"}
 	mutedSoft := lipgloss.AdaptiveColor{Light: "245", Dark: "243"}
 	panelForeground := lipgloss.AdaptiveColor{Light: "237", Dark: "252"}
-	footerForeground := lipgloss.AdaptiveColor{Light: "238", Dark: "252"}
+	statusBarForeground := lipgloss.AdaptiveColor{Light: "238", Dark: "252"}
 	selectedForeground := lipgloss.AdaptiveColor{Light: "17", Dark: "231"}
 	selectedBackground := lipgloss.AdaptiveColor{Light: "153", Dark: "24"}
 	return tuiTheme{
 		AppTitle:                 lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
 		MetaLine:                 lipgloss.NewStyle().Foreground(panelForeground),
-		Footer:                   lipgloss.NewStyle().Foreground(footerForeground),
+		StatusBar:                lipgloss.NewStyle().Foreground(statusBarForeground),
 		PaneBorderActive:         lipgloss.NewStyle().Foreground(accent),
 		PaneBorderInactive:       lipgloss.NewStyle().Foreground(mutedSoft),
 		ModalBorder:              lipgloss.NewStyle().Foreground(accent),

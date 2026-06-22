@@ -71,7 +71,7 @@ func (e *exportWizardModal) CounterText(_ InteractionState) string {
 	return fmt.Sprintf("%d of %d", selected+1, len(filtered))
 }
 
-func (e *exportWizardModal) FooterHints(_ InteractionState) []string {
+func (e *exportWizardModal) StatusBarHints(_ InteractionState) []string {
 	keys := defaultCommandModeKeys()
 	if e.step == exportWizardStepPath {
 		return []string{"enter export", "esc back", "backspace delete", bindingSummary(keys.Help)}

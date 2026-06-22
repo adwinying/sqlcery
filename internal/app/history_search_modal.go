@@ -38,7 +38,7 @@ func (h *historySearchModal) CounterText(interaction InteractionState) string {
 	return fmt.Sprintf("%d of %d", selected+1, len(matches))
 }
 
-func (h *historySearchModal) FooterHints(interaction InteractionState) []string {
+func (h *historySearchModal) StatusBarHints(interaction InteractionState) []string {
 	keys := defaultCommandModeKeys()
 	matches := filterHistorySearchEntries(interaction.History, h.filter)
 	escHint := "esc close"

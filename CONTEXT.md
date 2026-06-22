@@ -40,7 +40,7 @@ The bottom pane of the TUI. Where the user types and edits SQL Statements or Sla
 Which pane — Results Pane or Command Pane — currently has keyboard focus. Determines which keybindings apply.
 
 ### Status Bar
-The single-line strip at the very bottom of the TUI. Combines three elements: an optional Notification on the left, keybind hints in the middle, and the Connection name right-aligned. The hints section changes based on which pane or modal is focused. The Notification section is ephemeral — it auto-clears after 3 seconds of inactivity (timer resets on every new message). Previously split into two separate lines: the Hints Bar (hints + connection name) above the Status Line (transient feedback text).
+The single-line strip at the very bottom of the TUI. Combines three elements: an optional Notification on the left, keybind hints in the middle, and the Connection name right-aligned. The hints section changes based on which pane or modal is focused. The Notification section is ephemeral — it auto-clears after 3 seconds of inactivity (timer resets on every new message).
 
 ### Notification
 A transient message displayed in the left section of the Status Bar. Carries a severity level: Success (green), Info (yellow), or Error (red). All notifications auto-clear after 3 seconds; the timer resets whenever a new notification arrives. The running indicator occupies the Notification slot during statement execution but has no severity colour. Absent when no recent action has produced feedback.

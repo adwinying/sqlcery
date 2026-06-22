@@ -144,22 +144,6 @@ func TestResultsPaneModeViewClipsRowsToVisibleViewport(t *testing.T) {
 	}
 }
 
-func TestResultsPaneModeFooterIncludesModeDetails(t *testing.T) {
-	mode := newResultsPaneModeModel()
-	footer := mode.Footer("local", "sqlite", InteractionState{
-		Layout:       LayoutResultsOnly,
-		MarkedRows:   []int{0},
-		LatestResult: &LatestResultContext{PreservedResult: &db.ResultSet{Rows: []db.ResultRow{{}, {}}}},
-		Running:      &RunningStatementContext{Label: "/tables", Elapsed: 2*time.Second + 300*time.Millisecond},
-	})
-
-	for _, want := range []string{"Results Pane", "layout results pane only", "connection local", "sqlite", "2 rows", "page 1/1", "1 selected", "- /tables 2.3s", "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+e export", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit", "ctrl+t keybindings"} {
-		if !strings.Contains(footer, want) {
-			t.Fatalf("Footer() = %q, want to contain %q", footer, want)
-		}
-	}
-}
-
 func TestComposeResultsPaneInsertSQLUsesVisibleColumns(t *testing.T) {
 	result, err := composeResultsPaneInsertSQL(db.PostgresDialect(), &LatestResultContext{
 		Statement: "select id, name, active from public.users order by id;",

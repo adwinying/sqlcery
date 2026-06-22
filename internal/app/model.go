@@ -749,11 +749,11 @@ func (m Model) statusBarView() string {
 	var hintParts []string
 	if m.state.App.Current == StateReady {
 		if modal := m.currentModal(); modal != nil {
-			hintParts = modal.FooterHints(interaction)
+			hintParts = modal.StatusBarHints(interaction)
 		} else if interaction.ActivePane == PaneResults && interaction.Layout != LayoutCommandOnly {
-			hintParts = m.resultsPane.FooterHints(interaction)
+			hintParts = m.resultsPane.StatusBarHints(interaction)
 		} else {
-			hintParts = m.command.FooterHints(interaction)
+			hintParts = m.command.StatusBarHints(interaction)
 		}
 	} else {
 		hintParts = []string{"ctrl+c quit"}
@@ -810,7 +810,7 @@ func (m Model) statusBarView() string {
 		bar = padOrTruncate(bar, m.width)
 	}
 
-	return tui.AppTheme.Footer.Render(bar)
+	return tui.AppTheme.StatusBar.Render(bar)
 }
 
 func padOrTruncate(s string, width int) string {

@@ -1,7 +1,6 @@
 package app
 
 import (
-	"fmt"
 	"math/rand"
 	"strings"
 
@@ -157,32 +156,10 @@ func (m *resultsPaneModeModel) View(ctx tui.ResultsPaneViewContext) string {
 	return body
 }
 
-func (m resultsPaneModeModel) FooterHints(interaction InteractionState) []string {
+func (m resultsPaneModeModel) StatusBarHints(interaction InteractionState) []string {
 	parts := []string{"arrows/hjkl navigate", "space toggle row", "ctrl+c quit"}
 	parts = append(parts, "ctrl+e export", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+t keybindings")
 	return parts
-}
-
-func (m resultsPaneModeModel) Footer(connectionName, dialect string, interaction InteractionState) string {
-	parts := []string{"Results Pane", fmt.Sprintf("layout %s", layoutLabel(interaction.Layout))}
-	if label := strings.TrimSpace(connectionName); label != "" {
-		parts = append(parts, fmt.Sprintf("connection %s", label))
-	}
-	if label := strings.TrimSpace(dialect); label != "" {
-		parts = append(parts, label)
-	}
-	if latest := interaction.LatestResult; latest != nil && latest.PreservedResult != nil {
-		page := tui.ResultsPanePageContextFor(interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
-		parts = append(parts, fmt.Sprintf("%d rows", page.TotalRows), fmt.Sprintf("page %d/%d", page.Number, page.TotalPages))
-		if selectedCount := len(interaction.MarkedRows); selectedCount > 0 {
-			parts = append(parts, fmt.Sprintf("%d selected", selectedCount))
-		}
-	}
-	if running := formatRunningIndicator(interaction.Running); running != "" {
-		parts = append(parts, running)
-	}
-	parts = append(parts, "arrows/hjkl navigate", "space toggle row", "yy compose insert", "cc compose update", "dd compose delete", "ctrl+e export", "ctrl+u scroll up", "ctrl+d scroll down", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+c quit", "ctrl+t keybindings")
-	return tui.AppTheme.Footer.Render(strings.Join(parts, " | "))
 }
 
 func (m *resultsPaneModeModel) syncSelection(interaction InteractionState) {
