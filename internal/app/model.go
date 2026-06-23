@@ -156,11 +156,6 @@ type editorFinishedMsg struct {
 	err  error
 }
 
-type runningTickMsg struct {
-	StartedAt time.Time
-	Now       time.Time
-}
-
 const defaultInteractiveExecutionTimeout = 30 * time.Second
 
 func NewModel(session Session) Model {
@@ -319,12 +314,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncCurrentSQL()
 		return m, nil
 	case appErrorMsg:
-		m.clearExecution()
 		message := ""
 		if msg.Err != nil {
 			message = FormatTerminalError(msg.Err)
 		}
-		m.state.SetRunningStatementContext(nil)
+		m.state.SetRunningStatementContext(m.exec.complete())
 		m.state.SetError(message, msg.Status)
 		return m, nil
 	case notificationClearMsg:
@@ -333,17 +327,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case runningTickMsg:
-		running := m.state.Interaction.Running
-		if running == nil || !running.StartedAt.Equal(msg.StartedAt) {
-			return m, nil
-		}
-		updated := *running
-		if msg.Now.After(updated.StartedAt) {
-			updated.Elapsed = msg.Now.Sub(updated.StartedAt)
-		}
-		updated.SpinnerFrame = (updated.SpinnerFrame + 1) % len(runningSpinnerFrames)
-		m.state.SetRunningStatementContext(&updated)
-		return m, runningTickCmd(updated.StartedAt)
+		updated, cmd := m.exec.tick(m.state.Interaction.Running, msg)
+		m.state.SetRunningStatementContext(updated)
+		return m, cmd
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -497,9 +483,8 @@ func (m Model) handleCancelRunningIntent() (tea.Model, tea.Cmd) {
 
 func (m Model) handleStatementExecuted(msg statementExecutedMsg) (tea.Model, tea.Cmd) {
 	running := m.state.Interaction.Running
-	m.clearExecution()
+	m.state.SetRunningStatementContext(m.exec.complete())
 	historyErr := m.appendHistory(msg.Statement, msg.ResultSummary)
-	m.state.SetRunningStatementContext(nil)
 	m.state.Interaction.PendingIntent = IntentNone
 	m.state.Interaction.LastAction = "submit"
 	m.state.SetPendingPaneSwitch(nil)
@@ -524,14 +509,13 @@ func (m Model) handleStatementExecuted(msg statementExecutedMsg) (tea.Model, tea
 
 func (m Model) handleSlashCommandExecuted(msg slashCommandExecutedMsg) (tea.Model, tea.Cmd) {
 	running := m.state.Interaction.Running
-	m.clearExecution()
+	m.state.SetRunningStatementContext(m.exec.complete())
 	shouldRecordSlashCommand := msg.Err != nil || !msg.Result.ShouldReplace
 	var historyErr error
 	if shouldRecordSlashCommand {
 		historyErr = m.appendHistory(msg.Command.RawInput, msg.ResultSummary)
 		m.state.SetLastSubmittedSQL(msg.Command.RawInput)
 	}
-	m.state.SetRunningStatementContext(nil)
 	m.state.Interaction.PendingIntent = IntentNone
 	m.state.Interaction.LastAction = "slash:" + msg.Command.DisplayName
 	m.state.SetPendingPaneSwitch(nil)
@@ -1270,15 +1254,11 @@ func (m *Model) startExecution(label, status string, level NotificationLevel, ex
 	if execute == nil {
 		return nil
 	}
-	startedAt, execCmd := m.exec.start(execute)
-	m.state.SetRunningStatementContext(newRunningStatementContext(label, startedAt))
+	running, execCmd := m.exec.begin(label, execute)
+	m.state.SetRunningStatementContext(running)
 	m.state.SetReady("", NotificationNone)
 	m.state.SetPendingIntent(IntentSubmit, "submit", executionStatus(status, defaultInteractiveExecutionTimeout), level)
 	return tea.Batch(execCmd, m.notificationClearCmdIfSet())
-}
-
-func (m *Model) clearExecution() {
-	m.exec.cancel()
 }
 
 func loadAutocompleteSchema(ctx context.Context, adapter *db.SQLAdapter) (*AutocompleteSchemaContext, error) {
@@ -1532,16 +1512,6 @@ func executionInterruptedStatus(running *RunningStatementContext, err error) (st
 	default:
 		return "", false
 	}
-}
-
-func runningTickCmd(startedAt time.Time) tea.Cmd {
-	if startedAt.IsZero() {
-		return nil
-	}
-
-	return tea.Tick(100*time.Millisecond, func(now time.Time) tea.Msg {
-		return runningTickMsg{StartedAt: startedAt, Now: now}
-	})
 }
 
 func summarizeStatementResult(result *db.StatementResult, err error) string {

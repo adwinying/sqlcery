@@ -8,17 +8,6 @@ import (
 
 var runningSpinnerFrames = []string{"-", `\`, "|", "/"}
 
-func newRunningStatementContext(label string, startedAt time.Time) *RunningStatementContext {
-	if startedAt.IsZero() {
-		startedAt = time.Now()
-	}
-
-	return &RunningStatementContext{
-		Label:     strings.TrimSpace(label),
-		StartedAt: startedAt,
-	}
-}
-
 func formatRunningIndicator(running *RunningStatementContext) string {
 	if running == nil {
 		return ""
