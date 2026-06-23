@@ -1,14 +1,10 @@
 package export
 
 import (
-	"bytes"
-	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/adwinying/sqlcery/internal/db"
 )
@@ -160,21 +156,11 @@ func Marshal(result *db.ResultSet, rowIndices []int, format Format, dialect db.D
 		return nil, 0, err
 	}
 
-	var data []byte
-	switch format {
-	case FormatCSV:
-		data, err = marshalDelimited(result, rows, ',')
-	case FormatTSV:
-		data, err = marshalDelimited(result, rows, '\t')
-	case FormatJSON:
-		data, err = marshalJSON(result, rows)
-	case FormatMarkdown:
-		data, err = marshalMarkdown(result, rows)
-	case FormatSQL:
-		data, err = marshalSQL(result, rows, dialect)
-	default:
-		err = fmt.Errorf("unsupported export format %q", format)
+	writer, err := writerFor(format, dialect)
+	if err != nil {
+		return nil, 0, err
 	}
+	data, err := writer.Write(result, rows)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -195,197 +181,4 @@ func rowsForIndices(result *db.ResultSet, rowIndices []int) ([]db.ResultRow, err
 		rows = append(rows, result.Rows[index])
 	}
 	return rows, nil
-}
-
-func marshalDelimited(result *db.ResultSet, rows []db.ResultRow, delimiter rune) ([]byte, error) {
-	var buffer bytes.Buffer
-	writer := csv.NewWriter(&buffer)
-	writer.Comma = delimiter
-
-	record := make([]string, len(result.Columns))
-	for i := range result.Columns {
-		record[i] = columnName(result.Columns, i)
-	}
-	if err := writer.Write(record); err != nil {
-		return nil, fmt.Errorf("write header row: %w", err)
-	}
-
-	for _, row := range rows {
-		record = make([]string, len(result.Columns))
-		for i := range result.Columns {
-			record[i] = formatTextValue(rowValue(row, i))
-		}
-		if err := writer.Write(record); err != nil {
-			return nil, fmt.Errorf("write result row: %w", err)
-		}
-	}
-
-	writer.Flush()
-	if err := writer.Error(); err != nil {
-		return nil, fmt.Errorf("flush export rows: %w", err)
-	}
-
-	return buffer.Bytes(), nil
-}
-
-func marshalJSON(result *db.ResultSet, rows []db.ResultRow) ([]byte, error) {
-	var buffer bytes.Buffer
-	buffer.WriteString("[\n")
-	for rowIndex, row := range rows {
-		buffer.WriteString("  {")
-		for columnIndex := range result.Columns {
-			if columnIndex > 0 {
-				buffer.WriteString(",")
-			}
-			buffer.WriteString("\n    ")
-
-			name, err := json.Marshal(columnName(result.Columns, columnIndex))
-			if err != nil {
-				return nil, fmt.Errorf("marshal json field name: %w", err)
-			}
-			value, err := json.Marshal(jsonValue(rowValue(row, columnIndex)))
-			if err != nil {
-				return nil, fmt.Errorf("marshal json field value: %w", err)
-			}
-			buffer.Write(name)
-			buffer.WriteString(": ")
-			buffer.Write(value)
-		}
-		if len(result.Columns) > 0 {
-			buffer.WriteString("\n  }")
-		} else {
-			buffer.WriteString("}")
-		}
-		if rowIndex < len(rows)-1 {
-			buffer.WriteString(",")
-		}
-		buffer.WriteString("\n")
-	}
-	buffer.WriteString("]\n")
-	return buffer.Bytes(), nil
-}
-
-func marshalMarkdown(result *db.ResultSet, rows []db.ResultRow) ([]byte, error) {
-	var lines []string
-	header := make([]string, len(result.Columns))
-	separator := make([]string, len(result.Columns))
-	for i := range result.Columns {
-		header[i] = escapeMarkdownCell(columnName(result.Columns, i))
-		separator[i] = "---"
-	}
-	lines = append(lines,
-		"| "+strings.Join(header, " | ")+" |",
-		"| "+strings.Join(separator, " | ")+" |",
-	)
-
-	for _, row := range rows {
-		values := make([]string, len(result.Columns))
-		for i := range result.Columns {
-			values[i] = escapeMarkdownCell(formatTextValue(rowValue(row, i)))
-		}
-		lines = append(lines, "| "+strings.Join(values, " | ")+" |")
-	}
-
-	return []byte(strings.Join(lines, "\n") + "\n"), nil
-}
-
-func columnName(columns []db.ResultColumn, index int) string {
-	if index >= 0 && index < len(columns) {
-		name := strings.TrimSpace(columns[index].Name)
-		if name != "" {
-			return name
-		}
-	}
-	return fmt.Sprintf("column_%d", index+1)
-}
-
-func rowValue(row db.ResultRow, index int) db.ResultValue {
-	if index >= 0 && index < len(row.Values) {
-		return row.Values[index]
-	}
-	return db.ResultValue{Kind: db.ValueKindNull}
-}
-
-func formatTextValue(value db.ResultValue) string {
-	switch value.Kind {
-	case db.ValueKindNull:
-		return "NULL"
-	case db.ValueKindBool:
-		if typed, ok := value.Value.(bool); ok {
-			if typed {
-				return "true"
-			}
-			return "false"
-		}
-	case db.ValueKindInteger, db.ValueKindFloat, db.ValueKindDecimal, db.ValueKindString:
-		return fmt.Sprint(value.Value)
-	case db.ValueKindBytes:
-		if typed, ok := value.Value.([]byte); ok {
-			return fmt.Sprintf("0x%x", typed)
-		}
-	case db.ValueKindTime:
-		if typed, ok := value.Value.(time.Time); ok {
-			return typed.Format("2006-01-02 15:04:05")
-		}
-	}
-
-	if value.Value == nil {
-		return "NULL"
-	}
-	return fmt.Sprint(value.Value)
-}
-
-func jsonValue(value db.ResultValue) any {
-	switch value.Kind {
-	case db.ValueKindNull:
-		return nil
-	case db.ValueKindBytes:
-		if typed, ok := value.Value.([]byte); ok {
-			return fmt.Sprintf("0x%x", typed)
-		}
-	case db.ValueKindUnknown:
-		if value.Value != nil {
-			return fmt.Sprint(value.Value)
-		}
-		return nil
-	}
-	return value.Value
-}
-
-// marshalSQL renders one INSERT statement per row via the shared SQL Composer,
-// so byte literals, timestamps, and identifier quoting match the Statement
-// Expander exactly. The target table is a "table_name" placeholder for the
-// user to replace — an export has no single source table.
-func marshalSQL(result *db.ResultSet, rows []db.ResultRow, dialect db.Dialect) ([]byte, error) {
-	columns := make([]string, len(result.Columns))
-	for i := range result.Columns {
-		columns[i] = columnName(result.Columns, i)
-	}
-
-	composer := db.NewComposer(dialect)
-	table := db.TableRef{Name: "table_name"}
-
-	var buf strings.Builder
-	for _, row := range rows {
-		values := make([]db.ResultValue, len(result.Columns))
-		for i := range result.Columns {
-			values[i] = rowValue(row, i)
-		}
-		buf.WriteString(composer.Insert(db.InsertSpec{
-			Table:   table,
-			Columns: columns,
-			Rows:    [][]db.ResultValue{values},
-		}))
-		buf.WriteString("\n")
-	}
-	return []byte(buf.String()), nil
-}
-
-func escapeMarkdownCell(value string) string {
-	value = strings.ReplaceAll(value, "\\", "\\\\")
-	value = strings.ReplaceAll(value, "|", "\\|")
-	value = strings.ReplaceAll(value, "\r\n", "<br>")
-	value = strings.ReplaceAll(value, "\n", "<br>")
-	value = strings.ReplaceAll(value, "\r", "<br>")
-	return value
 }
