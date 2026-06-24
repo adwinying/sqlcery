@@ -612,6 +612,7 @@ func (m Model) View() tea.View {
 	}
 
 	v := tea.NewView(content + "\n" + statusBar)
+	v.AltScreen = true
 	v.KeyboardEnhancements.ReportAllKeysAsEscapeCodes = true
 	v.ReportFocus = true
 	if m.session.MouseDisabled {
