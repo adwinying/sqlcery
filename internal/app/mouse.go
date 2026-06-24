@@ -136,7 +136,7 @@ func (m Model) handleMouseClickResults(msg tea.MouseClickMsg) (tea.Model, tea.Cm
 			Column: m.resultsPane.selectedColumn,
 			Active: m.resultsPane.selectionActive,
 		}
-		if row, ok := tui.ResultsPaneRowAtVisibleOffset(prepared, m.resultsPane.height, active, visibleOffset); ok {
+		if row, ok := tui.ResultsPaneRowAtVisibleOffset(prepared, m.resultsPane.height, active, m.resultsPane.viewportStart, visibleOffset); ok {
 			clickedRow = row
 			m.resultsPane.selectedRow = row
 			m.resultsPane.selectionActive = true
@@ -225,10 +225,12 @@ func (m Model) handleMouseWheelResults(msg tea.MouseWheelMsg) (tea.Model, tea.Cm
 		m.resultsPane.selectedRow = max(page.StartRow-1, m.resultsPane.selectedRow-mouseWheelRowStep)
 		m.resultsPane.selectionActive = true
 		m.resultsPane.syncSelection(m.state.Interaction)
+		m.resultsPane.applyScrollOff(page)
 	case tea.MouseWheelDown:
 		m.resultsPane.selectedRow = min(page.EndRow-1, m.resultsPane.selectedRow+mouseWheelRowStep)
 		m.resultsPane.selectionActive = true
 		m.resultsPane.syncSelection(m.state.Interaction)
+		m.resultsPane.applyScrollOff(page)
 	case tea.MouseWheelLeft:
 		if len(result.Columns) > 0 {
 			m.resultsPane.colScrollOffset = max(0, m.resultsPane.colScrollOffset-1)

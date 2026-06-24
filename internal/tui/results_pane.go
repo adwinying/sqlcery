@@ -12,6 +12,7 @@ import (
 )
 
 const ResultsPanePageSize = 300
+const ResultsPaneScrollOff = 5
 
 // ResultsPaneViewContext is the complete set of inputs the Results Pane
 // rendering functions need; internal/app constructs it from InteractionState.
@@ -27,6 +28,7 @@ type ResultsPaneViewContext struct {
 	SelectedColumn  int
 	SelectionActive bool
 	ColScrollOffset int
+	ViewportStart   int
 }
 
 type ResultsPaneColumn struct {
@@ -53,6 +55,7 @@ type ResultsPaneRenderState struct {
 	Active          ResultsPaneSelection
 	SelectedRows    map[int]struct{}
 	ColScrollOffset int
+	ViewportStart   int
 }
 
 type ResultsPanePreparedPageKey struct {
@@ -134,7 +137,7 @@ func RenderPreparedResultsPanePage(prepared *ResultsPanePreparedPage, width, hei
 		return resultsPaneTrimWidth(strings.Join(lines, "\n"), width)
 	}
 
-	start, end := resultsPaneVisibleRowWindow(prepared.Context, len(prepared.Rows), height, state.Active)
+	start, end := resultsPaneVisibleRowWindow(prepared.Context, len(prepared.Rows), height, state.Active, state.ViewportStart)
 	for rowIndex := start; rowIndex < end; rowIndex++ {
 		absoluteRowIndex := prepared.Context.StartRow - 1 + rowIndex
 		values := append([]string(nil), prepared.Rows[rowIndex][colOffset:]...)
@@ -283,7 +286,7 @@ func resultsPaneTruncateNewlines(s string) string {
 
 const resultsPaneViewportClipThreshold = 20
 
-func resultsPaneVisibleRowWindow(context ResultsPanePageContext, totalRows, height int, active ResultsPaneSelection) (int, int) {
+func resultsPaneVisibleRowWindow(context ResultsPanePageContext, totalRows, height int, active ResultsPaneSelection, viewportStart int) (int, int) {
 	if totalRows <= 0 {
 		return 0, 0
 	}
@@ -302,9 +305,8 @@ func resultsPaneVisibleRowWindow(context ResultsPanePageContext, totalRows, heig
 	}
 
 	start := 0
-	if active.Active && context.TotalRows > 0 && active.Row >= context.StartRow-1 && active.Row < context.EndRow {
-		pageRow := active.Row - (context.StartRow - 1)
-		start = pageRow - visibleRows/2
+	if active.Active {
+		start = viewportStart
 	}
 	start = max(0, min(start, totalRows-visibleRows))
 	return start, start + visibleRows
@@ -372,11 +374,11 @@ func resultsPaneTrimWidth(value string, width int) string {
 // window (offset 0 = first rendered data row) to an absolute Result Set row
 // index, reusing resultsPaneVisibleRowWindow. ok is false if prepared is nil,
 // has no rows, or offset is outside [0, end-start).
-func ResultsPaneRowAtVisibleOffset(prepared *ResultsPanePreparedPage, height int, active ResultsPaneSelection, offset int) (int, bool) {
+func ResultsPaneRowAtVisibleOffset(prepared *ResultsPanePreparedPage, height int, active ResultsPaneSelection, viewportStart int, offset int) (int, bool) {
 	if prepared == nil || len(prepared.Rows) == 0 {
 		return 0, false
 	}
-	start, end := resultsPaneVisibleRowWindow(prepared.Context, len(prepared.Rows), height, active)
+	start, end := resultsPaneVisibleRowWindow(prepared.Context, len(prepared.Rows), height, active, viewportStart)
 	if offset < 0 || offset >= end-start {
 		return 0, false
 	}

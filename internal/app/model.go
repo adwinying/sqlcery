@@ -918,8 +918,8 @@ func (m *Model) handleResultsPanePagingKey(msg tea.KeyPressMsg) bool {
 
 	if isScroll {
 		// ctrl+d scrolls down, ctrl+u scrolls up (vim-style half-page scroll)
-		// Scrolling must NOT change the current page; it only moves the selection
-		// within the bounds of the currently visible page.
+		// Both the viewport and the cursor move together by half a page.
+		// Scrolling must NOT change the current page.
 		result := latest.PreservedResult
 		if len(result.Rows) == 0 {
 			return true
@@ -928,13 +928,19 @@ func (m *Model) handleResultsPanePagingKey(msg tea.KeyPressMsg) bool {
 		page := tui.ResultsPanePageContextFor(m.state.Interaction.ResultsPanePage, len(result.Rows))
 		pageMinRow := page.StartRow - 1 // inclusive lower bound (0-indexed)
 		pageMaxRow := page.EndRow - 1   // inclusive upper bound (0-indexed)
+		pageRows := page.EndRow - (page.StartRow - 1)
+		visibleRows := max(1, min(m.resultsPane.height-2, pageRows))
 		scrollAmount := max(1, m.resultsPane.height/2)
 		if key == "ctrl+d" {
 			m.resultsPane.selectedRow = min(m.resultsPane.selectedRow+scrollAmount, pageMaxRow)
+			m.resultsPane.viewportStart += scrollAmount
 		} else {
 			m.resultsPane.selectedRow = max(m.resultsPane.selectedRow-scrollAmount, pageMinRow)
+			m.resultsPane.viewportStart -= scrollAmount
 		}
 		m.resultsPane.selectionActive = true
+		pageRow := m.resultsPane.selectedRow - pageMinRow
+		m.resultsPane.viewportStart = scrolloffViewport(pageRow, m.resultsPane.viewportStart, visibleRows, pageRows, tui.ResultsPaneScrollOff)
 		// Do not call SetResultsPanePage — the page must not change on scroll.
 		return true
 	}
@@ -1140,6 +1146,7 @@ func (m *Model) jumpResultsPaneTop() bool {
 	m.resultsPane.syncSelection(m.state.Interaction)
 	page := tui.ResultsPanePageContextFor(m.state.Interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
 	m.resultsPane.selectedRow = page.StartRow - 1
+	m.resultsPane.viewportStart = 0
 	m.resultsPane.selectionActive = true
 	return true
 }
@@ -1153,6 +1160,10 @@ func (m *Model) jumpResultsPaneBottom() bool {
 	page := tui.ResultsPanePageContextFor(m.state.Interaction.ResultsPanePage, len(latest.PreservedResult.Rows))
 	m.resultsPane.selectedRow = page.EndRow - 1
 	m.resultsPane.selectionActive = true
+	pageRows := page.EndRow - (page.StartRow - 1)
+	pageRow := pageRows - 1
+	visibleRows := max(1, min(m.resultsPane.height-2, pageRows))
+	m.resultsPane.viewportStart = scrolloffViewport(pageRow, m.resultsPane.viewportStart, visibleRows, pageRows, tui.ResultsPaneScrollOff)
 	return true
 }
 

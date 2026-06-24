@@ -45,6 +45,7 @@ var emptyStateHints = []string{
 	"ctrl+x switches focus between Results and Command Panes",
 	"Try /tables to list all tables in your database",
 	"Press ctrl+t to show a list of keybindings that can be used",
+	"Wondering what queries you ran? Check audit.log in your data directory",
 }
 
 type resultsPaneModeModel struct {
@@ -53,6 +54,7 @@ type resultsPaneModeModel struct {
 	selectedRow     int
 	selectedColumn  int
 	colScrollOffset int
+	viewportStart   int
 	selectionActive bool
 	pendingAction   resultsPanePendingAction
 	cachedPage      *tui.ResultsPanePreparedPage
@@ -136,6 +138,7 @@ func (m *resultsPaneModeModel) buildViewContext(interaction InteractionState) tu
 		SelectedColumn:  m.selectedColumn,
 		SelectionActive: m.selectionActive,
 		ColScrollOffset: m.colScrollOffset,
+		ViewportStart:   m.viewportStart,
 	}
 }
 
@@ -149,6 +152,7 @@ func (m *resultsPaneModeModel) View(ctx tui.ResultsPaneViewContext) string {
 		Active:          tui.ResultsPaneSelection{Row: ctx.SelectedRow, Column: ctx.SelectedColumn, Active: ctx.SelectionActive},
 		SelectedRows:    tui.ResultsPaneSelectedRowSet(ctx.MarkedRows),
 		ColScrollOffset: ctx.ColScrollOffset,
+		ViewportStart:   ctx.ViewportStart,
 	})
 	if body == "" {
 		body = tui.AppTheme.ResultsPaneEmpty.Render("(no visible rows)")
@@ -167,6 +171,7 @@ func (m *resultsPaneModeModel) syncSelection(interaction InteractionState) {
 	if latest == nil || latest.PreservedResult == nil {
 		m.selectedRow = 0
 		m.selectedColumn = 0
+		m.viewportStart = 0
 		m.selectionActive = false
 		return
 	}
@@ -176,6 +181,7 @@ func (m *resultsPaneModeModel) syncSelection(interaction InteractionState) {
 		m.selectedRow = 0
 		m.selectedColumn = 0
 		m.colScrollOffset = 0
+		m.viewportStart = 0
 		m.selectionActive = false
 		return
 	}
@@ -183,6 +189,7 @@ func (m *resultsPaneModeModel) syncSelection(interaction InteractionState) {
 	page := tui.ResultsPanePageContextFor(interaction.ResultsPanePage, len(result.Rows))
 	if m.selectedRow < page.StartRow-1 || m.selectedRow >= page.EndRow {
 		m.selectedRow = max(0, page.StartRow-1)
+		m.viewportStart = 0
 	}
 	if m.selectedRow >= len(result.Rows) {
 		m.selectedRow = len(result.Rows) - 1
@@ -228,6 +235,13 @@ func (m *resultsPaneModeModel) Navigate(msg tea.KeyPressMsg, interaction Interac
 
 	if deltaColumn != 0 {
 		m.colScrollOffset = m.selectedColumn
+	}
+
+	if deltaRow != 0 {
+		pageRows := page.EndRow - (page.StartRow - 1)
+		pageRow := m.selectedRow - (page.StartRow - 1)
+		visibleRows := max(1, min(m.height-2, pageRows))
+		m.viewportStart = scrolloffViewport(pageRow, m.viewportStart, visibleRows, pageRows, tui.ResultsPaneScrollOff)
 	}
 
 	return interaction.ResultsPanePage, true
@@ -327,4 +341,27 @@ func truncateNewlines(s string) string {
 		return s[:i] + "..."
 	}
 	return s
+}
+
+// applyScrollOff recomputes viewportStart for the current selectedRow using
+// the scrolloff guard. Call after any cursor change that does not already
+// invoke scrolloffViewport directly.
+func (m *resultsPaneModeModel) applyScrollOff(page tui.ResultsPanePageContext) {
+	pageRows := page.EndRow - (page.StartRow - 1)
+	pageRow := m.selectedRow - (page.StartRow - 1)
+	visibleRows := max(1, min(m.height-2, pageRows))
+	m.viewportStart = scrolloffViewport(pageRow, m.viewportStart, visibleRows, pageRows, tui.ResultsPaneScrollOff)
+}
+
+// scrolloffViewport returns the smallest viewport start that keeps pageRow
+// at least scrolloff rows away from the visible edge, matching vim's scrolloff
+// behaviour. pageRow and vp are both page-local (0-indexed within the page).
+func scrolloffViewport(pageRow, vp, visibleRows, totalRows, scrolloff int) int {
+	so := min(scrolloff, visibleRows/2)
+	if pageRow < vp+so {
+		vp = pageRow - so
+	} else if pageRow >= vp+visibleRows-so {
+		vp = pageRow + 1 - visibleRows + so
+	}
+	return max(0, min(vp, totalRows-visibleRows))
 }

@@ -113,6 +113,7 @@ func TestResultsPaneModeViewClipsRowsToVisibleViewport(t *testing.T) {
 	mode := newResultsPaneModeModel()
 	mode.SetSize(80, 14)
 	mode.selectedRow = 15
+	mode.viewportStart = 9 // scrolloffViewport(15, 0, visibleRows=12, totalRows=30, scrolloff=5) = 9
 	mode.selectionActive = true
 
 	rows := make([]db.ResultRow, 0, 30)
@@ -141,6 +142,36 @@ func TestResultsPaneModeViewClipsRowsToVisibleViewport(t *testing.T) {
 		if strings.Contains(view, unwanted) {
 			t.Fatalf("View() = %q, want viewport clipping to exclude %q", view, unwanted)
 		}
+	}
+}
+
+func TestScrolloffViewportKeepsGuardZone(t *testing.T) {
+	// scrolloffViewport(pageRow, vp, visibleRows, totalRows, scrolloff)
+	// With 30 rows, visibleRows=12, scrolloff=5:
+	// moving down from vp=0 should not scroll until cursor enters the bottom guard zone.
+
+	// Cursor at row 6 (0-indexed): within free zone [5, 7), vp stays 0.
+	if got := scrolloffViewport(6, 0, 12, 30, 5); got != 0 {
+		t.Fatalf("scrolloffViewport(cursor=6, vp=0, ...) = %d, want 0 (cursor in free zone)", got)
+	}
+
+	// Cursor at row 7 (= vp+visibleRows-scrolloff = 0+12-5): enters bottom guard, vp must advance.
+	if got := scrolloffViewport(7, 0, 12, 30, 5); got != 1 {
+		t.Fatalf("scrolloffViewport(cursor=7, vp=0, ...) = %d, want 1 (bottom guard entered)", got)
+	}
+
+	// Cursor at row 4 (< vp+scrolloff = 10+5): enters top guard from vp=10.
+	if got := scrolloffViewport(4, 10, 12, 30, 5); got != 4-5 {
+		// clamped to 0 since 4-5 = -1 < 0
+		want := max(0, 4-5)
+		if got != want {
+			t.Fatalf("scrolloffViewport(cursor=4, vp=10, ...) = %d, want %d (top guard, clamped)", got, want)
+		}
+	}
+
+	// At page boundary: cursor at last row (29), vp must be totalRows-visibleRows=18.
+	if got := scrolloffViewport(29, 0, 12, 30, 5); got != 18 {
+		t.Fatalf("scrolloffViewport(cursor=29, vp=0, ...) = %d, want 18 (clamped at bottom)", got)
 	}
 }
 
