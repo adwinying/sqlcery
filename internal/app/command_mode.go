@@ -178,15 +178,10 @@ func (m commandModeModel) Update(msg tea.Msg, interaction InteractionState) (com
 				return m.navigateHistoryNext(interaction)
 			}
 		case key.Matches(keyMsg, m.keys.ScrollTranscriptUp):
-			step := max(1, m.innerHeight/2)
-			naturalTop := m.widget.ComputeNaturalScrollTop(m.buildViewContext(interaction))
-			m.widget.ScrollUp(step, naturalTop)
-			m.acOpenedByTyping = false
+			m.ScrollTranscriptUp(max(1, m.innerHeight/2), interaction)
 			return m, nil
 		case key.Matches(keyMsg, m.keys.ScrollTranscriptDown):
-			step := max(1, m.innerHeight/2)
-			m.widget.ScrollDown(step)
-			m.acOpenedByTyping = false
+			m.ScrollTranscriptDown(max(1, m.innerHeight/2))
 			return m, nil
 		}
 	}
@@ -337,6 +332,22 @@ func (m commandModeModel) StatusBarHints(interaction InteractionState) []string 
 	return parts
 }
 
+// ScrollTranscriptUp scrolls the REPL transcript upward by step lines, using
+// the natural top computed from the current interaction state. Clears
+// acOpenedByTyping so the autocomplete dropdown closes.
+func (m *commandModeModel) ScrollTranscriptUp(step int, interaction InteractionState) {
+	naturalTop := m.widget.ComputeNaturalScrollTop(m.buildViewContext(interaction))
+	m.widget.ScrollUp(step, naturalTop)
+	m.acOpenedByTyping = false
+}
+
+// ScrollTranscriptDown scrolls the REPL transcript downward by step lines.
+// Clears acOpenedByTyping so the autocomplete dropdown closes.
+func (m *commandModeModel) ScrollTranscriptDown(step int) {
+	m.widget.ScrollDown(step)
+	m.acOpenedByTyping = false
+}
+
 func (m *commandModeModel) AppendReplEntry(prompt, sql, output string) {
 	m.widget.AppendEntry(prompt, sql, output)
 }
@@ -346,18 +357,18 @@ func (m *commandModeModel) AppendReplEntry(prompt, sql, output string) {
 func (m commandModeModel) buildViewContext(interaction InteractionState) tui.EditorViewContext {
 	lineInfo := m.editor.LineInfo()
 	return tui.EditorViewContext{
-		Value:           m.editor.Value(),
-		Lines:           tui.SplitEditorLines(m.editor.Value()),
-		CursorLine:      m.editor.Line(),
-		RowOffset:       lineInfo.RowOffset,
-		ColOffset:       lineInfo.ColumnOffset,
-		CharOffset:      lineInfo.CharOffset,
-		Width:           m.editor.Width(),
-		Height:          m.innerHeight,
-		Prompt:          m.editor.Prompt,
-		Placeholder:     m.editor.Placeholder,
-		ShowLineNumbers: m.editor.ShowLineNumbers,
-		MaxHeight:       m.editor.MaxHeight,
+		Value:                   m.editor.Value(),
+		Lines:                   tui.SplitEditorLines(m.editor.Value()),
+		CursorLine:              m.editor.Line(),
+		RowOffset:               lineInfo.RowOffset,
+		ColOffset:               lineInfo.ColumnOffset,
+		CharOffset:              lineInfo.CharOffset,
+		Width:                   m.editor.Width(),
+		Height:                  m.innerHeight,
+		Prompt:                  m.editor.Prompt,
+		Placeholder:             m.editor.Placeholder,
+		ShowLineNumbers:         m.editor.ShowLineNumbers,
+		MaxHeight:               m.editor.MaxHeight,
 		AutocompleteSuggestions: m.cachedSuggestions,
 		GhostText:               m.ghostText(),
 		PromptWidth:             ansi.StringWidth(m.editor.Prompt),

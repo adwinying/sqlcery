@@ -149,3 +149,66 @@ func TestPrepareResultsPanePageCJKColumnWidths(t *testing.T) {
 		t.Fatalf("Widths[1] = %d, want %d", got, want)
 	}
 }
+
+func TestResultsPaneRowAtVisibleOffsetMapsCorrectly(t *testing.T) {
+	makeResult := func(n int) *tui.ResultsPanePreparedPage {
+		rs := &db.ResultSet{
+			Columns: []db.ResultColumn{{Name: "id"}},
+		}
+		for i := 1; i <= n; i++ {
+			rs.Rows = append(rs.Rows, db.ResultRow{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(i)}}})
+		}
+		return tui.PrepareResultsPanePage(rs, 0)
+	}
+
+	t.Run("nil prepared → not ok", func(t *testing.T) {
+		_, ok := tui.ResultsPaneRowAtVisibleOffset(nil, 10, tui.ResultsPaneSelection{}, 0)
+		if ok {
+			t.Fatal("ResultsPaneRowAtVisibleOffset(nil) = ok, want false")
+		}
+	})
+
+	t.Run("no rows → not ok", func(t *testing.T) {
+		empty := tui.PrepareResultsPanePage(nil, 0)
+		_, ok := tui.ResultsPaneRowAtVisibleOffset(empty, 10, tui.ResultsPaneSelection{}, 0)
+		if ok {
+			t.Fatal("ResultsPaneRowAtVisibleOffset(empty) = ok, want false")
+		}
+	})
+
+	t.Run("small result set offset 0 → absolute row 0", func(t *testing.T) {
+		prepared := makeResult(5)
+		// 5 rows, height=10 → all rows visible; offset 0 → absolute row 0
+		row, ok := tui.ResultsPaneRowAtVisibleOffset(prepared, 10, tui.ResultsPaneSelection{}, 0)
+		if !ok {
+			t.Fatal("ResultsPaneRowAtVisibleOffset() ok = false, want true")
+		}
+		if got, want := row, 0; got != want {
+			t.Fatalf("row = %d, want %d", got, want)
+		}
+	})
+
+	t.Run("small result set last offset → absolute row n-1", func(t *testing.T) {
+		const n = 5
+		prepared := makeResult(n)
+		row, ok := tui.ResultsPaneRowAtVisibleOffset(prepared, 10, tui.ResultsPaneSelection{}, n-1)
+		if !ok {
+			t.Fatal("ResultsPaneRowAtVisibleOffset() ok = false, want true")
+		}
+		if got, want := row, n-1; got != want {
+			t.Fatalf("row = %d, want %d", got, want)
+		}
+	})
+
+	t.Run("offset out of range → not ok", func(t *testing.T) {
+		prepared := makeResult(3)
+		_, ok := tui.ResultsPaneRowAtVisibleOffset(prepared, 10, tui.ResultsPaneSelection{}, 3)
+		if ok {
+			t.Fatal("ResultsPaneRowAtVisibleOffset(offset=len) = ok, want false")
+		}
+		_, ok = tui.ResultsPaneRowAtVisibleOffset(prepared, 10, tui.ResultsPaneSelection{}, -1)
+		if ok {
+			t.Fatal("ResultsPaneRowAtVisibleOffset(offset=-1) = ok, want false")
+		}
+	})
+}

@@ -11,7 +11,8 @@ import (
 var _ encoding.TextUnmarshaler = (*Duration)(nil)
 
 type Config struct {
-	Connection string `toml:"connection"`
+	Connection    string `toml:"connection"`
+	MouseDisabled bool   `toml:"mouse_disabled"`
 }
 
 func (c Config) Validate() error {

@@ -52,6 +52,11 @@ func runWithDependencies(args []string, getwd func() (string, error), deps runDe
 		return nil
 	}
 
+	cfg, err := config.Load[config.Config](cwd)
+	if err != nil {
+		return err
+	}
+
 	adapter, err := deps.open(context.Background(), resolved.Connection)
 	if err != nil {
 		return errors.New(app.FormatTerminalError(err))
@@ -69,5 +74,6 @@ func runWithDependencies(args []string, getwd func() (string, error), deps runDe
 		ConnectionColor: resolved.Connection.Color,
 		WorkingDir:      cwd,
 		Adapter:         adapter,
+		MouseDisabled:   cfg.Value.MouseDisabled,
 	})
 }

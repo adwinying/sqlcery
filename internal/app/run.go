@@ -16,6 +16,7 @@ type Session struct {
 	ConnectionColor string
 	WorkingDir      string
 	Adapter         *db.SQLAdapter
+	MouseDisabled   bool
 }
 
 type Program interface {

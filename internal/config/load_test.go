@@ -114,6 +114,41 @@ func TestLoadWithoutConfigFiles(t *testing.T) {
 	}
 }
 
+func TestLoadDecodesMouseDisabled(t *testing.T) {
+	t.Run("mouse_disabled = true", func(t *testing.T) {
+		workingDir := t.TempDir()
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+		localPath := filepath.Join(workingDir, FileName)
+		if err := os.WriteFile(localPath, []byte("mouse_disabled = true\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile() error = %v", err)
+		}
+
+		result, err := Load[Config](workingDir)
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+
+		if got, want := result.Value.MouseDisabled, true; got != want {
+			t.Fatalf("result.Value.MouseDisabled = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("mouse_disabled omitted yields false", func(t *testing.T) {
+		workingDir := t.TempDir()
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+		result, err := Load[Config](workingDir)
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+
+		if got, want := result.Value.MouseDisabled, false; got != want {
+			t.Fatalf("result.Value.MouseDisabled = %v, want %v", got, want)
+		}
+	})
+}
+
 func TestLoadReturnsDecodeErrors(t *testing.T) {
 	configHome := t.TempDir()
 	workingDir := t.TempDir()

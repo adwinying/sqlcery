@@ -7,6 +7,8 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/adwinying/sqlcery/internal/tui"
 )
 
 // slashWizardModal implements Modal for the guided slash command wizard.
@@ -312,6 +314,94 @@ func (s *slashWizardModal) updateFilter(_ ModalContext, filter string) ModalResu
 	filtered := filterWizardTargets(s.wizard.Targets, filter)
 	if len(filtered) == 0 {
 		return modalResultReady{status: fmt.Sprintf("No tables match %q.", filter), level: NotificationInfo}
+	}
+	return modalResultNone{}
+}
+
+// wizardCurrentListLen returns the number of selectable items in the current step.
+// Returns 0 if the current step has no selectable list (e.g. column step has columns,
+// target step has filtered targets, command step has commands).
+func (s *slashWizardModal) wizardCurrentListLen() int {
+	switch s.wizard.Step {
+	case SlashCommandWizardStepColumn:
+		return len(s.wizard.Columns)
+	case SlashCommandWizardStepTarget:
+		return len(filterWizardTargets(s.wizard.Targets, s.wizard.TargetFilter))
+	default:
+		return len(s.wizard.Commands)
+	}
+}
+
+// wizardCurrentSelected returns the current selection index for the active step.
+func (s *slashWizardModal) wizardCurrentSelected() int {
+	switch s.wizard.Step {
+	case SlashCommandWizardStepColumn:
+		return clampWizardIndex(s.wizard.SelectedColumnCursor, len(s.wizard.Columns))
+	case SlashCommandWizardStepTarget:
+		filtered := filterWizardTargets(s.wizard.Targets, s.wizard.TargetFilter)
+		return clampWizardIndex(s.wizard.SelectedTarget, len(filtered))
+	default:
+		return clampWizardIndex(s.wizard.SelectedCommand, len(s.wizard.Commands))
+	}
+}
+
+// wizardViewportStart returns the viewport top for the current step's list,
+// using the same scroll logic as renderSlashWizardContext.
+func (s *slashWizardModal) wizardViewportStart() int {
+	n := s.wizardCurrentListLen()
+	if n == 0 {
+		return 0
+	}
+	selected := s.wizardCurrentSelected()
+	// The wizard uses ModalSplitListRows when there's a filter, ModalFixedRows otherwise.
+	// For the target step (filter present), use ModalSplitListRows; others use ModalFixedRows.
+	var listRows int
+	if s.wizard.Step == SlashCommandWizardStepTarget {
+		listRows = tui.ModalSplitListRows
+	} else {
+		listRows = tui.ModalFixedRows
+	}
+	return max(0, selected+1-listRows)
+}
+
+// HandleMouse implements Modal.HandleMouse for slashWizardModal.
+func (s *slashWizardModal) HandleMouse(msg tea.MouseClickMsg, ctx ModalContext) ModalResult {
+	if ctx.MouseListOffset < 0 {
+		return modalResultNone{}
+	}
+	n := s.wizardCurrentListLen()
+	if n == 0 {
+		return modalResultNone{}
+	}
+	vpStart := s.wizardViewportStart()
+	idx := vpStart + ctx.MouseListOffset
+	if idx < 0 || idx >= n {
+		return modalResultNone{}
+	}
+
+	// Set the selection for the current step.
+	switch s.wizard.Step {
+	case SlashCommandWizardStepColumn:
+		s.wizard.SelectedColumnCursor = idx
+	case SlashCommandWizardStepTarget:
+		s.wizard.SelectedTarget = idx
+	default:
+		s.wizard.SelectedCommand = idx
+	}
+
+	if ctx.MouseDoubleClick {
+		return s.submit(ctx)
+	}
+	return modalResultNone{}
+}
+
+// HandleMouseWheel implements Modal.HandleMouseWheel for slashWizardModal.
+func (s *slashWizardModal) HandleMouseWheel(msg tea.MouseWheelMsg) ModalResult {
+	switch msg.Button {
+	case tea.MouseWheelUp:
+		return s.move(ModalContext{}, -1)
+	case tea.MouseWheelDown:
+		return s.move(ModalContext{}, 1)
 	}
 	return modalResultNone{}
 }

@@ -111,7 +111,7 @@ func (h *helpModal) Render(_ InteractionState, innerWidth int) string {
 	}
 
 	selected := wrapSelection(h.selectedIndex, len(rows))
-	vpStart := max(0, selected+1-helpContentRows)
+	vpStart := h.helpViewportStart(rows)
 	vpEnd := min(len(rows), vpStart+helpContentRows)
 
 	colWidth := 0
@@ -219,8 +219,12 @@ func (h *helpModal) execute(ctx ModalContext, rows []helpRow) ModalResult {
 		return modalResultReady{status: "", level: NotificationNone, dismiss: true}
 	}
 	idx := wrapSelection(h.selectedIndex, len(rows))
-	row := rows[idx]
+	return h.executeRow(ctx, rows[idx])
+}
 
+// executeRow dispatches the action for a single helpRow. Extracted so both
+// HandleKey (Enter) and HandleMouse (double-click) share identical logic.
+func (h *helpModal) executeRow(ctx ModalContext, row helpRow) ModalResult {
 	if row.actionKey == "" {
 		return modalResultReady{status: "", level: NotificationNone, dismiss: true}
 	}
@@ -248,6 +252,49 @@ func (h *helpModal) execute(ctx ModalContext, rows []helpRow) ModalResult {
 	}
 
 	return modalResultRunHelpRow{msgFn: keyToMsgFn(row.actionKey)}
+}
+
+// helpViewportStart returns the viewport scroll-top index for the current
+// selection, matching Render's math.
+func (h *helpModal) helpViewportStart(rows []helpRow) int {
+	if len(rows) == 0 {
+		return 0
+	}
+	selected := wrapSelection(h.selectedIndex, len(rows))
+	return max(0, selected+1-helpContentRows)
+}
+
+// HandleMouse implements Modal.HandleMouse for helpModal.
+func (h *helpModal) HandleMouse(msg tea.MouseClickMsg, ctx ModalContext) ModalResult {
+	if ctx.MouseListOffset < 0 {
+		return modalResultNone{}
+	}
+	rows := h.filteredRows()
+	if len(rows) == 0 {
+		return modalResultNone{}
+	}
+	vpStart := h.helpViewportStart(rows)
+	idx := vpStart + ctx.MouseListOffset
+	if idx < 0 || idx >= len(rows) {
+		return modalResultNone{}
+	}
+	h.selectedIndex = idx
+	if ctx.MouseDoubleClick {
+		return h.executeRow(ctx, rows[idx])
+	}
+	return modalResultNone{}
+}
+
+// HandleMouseWheel implements Modal.HandleMouseWheel for helpModal.
+func (h *helpModal) HandleMouseWheel(msg tea.MouseWheelMsg) ModalResult {
+	rows := h.filteredRows()
+	switch msg.Button {
+	case tea.MouseWheelUp:
+		return h.cycle(rows, -1)
+	case tea.MouseWheelDown:
+		return h.cycle(rows, 1)
+	}
+	return modalResultNone{}
 }
 
 // buildHelpRows returns the flat list of Help Rows for the given context.
@@ -364,4 +411,3 @@ func keyToMsgFn(actionKey string) func() tea.Msg {
 		return nil
 	}
 }
-

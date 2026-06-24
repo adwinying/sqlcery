@@ -4,17 +4,19 @@ import (
 	"context"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/adwinying/sqlcery/internal/db"
 	"github.com/adwinying/sqlcery/internal/export"
-	tea "charm.land/bubbletea/v2"
 )
 
 // ModalContext carries read-only context for modal key handling.
 // Modals receive this instead of *Model, so their effects are explicit.
 type ModalContext struct {
-	Interaction InteractionState
-	Session     Session
-	Dialect     db.Dialect
+	Interaction      InteractionState
+	Session          Session
+	Dialect          db.Dialect
+	MouseListOffset  int  // 0-based visible list-row offset of a click; -1 if not a list row
+	MouseDoubleClick bool // true when the click is a double-click on the same offset
 }
 
 // ModalResult is the discriminated union returned by Modal.HandleKey.
@@ -101,6 +103,17 @@ type Modal interface {
 	// returns a ModalResult describing the intended side effect. It must
 	// not mutate the model directly.
 	HandleKey(msg tea.KeyPressMsg, ctx ModalContext) ModalResult
+	// HandleMouse handles a left-click within the modal. ctx.MouseListOffset is
+	// the 0-based row offset of the click within the modal's visible list region,
+	// or -1 if the click was not on a selectable list row. ctx.MouseDoubleClick
+	// is true when this click is a double-click on the same offset. Returns
+	// modalResultNone when offset is -1 (outside/non-list click is a no-op —
+	// never dismisses).
+	HandleMouse(msg tea.MouseClickMsg, ctx ModalContext) ModalResult
+	// HandleMouseWheel scrolls the modal's list / moves selection by one step
+	// in the wheel direction. Mutates the modal in place and returns
+	// modalResultNone.
+	HandleMouseWheel(msg tea.MouseWheelMsg) ModalResult
 	// Render returns the list content string for the suggestions box.
 	// innerWidth is the available content width inside the modal border,
 	// so modals can pre-apply horizontal scroll offsets to long lines.

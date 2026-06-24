@@ -368,6 +368,23 @@ func resultsPaneTrimWidth(value string, width int) string {
 	return strings.Join(lines, "\n")
 }
 
+// ResultsPaneRowAtVisibleOffset maps a 0-based offset into the visible data-row
+// window (offset 0 = first rendered data row) to an absolute Result Set row
+// index, reusing resultsPaneVisibleRowWindow. ok is false if prepared is nil,
+// has no rows, or offset is outside [0, end-start).
+func ResultsPaneRowAtVisibleOffset(prepared *ResultsPanePreparedPage, height int, active ResultsPaneSelection, offset int) (int, bool) {
+	if prepared == nil || len(prepared.Rows) == 0 {
+		return 0, false
+	}
+	start, end := resultsPaneVisibleRowWindow(prepared.Context, len(prepared.Rows), height, active)
+	if offset < 0 || offset >= end-start {
+		return 0, false
+	}
+	// start is a page-local index; prepared.Context.StartRow is 1-based.
+	absoluteRow := prepared.Context.StartRow - 1 + start + offset
+	return absoluteRow, true
+}
+
 // resultsPaneExtractTimeValue unwraps a driver-specific timestamp value.
 // Kept here for value formatting parity with internal/app's compose functions.
 func resultsPaneExtractTimeValue(value any) (time.Time, int) {

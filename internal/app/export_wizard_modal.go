@@ -119,9 +119,7 @@ func (e *exportWizardModal) handleFormatKey(msg tea.KeyPressMsg, keys commandMod
 			e.selectedFormat = wrapSelection(e.selectedFormat+1, len(filtered))
 		}
 	case msg.String() == "enter":
-		if len(filtered) > 0 {
-			e.step = exportWizardStepPath
-		}
+		return e.confirmFormatSelection()
 	case msg.String() == "backspace" || msg.String() == "ctrl+h" || msg.String() == "delete":
 		e.formatFilter = trimLastRune(e.formatFilter)
 		e.selectedFormat = 0
@@ -200,6 +198,69 @@ func (e *exportWizardModal) renderPathStep(interaction InteractionState) string 
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// confirmFormatSelection advances from the format step to the path step,
+// if a format is currently selected. This is the Enter-equivalent for the
+// format step, factored so both HandleKey and HandleMouse (double-click)
+// can call it.
+func (e *exportWizardModal) confirmFormatSelection() ModalResult {
+	filtered := e.filteredFormats()
+	if len(filtered) > 0 {
+		e.step = exportWizardStepPath
+	}
+	return modalResultNone{}
+}
+
+// exportViewportStart returns the viewport top index for the format list.
+// The format list is short (5 items max) and fits within ModalSplitListRows
+// without scrolling, so vpStart is always 0. Provided for symmetry with
+// other modals and future-proofing.
+func (e *exportWizardModal) exportViewportStart() int {
+	return 0
+}
+
+// HandleMouse implements Modal.HandleMouse for exportWizardModal.
+func (e *exportWizardModal) HandleMouse(msg tea.MouseClickMsg, ctx ModalContext) ModalResult {
+	if ctx.MouseListOffset < 0 {
+		return modalResultNone{}
+	}
+	// The path step uses the filter box for text input — no selectable list.
+	if e.step == exportWizardStepPath {
+		return modalResultNone{}
+	}
+	filtered := e.filteredFormats()
+	if len(filtered) == 0 {
+		return modalResultNone{}
+	}
+	vpStart := e.exportViewportStart()
+	idx := vpStart + ctx.MouseListOffset
+	if idx < 0 || idx >= len(filtered) {
+		return modalResultNone{}
+	}
+	e.selectedFormat = idx
+	if ctx.MouseDoubleClick {
+		return e.confirmFormatSelection()
+	}
+	return modalResultNone{}
+}
+
+// HandleMouseWheel implements Modal.HandleMouseWheel for exportWizardModal.
+func (e *exportWizardModal) HandleMouseWheel(msg tea.MouseWheelMsg) ModalResult {
+	if e.step == exportWizardStepPath {
+		return modalResultNone{}
+	}
+	filtered := e.filteredFormats()
+	if len(filtered) == 0 {
+		return modalResultNone{}
+	}
+	switch msg.Button {
+	case tea.MouseWheelUp:
+		e.selectedFormat = wrapSelection(e.selectedFormat-1, len(filtered))
+	case tea.MouseWheelDown:
+		e.selectedFormat = wrapSelection(e.selectedFormat+1, len(filtered))
+	}
+	return modalResultNone{}
 }
 
 func (e *exportWizardModal) filteredFormats() []export.Format {

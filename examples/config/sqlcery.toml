@@ -4,9 +4,13 @@
 # - $XDG_CONFIG_HOME/sqlcery/sqlcery.toml
 # - ./sqlcery.toml
 #
-# SQLcery currently supports one app setting: `connection`.
-# It can point at a named connection from connections.toml or a direct
-# connection string.
+# App settings:
+# - `connection`: a named connection from connections.toml or a direct
+#   connection string.
+# - `mouse_disabled`: opt out of mouse support (default: false). Mouse capture
+#   is on by default, letting you click rows, click to switch panes, and scroll
+#   with the wheel. Enabling this disables capture so your terminal's native
+#   click-drag text selection keeps working.
 
 # Preferred: use a named connection defined in connections.toml.
 connection = "mypgsql"
@@ -17,3 +21,6 @@ connection = "mypgsql"
 # connection = "mysql://root:secret@127.0.0.1:3306/reporting"
 # connection = "sqlite:tmp/sqlcery.db"
 # connection = "sqlite:///:memory:"
+
+# Opt out of mouse support to preserve native terminal text selection:
+# mouse_disabled = true

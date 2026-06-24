@@ -23,19 +23,21 @@ import (
 )
 
 type Model struct {
-	session  Session
-	history  *apphistory.History
-	exec     executionCoordinator
-	command  commandModeModel
-	resultsPane     resultsPaneModeModel
-	state           SharedAppState
-	schema          *AutocompleteSchemaContext
-	loader          autocompleteSchemaLoader
-	modals          []Modal
-	width           int
-	height          int
-	splitRatio      float64
-	pendingQuit     bool
+	session       Session
+	history       *apphistory.History
+	exec          executionCoordinator
+	command       commandModeModel
+	resultsPane   resultsPaneModeModel
+	state         SharedAppState
+	schema        *AutocompleteSchemaContext
+	loader        autocompleteSchemaLoader
+	modals        []Modal
+	width         int
+	height        int
+	splitRatio    float64
+	pendingQuit   bool
+	lastClickRow  int
+	lastClickTime time.Time
 }
 
 type autocompleteSchemaLoader func(context.Context, *db.SQLAdapter) (*AutocompleteSchemaContext, error)
@@ -106,13 +108,11 @@ type switchLayoutIntentMsg struct {
 	Layout AppLayout
 }
 
-
 type focusPaneIntentMsg struct {
 	Pane Pane
 }
 
 type clearInputIntentMsg struct{}
-
 
 type statementExecutedMsg struct {
 	Statement     string
@@ -340,6 +340,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.BlurMsg:
 		m.state.Interaction.WindowFocused = false
 		return m, nil
+	case tea.MouseClickMsg:
+		return m.handleMouseClick(msg)
+	case tea.MouseWheelMsg:
+		return m.handleMouseWheel(msg)
 	}
 
 	if m.state.Interaction.ActivePane == PaneResults && !layoutShowsCommand(m.state.Interaction.Layout) {
@@ -610,6 +614,11 @@ func (m Model) View() tea.View {
 	v := tea.NewView(content + "\n" + statusBar)
 	v.KeyboardEnhancements.ReportAllKeysAsEscapeCodes = true
 	v.ReportFocus = true
+	if m.session.MouseDisabled {
+		v.MouseMode = tea.MouseModeNone
+	} else {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
 	return v
 }
 
@@ -1446,11 +1455,11 @@ func executeStatementCmd(adapter *db.SQLAdapter, statement string) func(context.
 	return func(ctx context.Context, _ time.Time) tea.Cmd {
 		return func() tea.Msg {
 			if adapter == nil {
-			return statementExecutedMsg{Statement: statement, ResultSummary: "error: adapter is required", Err: fmt.Errorf("adapter is required")}
-		}
+				return statementExecutedMsg{Statement: statement, ResultSummary: "error: adapter is required", Err: fmt.Errorf("adapter is required")}
+			}
 
-		result, err := adapter.ExecuteStatementContext(ctx, statement, db.ResultOptions{Source: inferQuerySourceTable(statement)})
-		return statementExecutedMsg{Statement: statement, Result: result, ResultSummary: summarizeStatementResult(result, err), Err: err}
+			result, err := adapter.ExecuteStatementContext(ctx, statement, db.ResultOptions{Source: inferQuerySourceTable(statement)})
+			return statementExecutedMsg{Statement: statement, Result: result, ResultSummary: summarizeStatementResult(result, err), Err: err}
 		}
 	}
 }

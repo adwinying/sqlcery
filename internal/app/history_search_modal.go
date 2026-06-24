@@ -107,38 +107,9 @@ func (h *historySearchModal) Render(interaction InteractionState, innerWidth int
 		return tui.AppTheme.PanelMuted.Render("No fuzzy matches.")
 	}
 
-	var lines []string
+	blocks, vpStart, selected := h.historyViewport(interaction, innerWidth)
 
-	selected := wrapHistorySearchIndex(h.selectedIndex, len(matches))
-
-	// contentW is the display columns available for SQL text after the 2-char prefix.
-	contentW := max(1, innerWidth-2)
-
-	// Build wrapped display rows for every entry. Each entry is capped at
-	// historySearchPreviewRows lines; if clipped, the last line ends with '…'.
-	type entryBlock struct {
-		lines    []string
-		rowStart int
-	}
-	blocks := make([]entryBlock, len(matches))
-	cumRow := 0
-	for i, m := range matches {
-		wrapped := wrapTextAt(historySearchDisplaySQL(m.Statement), contentW)
-		if len(wrapped) > historySearchPreviewRows {
-			wrapped = wrapped[:historySearchPreviewRows]
-			last := wrapped[len(wrapped)-1]
-			wrapped[len(wrapped)-1] = ansi.Truncate(last, contentW-1, "") + "…"
-		}
-		blocks[i] = entryBlock{lines: wrapped, rowStart: cumRow}
-		cumRow += len(wrapped)
-	}
-
-	// Viewport: scroll just enough so the selected entry is at the bottom edge.
-	selBlock := blocks[selected]
-	selEnd := selBlock.rowStart + len(selBlock.lines)
-	vpStart := max(0, selEnd-historySearchPreviewRows)
 	vpEnd := vpStart + historySearchPreviewRows
-
 	displayLines := make([]string, 0, historySearchPreviewRows)
 	for i, block := range blocks {
 		if block.rowStart >= vpEnd {
@@ -166,8 +137,7 @@ func (h *historySearchModal) Render(interaction InteractionState, innerWidth int
 		}
 	}
 
-	lines = append(lines, displayLines...)
-	return strings.Join(lines, "\n")
+	return strings.Join(displayLines, "\n")
 }
 
 func (h *historySearchModal) restore(ctx ModalContext) ModalResult {
@@ -181,6 +151,101 @@ func (h *historySearchModal) restore(ctx ModalContext) ModalResult {
 		status: "",
 		level:  NotificationNone,
 	}
+}
+
+// historyViewport computes the scroll parameters needed to render the history
+// list. It returns:
+//   - blocks: per-entry display line slices with their cumulative row start
+//   - vpStart: viewport top (in cumulative display rows)
+//   - selected: resolved (wrapped) selection index
+//
+// This is factored so both Render and HandleMouse use identical math.
+func (h *historySearchModal) historyViewport(interaction InteractionState, innerWidth int) (blocks []historyEntryBlock, vpStart int, selected int) {
+	matches := filterHistorySearchEntries(interaction.History, h.filter)
+	if len(matches) == 0 {
+		return nil, 0, 0
+	}
+
+	contentW := max(1, innerWidth-2)
+	selected = wrapHistorySearchIndex(h.selectedIndex, len(matches))
+
+	blocks = make([]historyEntryBlock, len(matches))
+	cumRow := 0
+	for i, m := range matches {
+		wrapped := wrapTextAt(historySearchDisplaySQL(m.Statement), contentW)
+		if len(wrapped) > historySearchPreviewRows {
+			wrapped = wrapped[:historySearchPreviewRows]
+			last := wrapped[len(wrapped)-1]
+			wrapped[len(wrapped)-1] = ansi.Truncate(last, contentW-1, "") + "…"
+		}
+		blocks[i] = historyEntryBlock{lines: wrapped, rowStart: cumRow}
+		cumRow += len(wrapped)
+	}
+
+	selBlock := blocks[selected]
+	selEnd := selBlock.rowStart + len(selBlock.lines)
+	vpStart = max(0, selEnd-historySearchPreviewRows)
+	return blocks, vpStart, selected
+}
+
+// historyEntryBlock holds the rendered lines for one history entry and its
+// cumulative row offset within the full (pre-viewport) display.
+type historyEntryBlock struct {
+	lines    []string
+	rowStart int
+}
+
+// HandleMouse implements Modal.HandleMouse for historySearchModal.
+func (h *historySearchModal) HandleMouse(msg tea.MouseClickMsg, ctx ModalContext) ModalResult {
+	if ctx.MouseListOffset < 0 {
+		return modalResultNone{}
+	}
+
+	matches := filterHistorySearchEntries(ctx.Interaction.History, h.filter)
+	if len(matches) == 0 {
+		return modalResultNone{}
+	}
+
+	// innerWidth is unknown from ModalContext; use a representative value.
+	// The exact value only affects text wrapping (wrapTextAt), and since the
+	// modal is rendered at tui.ModalMaxWidth-2 columns, we use that.
+	innerWidth := tui.ModalMaxWidth - 2
+	blocks, vpStart, _ := h.historyViewport(ctx.Interaction, innerWidth)
+
+	// Map the visible offset to the entry whose rendered block contains that row.
+	absRow := vpStart + ctx.MouseListOffset
+	clickedEntry := -1
+	for i, block := range blocks {
+		blockEnd := block.rowStart + len(block.lines)
+		if absRow >= block.rowStart && absRow < blockEnd {
+			clickedEntry = i
+			break
+		}
+	}
+	if clickedEntry < 0 || clickedEntry >= len(matches) {
+		return modalResultNone{}
+	}
+
+	h.selectedIndex = clickedEntry
+	if ctx.MouseDoubleClick {
+		return modalResultRestoreHistory{
+			sql:    matches[clickedEntry].Statement,
+			status: "",
+			level:  NotificationNone,
+		}
+	}
+	return modalResultNone{}
+}
+
+// HandleMouseWheel implements Modal.HandleMouseWheel for historySearchModal.
+func (h *historySearchModal) HandleMouseWheel(msg tea.MouseWheelMsg) ModalResult {
+	switch msg.Button {
+	case tea.MouseWheelUp:
+		h.selectedIndex--
+	case tea.MouseWheelDown:
+		h.selectedIndex++
+	}
+	return modalResultNone{}
 }
 
 func (h *historySearchModal) cycle(ctx ModalContext, delta int) ModalResult {
