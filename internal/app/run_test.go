@@ -1533,7 +1533,7 @@ func TestModelUpdateCtrlDDoesNotPageDuringHistorySearch(t *testing.T) {
 	}
 }
 
-func TestModelUpdateArrowKeysNavigateResultsPaneSelectionAcrossPages(t *testing.T) {
+func TestModelUpdateArrowKeysClampsAtPageBoundary(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("", NotificationNone)
 	model.state.SetLayout(LayoutResultsOnly)
@@ -1546,35 +1546,27 @@ func TestModelUpdateArrowKeysNavigateResultsPaneSelectionAcrossPages(t *testing.
 		},
 	})
 
-	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	model = next.(Model)
-	if cmd != nil {
-		t.Fatalf("Update(right) cmd = %#v, want nil", cmd)
-	}
-	if got, want := model.resultsPane.selectedColumn, 1; got != want {
-		t.Fatalf("resultsPane.selectedColumn = %d, want %d", got, want)
-	}
-	if got, want := model.state.Interaction.ResultsPanePage, 0; got != want {
-		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d", got, want)
-	}
-
+	// Pressing down on the last row of page 0 must not jump to page 1.
 	model.resultsPane.selectedRow = 299
-	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	model = next.(Model)
-	if got, want := model.resultsPane.selectedRow, 300; got != want {
-		t.Fatalf("resultsPane.selectedRow = %d, want %d", got, want)
-	}
-	if got, want := model.state.Interaction.ResultsPanePage, 1; got != want {
-		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d", got, want)
-	}
-
-	next, _ = model.Update(tea.KeyPressMsg{Text: "k"})
+	next, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	model = next.(Model)
 	if got, want := model.resultsPane.selectedRow, 299; got != want {
-		t.Fatalf("resultsPane.selectedRow = %d, want %d", got, want)
+		t.Fatalf("resultsPane.selectedRow = %d, want %d (should clamp at page boundary)", got, want)
 	}
 	if got, want := model.state.Interaction.ResultsPanePage, 0; got != want {
-		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d", got, want)
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d (should not advance page)", got, want)
+	}
+
+	// Pressing up on the first row of page 1 must not retreat to page 0.
+	model.state.SetResultsPanePage(1)
+	model.resultsPane.selectedRow = 300
+	next, _ = model.Update(tea.KeyPressMsg{Text: "k"})
+	model = next.(Model)
+	if got, want := model.resultsPane.selectedRow, 300; got != want {
+		t.Fatalf("resultsPane.selectedRow = %d, want %d (should clamp at page boundary)", got, want)
+	}
+	if got, want := model.state.Interaction.ResultsPanePage, 1; got != want {
+		t.Fatalf("state.Interaction.ResultsPanePage = %d, want %d (should not retreat page)", got, want)
 	}
 }
 

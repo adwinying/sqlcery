@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/adwinying/sqlcery/internal/db"
+	"github.com/adwinying/sqlcery/internal/tui"
 )
 
 // testModelWithResult builds a ready Model with a result set loaded, window
@@ -205,6 +206,37 @@ func TestMouseWheelClampsAtBoundaries(t *testing.T) {
 	m = wheelAt(t, m, 50, resultsFirstDataRowY, tea.MouseWheelDown)
 	if got, want := m.resultsPane.selectedRow, nRows-1; got != want {
 		t.Fatalf("selectedRow after wheel-down at boundary = %d, want %d", got, want)
+	}
+}
+
+// TestMouseWheelDownDoesNotLoopAcrossPageBoundary verifies that wheel-down at
+// the last row of a page clamps rather than wrapping to row 0.
+func TestMouseWheelDownDoesNotLoopAcrossPageBoundary(t *testing.T) {
+	rows := make([]db.ResultRow, tui.ResultsPanePageSize+1)
+	for i := range rows {
+		rows[i] = db.ResultRow{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(i)}}}
+	}
+	m := NewModel(Session{})
+	m.state.SetReady("", NotificationNone)
+	m.state.SetLayout(LayoutResultsOnly)
+	m.state.SetActivePane(PaneResults)
+	m.state.SetLatestResultContext(&LatestResultContext{
+		PreservedResult: &db.ResultSet{
+			Columns: []db.ResultColumn{{Name: "id"}},
+			Rows:    rows,
+		},
+	})
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 40})
+	m = next.(Model)
+
+	m.resultsPane.selectedRow = tui.ResultsPanePageSize - 1
+	m.resultsPane.selectionActive = true
+	m = wheelAt(t, m, 50, resultsFirstDataRowY, tea.MouseWheelDown)
+	if got := m.resultsPane.selectedRow; got != tui.ResultsPanePageSize-1 {
+		t.Fatalf("selectedRow after wheel-down at page boundary = %d, want %d (must not loop to 0)", got, tui.ResultsPanePageSize-1)
+	}
+	if got := m.state.Interaction.ResultsPanePage; got != 0 {
+		t.Fatalf("ResultsPanePage after wheel-down at page boundary = %d, want 0", got)
 	}
 }
 

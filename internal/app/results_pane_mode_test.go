@@ -710,6 +710,47 @@ func TestResultsPaneModeNavigateEdgeLockScrollsOnEveryHorizontalPress(t *testing
 	}
 }
 
+func TestResultsPaneModeNavigateClampsAtPageBoundary(t *testing.T) {
+	rows := make([]db.ResultRow, tui.ResultsPanePageSize+1)
+	for i := range rows {
+		rows[i] = db.ResultRow{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(i)}}}
+	}
+	result := &db.ResultSet{
+		Columns: []db.ResultColumn{{Name: "id"}},
+		Rows:    rows,
+	}
+
+	// On page 0, pressing down on the last row of that page must not advance to page 1.
+	mode := newResultsPaneModeModel()
+	mode.selectedRow = tui.ResultsPanePageSize - 1
+	query := InteractionState{ResultsPanePage: 0, LatestResult: &LatestResultContext{PreservedResult: result}}
+	page, handled := mode.Navigate(tea.KeyPressMsg{Code: tea.KeyDown}, query)
+	if !handled {
+		t.Fatal("Navigate(down at page boundary) was not handled")
+	}
+	if page != 0 {
+		t.Fatalf("Navigate(down at page boundary) returned page %d, want 0", page)
+	}
+	if mode.selectedRow != tui.ResultsPanePageSize-1 {
+		t.Fatalf("selectedRow = %d, want %d (should not cross page boundary)", mode.selectedRow, tui.ResultsPanePageSize-1)
+	}
+
+	// On page 1, pressing up on its first row must not retreat to page 0.
+	mode2 := newResultsPaneModeModel()
+	mode2.selectedRow = tui.ResultsPanePageSize
+	query2 := InteractionState{ResultsPanePage: 1, LatestResult: &LatestResultContext{PreservedResult: result}}
+	page2, handled2 := mode2.Navigate(tea.KeyPressMsg{Code: tea.KeyUp}, query2)
+	if !handled2 {
+		t.Fatal("Navigate(up at page boundary) was not handled")
+	}
+	if page2 != 1 {
+		t.Fatalf("Navigate(up at page boundary) returned page %d, want 1", page2)
+	}
+	if mode2.selectedRow != tui.ResultsPanePageSize {
+		t.Fatalf("selectedRow = %d, want %d (should not cross page boundary)", mode2.selectedRow, tui.ResultsPanePageSize)
+	}
+}
+
 func BenchmarkResultsPaneModeViewLargePage(b *testing.B) {
 	mode := newResultsPaneModeModel()
 	mode.SetSize(140, 24)

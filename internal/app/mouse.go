@@ -219,17 +219,16 @@ func (m Model) handleMouseWheelResults(msg tea.MouseWheelMsg) (tea.Model, tea.Cm
 		return m, nil
 	}
 
+	page := tui.ResultsPanePageContextFor(m.state.Interaction.ResultsPanePage, len(result.Rows))
 	switch msg.Button {
 	case tea.MouseWheelUp:
-		m.resultsPane.selectedRow = max(0, m.resultsPane.selectedRow-mouseWheelRowStep)
+		m.resultsPane.selectedRow = max(page.StartRow-1, m.resultsPane.selectedRow-mouseWheelRowStep)
 		m.resultsPane.selectionActive = true
 		m.resultsPane.syncSelection(m.state.Interaction)
-		m.state.SetResultsPanePage(tui.ClampResultsPanePage(m.resultsPane.selectedRow/tui.ResultsPanePageSize, len(result.Rows)))
 	case tea.MouseWheelDown:
-		m.resultsPane.selectedRow = min(len(result.Rows)-1, m.resultsPane.selectedRow+mouseWheelRowStep)
+		m.resultsPane.selectedRow = min(page.EndRow-1, m.resultsPane.selectedRow+mouseWheelRowStep)
 		m.resultsPane.selectionActive = true
 		m.resultsPane.syncSelection(m.state.Interaction)
-		m.state.SetResultsPanePage(tui.ClampResultsPanePage(m.resultsPane.selectedRow/tui.ResultsPanePageSize, len(result.Rows)))
 	case tea.MouseWheelLeft:
 		if len(result.Columns) > 0 {
 			m.resultsPane.colScrollOffset = max(0, m.resultsPane.colScrollOffset-1)

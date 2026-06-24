@@ -221,7 +221,8 @@ func (m *resultsPaneModeModel) Navigate(msg tea.KeyPressMsg, interaction Interac
 
 	m.syncSelection(interaction)
 	result := latest.PreservedResult
-	m.selectedRow = min(max(m.selectedRow+deltaRow, 0), len(result.Rows)-1)
+	page := tui.ResultsPanePageContextFor(interaction.ResultsPanePage, len(result.Rows))
+	m.selectedRow = min(max(m.selectedRow+deltaRow, page.StartRow-1), page.EndRow-1)
 	m.selectedColumn = min(max(m.selectedColumn+deltaColumn, 0), len(result.Columns)-1)
 	m.selectionActive = true
 
@@ -229,7 +230,7 @@ func (m *resultsPaneModeModel) Navigate(msg tea.KeyPressMsg, interaction Interac
 		m.colScrollOffset = m.selectedColumn
 	}
 
-	return tui.ClampResultsPanePage(m.selectedRow/tui.ResultsPanePageSize, len(result.Rows)), true
+	return interaction.ResultsPanePage, true
 }
 
 // ToggleSelectedRow marks or unmarks the current cursor row and returns
