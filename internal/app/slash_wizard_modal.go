@@ -396,12 +396,35 @@ func (s *slashWizardModal) HandleMouse(msg tea.MouseClickMsg, ctx ModalContext) 
 }
 
 // HandleMouseWheel implements Modal.HandleMouseWheel for slashWizardModal.
-func (s *slashWizardModal) HandleMouseWheel(msg tea.MouseWheelMsg) ModalResult {
+// Clamps at the list boundaries — does not wrap.
+func (s *slashWizardModal) HandleMouseWheel(_ ModalContext, msg tea.MouseWheelMsg) ModalResult {
+	var delta int
 	switch msg.Button {
 	case tea.MouseWheelUp:
-		return s.move(ModalContext{}, -1)
+		delta = -1
 	case tea.MouseWheelDown:
-		return s.move(ModalContext{}, 1)
+		delta = 1
+	default:
+		return modalResultNone{}
+	}
+	s.hScrollOffset = 0
+	switch s.wizard.Step {
+	case SlashCommandWizardStepColumn:
+		if len(s.wizard.Columns) == 0 {
+			return modalResultNone{}
+		}
+		s.wizard.SelectedColumnCursor = min(max(s.wizard.SelectedColumnCursor+delta, 0), len(s.wizard.Columns)-1)
+	case SlashCommandWizardStepTarget:
+		filtered := filterWizardTargets(s.wizard.Targets, s.wizard.TargetFilter)
+		if len(filtered) == 0 {
+			return modalResultNone{}
+		}
+		s.wizard.SelectedTarget = min(max(s.wizard.SelectedTarget+delta, 0), len(filtered)-1)
+	default:
+		if len(s.wizard.Commands) == 0 {
+			return modalResultNone{}
+		}
+		s.wizard.SelectedCommand = min(max(s.wizard.SelectedCommand+delta, 0), len(s.wizard.Commands)-1)
 	}
 	return modalResultNone{}
 }

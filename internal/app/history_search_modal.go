@@ -238,12 +238,17 @@ func (h *historySearchModal) HandleMouse(msg tea.MouseClickMsg, ctx ModalContext
 }
 
 // HandleMouseWheel implements Modal.HandleMouseWheel for historySearchModal.
-func (h *historySearchModal) HandleMouseWheel(msg tea.MouseWheelMsg) ModalResult {
+// Clamps at the list boundaries — does not wrap.
+func (h *historySearchModal) HandleMouseWheel(ctx ModalContext, msg tea.MouseWheelMsg) ModalResult {
+	matches := filterHistorySearchEntries(ctx.Interaction.History, h.filter)
+	if len(matches) == 0 {
+		return modalResultNone{}
+	}
 	switch msg.Button {
 	case tea.MouseWheelUp:
-		h.selectedIndex--
+		h.selectedIndex = max(0, h.selectedIndex-1)
 	case tea.MouseWheelDown:
-		h.selectedIndex++
+		h.selectedIndex = min(h.selectedIndex+1, len(matches)-1)
 	}
 	return modalResultNone{}
 }

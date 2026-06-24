@@ -112,8 +112,9 @@ type Modal interface {
 	HandleMouse(msg tea.MouseClickMsg, ctx ModalContext) ModalResult
 	// HandleMouseWheel scrolls the modal's list / moves selection by one step
 	// in the wheel direction. Mutates the modal in place and returns
-	// modalResultNone.
-	HandleMouseWheel(msg tea.MouseWheelMsg) ModalResult
+	// modalResultNone. ctx is provided so handlers can read live state
+	// (e.g. history entries) to clamp the selection at the list boundary.
+	HandleMouseWheel(ctx ModalContext, msg tea.MouseWheelMsg) ModalResult
 	// Render returns the list content string for the suggestions box.
 	// innerWidth is the available content width inside the modal border,
 	// so modals can pre-apply horizontal scroll offsets to long lines.

@@ -187,7 +187,11 @@ func (m Model) handleMouseWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if modal := m.currentModal(); modal != nil {
-		result := modal.HandleMouseWheel(msg)
+		result := modal.HandleMouseWheel(ModalContext{
+			Interaction: m.state.Interaction.snapshot(),
+			Session:     m.session,
+			Dialect:     m.adapterDialect(),
+		}, msg)
 		return m, m.applyModalResult(result)
 	}
 

@@ -286,13 +286,17 @@ func (h *helpModal) HandleMouse(msg tea.MouseClickMsg, ctx ModalContext) ModalRe
 }
 
 // HandleMouseWheel implements Modal.HandleMouseWheel for helpModal.
-func (h *helpModal) HandleMouseWheel(msg tea.MouseWheelMsg) ModalResult {
+// Clamps at the list boundaries — does not wrap.
+func (h *helpModal) HandleMouseWheel(_ ModalContext, msg tea.MouseWheelMsg) ModalResult {
 	rows := h.filteredRows()
+	if len(rows) == 0 {
+		return modalResultNone{}
+	}
 	switch msg.Button {
 	case tea.MouseWheelUp:
-		return h.cycle(rows, -1)
+		h.selectedIndex = max(0, h.selectedIndex-1)
 	case tea.MouseWheelDown:
-		return h.cycle(rows, 1)
+		h.selectedIndex = min(h.selectedIndex+1, len(rows)-1)
 	}
 	return modalResultNone{}
 }

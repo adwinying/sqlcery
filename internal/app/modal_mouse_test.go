@@ -245,20 +245,17 @@ func TestHelpModalWheelDown_MovesSelection(t *testing.T) {
 	}
 }
 
-func TestHelpModalWheelUp_AtTop_Wraps(t *testing.T) {
+func TestHelpModalWheelUp_AtTop_Clamps(t *testing.T) {
 	h := &helpModal{contextPane: PaneCommand, selectedIndex: 0}
 	m := testModelWithModal(t, h)
 
-	// Wheel up at index 0 should wrap to end (wrapSelection behaviour).
+	// Wheel up at index 0 should stay at 0 (clamped, no wrap).
 	next, _ := m.Update(tea.MouseWheelMsg{X: testModalMidX, Y: 15, Button: tea.MouseWheelUp})
 	m = next.(Model)
 
-	rows := m.currentModal().(*helpModal).filteredRows()
 	got := m.currentModal().(*helpModal).selectedIndex
-	// After wrap: wrapSelection(-1, len(rows)) = len(rows)-1
-	want := wrapSelection(-1, len(rows))
-	if got != want {
-		t.Errorf("selectedIndex after wheel-up at top = %d, want %d", got, want)
+	if got != 0 {
+		t.Errorf("selectedIndex after wheel-up at top = %d, want 0", got)
 	}
 }
 
@@ -330,7 +327,7 @@ func TestSlashWizardModalWheelDown_MovesSelection(t *testing.T) {
 	m = next.(Model)
 
 	got := m.currentModal().(*slashWizardModal).wizard.SelectedCommand
-	want := wrapSelection(before+1, len(commands))
+	want := min(before+1, len(commands)-1)
 	if got != want {
 		t.Errorf("SelectedCommand after wheel-down = %d, want %d", got, want)
 	}

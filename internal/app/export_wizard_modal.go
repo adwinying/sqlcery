@@ -246,7 +246,8 @@ func (e *exportWizardModal) HandleMouse(msg tea.MouseClickMsg, ctx ModalContext)
 }
 
 // HandleMouseWheel implements Modal.HandleMouseWheel for exportWizardModal.
-func (e *exportWizardModal) HandleMouseWheel(msg tea.MouseWheelMsg) ModalResult {
+// Clamps at the list boundaries — does not wrap.
+func (e *exportWizardModal) HandleMouseWheel(_ ModalContext, msg tea.MouseWheelMsg) ModalResult {
 	if e.step == exportWizardStepPath {
 		return modalResultNone{}
 	}
@@ -256,9 +257,9 @@ func (e *exportWizardModal) HandleMouseWheel(msg tea.MouseWheelMsg) ModalResult 
 	}
 	switch msg.Button {
 	case tea.MouseWheelUp:
-		e.selectedFormat = wrapSelection(e.selectedFormat-1, len(filtered))
+		e.selectedFormat = max(0, e.selectedFormat-1)
 	case tea.MouseWheelDown:
-		e.selectedFormat = wrapSelection(e.selectedFormat+1, len(filtered))
+		e.selectedFormat = min(e.selectedFormat+1, len(filtered)-1)
 	}
 	return modalResultNone{}
 }
