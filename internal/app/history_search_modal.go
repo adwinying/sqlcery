@@ -20,6 +20,7 @@ const historySearchPreviewRows = tui.ModalSplitListRows
 type historySearchModal struct {
 	filter        string
 	selectedIndex int
+	viewportStart int
 }
 
 func (h *historySearchModal) Name() AppModal { return ModalHistorySearch }
@@ -69,6 +70,7 @@ func (h *historySearchModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) Mo
 		if strings.TrimSpace(h.filter) != "" {
 			h.filter = ""
 			h.selectedIndex = 0
+			h.viewportStart = 0
 			return modalResultPendingStatus{intent: IntentHistory, action: "history", status: "", level: NotificationNone}
 		}
 		return modalResultPendingStatus{intent: IntentNone, action: "history", status: "", level: NotificationNone, dismiss: true}
@@ -153,23 +155,26 @@ func (h *historySearchModal) restore(ctx ModalContext) ModalResult {
 	}
 }
 
-// historyViewport computes the scroll parameters needed to render the history
-// list. It returns:
-//   - blocks: per-entry display line slices with their cumulative row start
-//   - vpStart: viewport top (in cumulative display rows)
-//   - selected: resolved (wrapped) selection index
-//
-// This is factored so both Render and HandleMouse use identical math.
+// historyViewport computes the render parameters for the history list.
+// It returns blocks, the stored lazy-scroll viewport top, and the resolved
+// selection index. Call updateHistoryViewport after any selection change so
+// h.viewportStart is up to date before Render or HandleMouse reads it.
 func (h *historySearchModal) historyViewport(interaction InteractionState, innerWidth int) (blocks []historyEntryBlock, vpStart int, selected int) {
 	matches := filterHistorySearchEntries(interaction.History, h.filter)
 	if len(matches) == 0 {
 		return nil, 0, 0
 	}
-
 	contentW := max(1, innerWidth-2)
 	selected = wrapHistorySearchIndex(h.selectedIndex, len(matches))
+	blocks = computeHistoryBlocks(matches, contentW)
+	vpStart = h.viewportStart
+	return blocks, vpStart, selected
+}
 
-	blocks = make([]historyEntryBlock, len(matches))
+// computeHistoryBlocks builds the per-entry display line slices and their
+// cumulative row offsets for the given filtered match list.
+func computeHistoryBlocks(matches []HistoryEntryContext, contentW int) []historyEntryBlock {
+	blocks := make([]historyEntryBlock, len(matches))
 	cumRow := 0
 	for i, m := range matches {
 		wrapped := wrapTextAt(historySearchDisplaySQL(m.Statement), contentW)
@@ -181,11 +186,32 @@ func (h *historySearchModal) historyViewport(interaction InteractionState, inner
 		blocks[i] = historyEntryBlock{lines: wrapped, rowStart: cumRow}
 		cumRow += len(wrapped)
 	}
+	return blocks
+}
 
+// updateHistoryViewport applies lazy scroll after a selection change:
+// scrolls only when the selected entry exits the current viewport window.
+func (h *historySearchModal) updateHistoryViewport(interaction InteractionState) {
+	matches := filterHistorySearchEntries(interaction.History, h.filter)
+	if len(matches) == 0 {
+		h.viewportStart = 0
+		return
+	}
+	selected := wrapHistorySearchIndex(h.selectedIndex, len(matches))
+	// Use the same inner-width approximation as HandleMouse.
+	contentW := max(1, tui.ModalMaxWidth-4)
+	blocks := computeHistoryBlocks(matches, contentW)
+	if selected >= len(blocks) {
+		h.viewportStart = 0
+		return
+	}
 	selBlock := blocks[selected]
 	selEnd := selBlock.rowStart + len(selBlock.lines)
-	vpStart = max(0, selEnd-historySearchPreviewRows)
-	return blocks, vpStart, selected
+	if selBlock.rowStart < h.viewportStart {
+		h.viewportStart = selBlock.rowStart
+	} else if selEnd > h.viewportStart+historySearchPreviewRows {
+		h.viewportStart = selEnd - historySearchPreviewRows
+	}
 }
 
 // historyEntryBlock holds the rendered lines for one history entry and its
@@ -250,6 +276,7 @@ func (h *historySearchModal) HandleMouseWheel(ctx ModalContext, msg tea.MouseWhe
 	case tea.MouseWheelDown:
 		h.selectedIndex = min(h.selectedIndex+1, len(matches)-1)
 	}
+	h.updateHistoryViewport(ctx.Interaction)
 	return modalResultNone{}
 }
 
@@ -259,12 +286,14 @@ func (h *historySearchModal) cycle(ctx ModalContext, delta int) ModalResult {
 		return modalResultNone{}
 	}
 	h.selectedIndex = wrapHistorySearchIndex(h.selectedIndex+delta, len(matches))
+	h.updateHistoryViewport(ctx.Interaction)
 	return modalResultNone{}
 }
 
 func (h *historySearchModal) updateFilter(ctx ModalContext, filter string) ModalResult {
 	h.filter = filter
 	h.selectedIndex = 0
+	h.viewportStart = 0
 	return modalResultNone{}
 }
 

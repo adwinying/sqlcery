@@ -1451,6 +1451,18 @@ func wrapSelection(index, size int) int {
 	return index
 }
 
+// lazyScroll returns the smallest viewport start that keeps selected within
+// [vp, vp+listRows). Scrolls only when selected exits the current window.
+func lazyScroll(selected, vp, listRows int) int {
+	if selected < vp {
+		return selected
+	}
+	if selected >= vp+listRows {
+		return selected + 1 - listRows
+	}
+	return vp
+}
+
 func executeStatementCmd(adapter *db.SQLAdapter, statement string) func(context.Context, time.Time) tea.Cmd {
 	return func(ctx context.Context, _ time.Time) tea.Cmd {
 		return func() tea.Msg {

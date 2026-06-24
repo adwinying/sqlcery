@@ -33,6 +33,7 @@ type helpModal struct {
 	contextPane   Pane
 	filter        string
 	selectedIndex int
+	viewportStart int
 }
 
 func (h *helpModal) Name() AppModal { return ModalKeybindings }
@@ -66,6 +67,7 @@ func (h *helpModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) ModalResult
 		if strings.TrimSpace(h.filter) != "" {
 			h.filter = ""
 			h.selectedIndex = 0
+			h.viewportStart = 0
 			return modalResultReady{status: "", level: NotificationNone}
 		}
 		return modalResultReady{status: "", level: NotificationNone, dismiss: true}
@@ -200,12 +202,14 @@ func (h *helpModal) cycle(rows []helpRow, delta int) ModalResult {
 		return modalResultNone{}
 	}
 	h.selectedIndex = wrapSelection(h.selectedIndex+delta, len(rows))
+	h.viewportStart = lazyScroll(h.selectedIndex, h.viewportStart, helpContentRows)
 	return modalResultNone{}
 }
 
 func (h *helpModal) updateFilter(filter string) ModalResult {
 	h.filter = filter
 	h.selectedIndex = 0
+	h.viewportStart = 0
 	rows := h.filteredRows()
 	trimmed := strings.TrimSpace(filter)
 	if trimmed != "" && len(rows) == 0 {
@@ -254,14 +258,9 @@ func (h *helpModal) executeRow(ctx ModalContext, row helpRow) ModalResult {
 	return modalResultRunHelpRow{msgFn: keyToMsgFn(row.actionKey)}
 }
 
-// helpViewportStart returns the viewport scroll-top index for the current
-// selection, matching Render's math.
-func (h *helpModal) helpViewportStart(rows []helpRow) int {
-	if len(rows) == 0 {
-		return 0
-	}
-	selected := wrapSelection(h.selectedIndex, len(rows))
-	return max(0, selected+1-helpContentRows)
+// helpViewportStart returns the stored lazy-scroll viewport top.
+func (h *helpModal) helpViewportStart(_ []helpRow) int {
+	return h.viewportStart
 }
 
 // HandleMouse implements Modal.HandleMouse for helpModal.
@@ -298,6 +297,7 @@ func (h *helpModal) HandleMouseWheel(_ ModalContext, msg tea.MouseWheelMsg) Moda
 	case tea.MouseWheelDown:
 		h.selectedIndex = min(h.selectedIndex+1, len(rows)-1)
 	}
+	h.viewportStart = lazyScroll(h.selectedIndex, h.viewportStart, helpContentRows)
 	return modalResultNone{}
 }
 

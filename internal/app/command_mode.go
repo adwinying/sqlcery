@@ -583,7 +583,7 @@ func renderInlineResult(interaction InteractionState) string {
 	return renderInlineQueryResult(latest)
 }
 
-func renderSlashWizardContext(wizard *SlashCommandWizardContext, hScrollOffset *int, innerWidth int) string {
+func renderSlashWizardContext(wizard *SlashCommandWizardContext, scrollOffset int, hScrollOffset *int, innerWidth int) string {
 	if wizard == nil {
 		return ""
 	}
@@ -605,7 +605,6 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext, hScrollOffset *
 			listViewport = 1
 		}
 		selected := clampWizardIndex(wizard.SelectedColumnCursor, len(wizard.Columns))
-		scrollOffset := max(0, selected-listViewport+1)
 		viewEnd := min(len(wizard.Columns), scrollOffset+listViewport)
 
 		if len(wizard.Columns) == 0 {
@@ -658,7 +657,6 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext, hScrollOffset *
 			listViewport = 1
 		}
 		selected := clampWizardIndex(wizard.SelectedTarget, len(filteredTargets))
-		scrollOffset := max(0, selected-listViewport+1)
 		viewEnd := min(len(filteredTargets), scrollOffset+listViewport)
 
 		if len(filteredTargets) == 0 {
@@ -688,7 +686,6 @@ func renderSlashWizardContext(wizard *SlashCommandWizardContext, hScrollOffset *
 			listViewport = 1
 		}
 		selected := clampWizardIndex(wizard.SelectedCommand, len(wizard.Commands))
-		scrollOffset := max(0, selected-listViewport+1)
 		viewEnd := min(len(wizard.Commands), scrollOffset+listViewport)
 		for i := scrollOffset; i < viewEnd; i++ {
 			command := wizard.Commands[i]

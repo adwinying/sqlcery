@@ -17,6 +17,9 @@ import (
 type slashWizardModal struct {
 	wizard        SlashCommandWizardContext
 	hScrollOffset int
+	vpCommand     int // lazy viewport start for command step
+	vpTarget      int // lazy viewport start for target step
+	vpColumn      int // lazy viewport start for column step
 }
 
 func (s *slashWizardModal) Name() AppModal { return ModalSlashWizard }
@@ -119,7 +122,7 @@ func (s *slashWizardModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) Moda
 }
 
 func (s *slashWizardModal) Render(_ InteractionState, innerWidth int) string {
-	return renderSlashWizardContext(&s.wizard, &s.hScrollOffset, innerWidth)
+	return renderSlashWizardContext(&s.wizard, s.wizardViewportStart(), &s.hScrollOffset, innerWidth)
 }
 
 func (s *slashWizardModal) handleEsc(ctx ModalContext) ModalResult {
@@ -178,6 +181,7 @@ func (s *slashWizardModal) submit(ctx ModalContext) ModalResult {
 				}
 			}
 			s.wizard = *nextWizard
+			s.vpTarget = 0
 			return modalResultReady{status: "", level: NotificationNone}
 		}
 
@@ -204,6 +208,7 @@ func (s *slashWizardModal) submit(ctx ModalContext) ModalResult {
 				return s.executeCommand(ctx, parsed)
 			}
 			s.wizard = *nextWizard
+			s.vpColumn = 0
 			return modalResultReady{status: "", level: NotificationNone}
 		}
 
@@ -266,6 +271,7 @@ func (s *slashWizardModal) move(_ ModalContext, delta int) ModalResult {
 			return modalResultNone{}
 		}
 		s.wizard.SelectedColumnCursor = wrapSelection(s.wizard.SelectedColumnCursor+delta, len(s.wizard.Columns))
+		s.vpColumn = lazyScroll(s.wizard.SelectedColumnCursor, s.vpColumn, tui.ModalFixedRows-3)
 		return modalResultNone{}
 	case SlashCommandWizardStepTarget:
 		filtered := filterWizardTargets(s.wizard.Targets, s.wizard.TargetFilter)
@@ -273,12 +279,18 @@ func (s *slashWizardModal) move(_ ModalContext, delta int) ModalResult {
 			return modalResultNone{}
 		}
 		s.wizard.SelectedTarget = wrapSelection(s.wizard.SelectedTarget+delta, len(filtered))
+		listRows := tui.ModalSplitListRows - 2
+		if s.wizard.DirectInvocation {
+			listRows = tui.ModalSplitListRows - 1
+		}
+		s.vpTarget = lazyScroll(s.wizard.SelectedTarget, s.vpTarget, listRows)
 		return modalResultNone{}
 	default:
 		if len(s.wizard.Commands) == 0 {
 			return modalResultNone{}
 		}
 		s.wizard.SelectedCommand = wrapSelection(s.wizard.SelectedCommand+delta, len(s.wizard.Commands))
+		s.vpCommand = lazyScroll(s.wizard.SelectedCommand, s.vpCommand, tui.ModalFixedRows-1)
 		return modalResultNone{}
 	}
 }
@@ -310,6 +322,7 @@ func (s *slashWizardModal) toggleAllColumns() ModalResult {
 func (s *slashWizardModal) updateFilter(_ ModalContext, filter string) ModalResult {
 	s.wizard.TargetFilter = filter
 	s.wizard.SelectedTarget = 0
+	s.vpTarget = 0
 	s.hScrollOffset = 0
 	filtered := filterWizardTargets(s.wizard.Targets, filter)
 	if len(filtered) == 0 {
@@ -345,23 +358,18 @@ func (s *slashWizardModal) wizardCurrentSelected() int {
 	}
 }
 
-// wizardViewportStart returns the viewport top for the current step's list,
-// using the same scroll logic as renderSlashWizardContext.
+// wizardViewportStart returns the stored lazy-scroll viewport top for the
+// current step. Used by both Render (via renderSlashWizardContext) and
+// HandleMouse for click-offset → item-index mapping.
 func (s *slashWizardModal) wizardViewportStart() int {
-	n := s.wizardCurrentListLen()
-	if n == 0 {
-		return 0
+	switch s.wizard.Step {
+	case SlashCommandWizardStepColumn:
+		return s.vpColumn
+	case SlashCommandWizardStepTarget:
+		return s.vpTarget
+	default:
+		return s.vpCommand
 	}
-	selected := s.wizardCurrentSelected()
-	// The wizard uses ModalSplitListRows when there's a filter, ModalFixedRows otherwise.
-	// For the target step (filter present), use ModalSplitListRows; others use ModalFixedRows.
-	var listRows int
-	if s.wizard.Step == SlashCommandWizardStepTarget {
-		listRows = tui.ModalSplitListRows
-	} else {
-		listRows = tui.ModalFixedRows
-	}
-	return max(0, selected+1-listRows)
 }
 
 // HandleMouse implements Modal.HandleMouse for slashWizardModal.
@@ -414,17 +422,24 @@ func (s *slashWizardModal) HandleMouseWheel(_ ModalContext, msg tea.MouseWheelMs
 			return modalResultNone{}
 		}
 		s.wizard.SelectedColumnCursor = min(max(s.wizard.SelectedColumnCursor+delta, 0), len(s.wizard.Columns)-1)
+		s.vpColumn = lazyScroll(s.wizard.SelectedColumnCursor, s.vpColumn, tui.ModalFixedRows-3)
 	case SlashCommandWizardStepTarget:
 		filtered := filterWizardTargets(s.wizard.Targets, s.wizard.TargetFilter)
 		if len(filtered) == 0 {
 			return modalResultNone{}
 		}
 		s.wizard.SelectedTarget = min(max(s.wizard.SelectedTarget+delta, 0), len(filtered)-1)
+		listRows := tui.ModalSplitListRows - 2
+		if s.wizard.DirectInvocation {
+			listRows = tui.ModalSplitListRows - 1
+		}
+		s.vpTarget = lazyScroll(s.wizard.SelectedTarget, s.vpTarget, listRows)
 	default:
 		if len(s.wizard.Commands) == 0 {
 			return modalResultNone{}
 		}
 		s.wizard.SelectedCommand = min(max(s.wizard.SelectedCommand+delta, 0), len(s.wizard.Commands)-1)
+		s.vpCommand = lazyScroll(s.wizard.SelectedCommand, s.vpCommand, tui.ModalFixedRows-1)
 	}
 	return modalResultNone{}
 }
