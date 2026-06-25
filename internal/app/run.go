@@ -76,6 +76,10 @@ func Run(ctx context.Context, options RunOptions) error {
 		}
 	}
 
+	if options.NewHistory == nil {
+		options.NewHistory = apphistory.NewPersistentHistory
+	}
+
 	programOptions := make([]tea.ProgramOption, 0, len(options.ProgramOptions)+1)
 	programOptions = append(programOptions, tea.WithContext(ctx))
 	programOptions = append(programOptions, options.ProgramOptions...)
