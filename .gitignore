@@ -1,2 +1,5 @@
 dist/
 /connections.toml
+
+# build artifact
+/sqlcery
