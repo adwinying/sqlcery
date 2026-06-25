@@ -1,9 +1,7 @@
 package tui
 
 import (
-	"database/sql"
 	"fmt"
-	"reflect"
 	"strings"
 	"time"
 
@@ -325,11 +323,6 @@ func RenderInlineResultLine(values []string, widths []int) string {
 	return renderResultsPaneInlineResultLine(values, widths)
 }
 
-// RenderInlineSeparator renders a separator line for the given column widths.
-func RenderInlineSeparator(widths []int) string {
-	return renderResultsPaneInlineSeparator(widths)
-}
-
 // RuneWidth returns the display width of s (counting ANSI-aware character widths).
 func RuneWidth(value string) int {
 	return ansi.StringWidth(value)
@@ -387,49 +380,3 @@ func ResultsPaneRowAtVisibleOffset(prepared *ResultsPanePreparedPage, height int
 	return absoluteRow, true
 }
 
-// resultsPaneExtractTimeValue unwraps a driver-specific timestamp value.
-// Kept here for value formatting parity with internal/app's compose functions.
-func resultsPaneExtractTimeValue(value any) (time.Time, int) {
-	const (
-		unknown = 0
-		valid   = 1
-		null    = 2
-	)
-	switch v := value.(type) {
-	case nil:
-		return time.Time{}, unknown
-	case time.Time:
-		return v, valid
-	case *time.Time:
-		if v == nil {
-			return time.Time{}, null
-		}
-		return *v, valid
-	case sql.NullTime:
-		if !v.Valid {
-			return time.Time{}, null
-		}
-		return v.Time, valid
-	}
-	rv := reflect.ValueOf(value)
-	for rv.Kind() == reflect.Ptr {
-		if rv.IsNil() {
-			return time.Time{}, null
-		}
-		rv = rv.Elem()
-	}
-	if rv.Kind() != reflect.Struct {
-		return time.Time{}, unknown
-	}
-	timeField := rv.FieldByName("Time")
-	if !timeField.IsValid() {
-		return time.Time{}, unknown
-	}
-	if _, ok := timeField.Interface().(time.Time); !ok {
-		return time.Time{}, unknown
-	}
-	if validField := rv.FieldByName("Valid"); validField.IsValid() && validField.Kind() == reflect.Bool && !validField.Bool() {
-		return time.Time{}, null
-	}
-	return timeField.Interface().(time.Time), valid
-}

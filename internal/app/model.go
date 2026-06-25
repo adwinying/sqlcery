@@ -1233,23 +1233,6 @@ func historyNotificationLevel(base NotificationLevel, historyErr error) Notifica
 	return base
 }
 
-func latestHistoryEntry(entries []HistoryEntryContext) *HistoryEntryContext {
-	if len(entries) == 0 {
-		return nil
-	}
-
-	entry := entries[len(entries)-1]
-	return &entry
-}
-
-func (m Model) dialectName() string {
-	if m.session.Adapter != nil && m.session.Adapter.Dialect() != nil {
-		return m.session.Adapter.Dialect().Name()
-	}
-
-	return strings.TrimSpace(m.session.DatabaseType)
-}
-
 func (m Model) refreshAutocompleteSchemaCmd() tea.Cmd {
 	return loadAutocompleteSchemaCmd(m.session.Adapter, m.loader)
 }
@@ -1593,14 +1576,6 @@ func buildLatestResultContext(query string, originMode Pane, result *db.Statemen
 		if context.PreservedResult != nil && context.PreservedResult.Source == nil {
 			context.PreservedResult.Source = inferredSource
 		}
-		context.InlineResult = buildInlineResultSet(query, result.ResultSet)
-		if context.InlineResult != nil && context.InlineResult.Source == nil {
-			if inferredSource != nil {
-				source := *inferredSource
-				context.InlineResult.Source = &source
-			}
-		}
-		context.InlineRowsTruncated = resultSetRowCount(context.InlineResult) < resultSetRowCount(context.PreservedResult)
 	}
 
 	return context
@@ -1637,32 +1612,6 @@ func nextLayoutForModeIntent(currentLayout AppLayout, currentMode Pane) AppLayou
 		}
 		return LayoutResultsOnly
 	}
-}
-
-func describeModeSwitchStatus(context *PaneSwitchContext) string {
-	if context == nil {
-		return "Mode switch requested."
-	}
-
-	if context.ToPane == PaneCommand {
-		if context.ToLayout == LayoutSplit {
-			return "Focused the command line in split layout."
-		}
-		return "Returned to command line."
-	}
-
-	if context.ResultContext == nil || context.ResultContext.PreservedResult == nil {
-		if context.ToLayout == LayoutSplit {
-			return "Focused the Results Pane in split layout. Run a query that returns rows to populate it."
-		}
-		return "Results Pane is available after running a query that returns tabular results."
-	}
-
-	result := context.ResultContext.PreservedResult
-	if context.ToLayout == LayoutSplit {
-		return fmt.Sprintf("Focused the Results Pane in split layout for %d row(s) across %d column(s).", len(result.Rows), len(result.Columns))
-	}
-	return fmt.Sprintf("Opened Results Pane for %d row(s) across %d column(s).", len(result.Rows), len(result.Columns))
 }
 
 func (m *Model) applyModeSwitch(context *PaneSwitchContext) {
@@ -1819,27 +1768,6 @@ func layoutLabel(layout AppLayout) string {
 	}
 }
 
-func buildInlineResultSet(query string, result *db.ResultSet) *db.ResultSet {
-	if result == nil {
-		return nil
-	}
-
-	inline := cloneResultSet(result)
-	if statementUsesLimitedInlineRows(query) && len(inline.Rows) > 5 {
-		inline.Rows = append([]db.ResultRow(nil), inline.Rows[:5]...)
-	}
-	return inline
-}
-
-func statementUsesLimitedInlineRows(query string) bool {
-	switch leadingSQLKeyword(query) {
-	case "SELECT", "WITH":
-		return true
-	default:
-		return false
-	}
-}
-
 func leadingSQLKeyword(query string) string {
 	runes := []rune(query)
 	for i := 0; i < len(runes); {
@@ -1883,14 +1811,6 @@ func isSQLSpaceRune(value rune) bool {
 
 func isSQLKeywordRune(value rune) bool {
 	return value == '_' || value >= '0' && value <= '9' || value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z'
-}
-
-func resultSetRowCount(result *db.ResultSet) int {
-	if result == nil {
-		return 0
-	}
-
-	return len(result.Rows)
 }
 
 func describeStatementStatus(result *db.StatementResult) string {

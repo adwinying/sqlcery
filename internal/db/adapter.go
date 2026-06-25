@@ -116,14 +116,6 @@ type SQLAdapter struct {
 	close    func() error
 }
 
-func Wrap(db *sql.DB, dialect Dialect, metadata MetadataProvider) (*SQLAdapter, error) {
-	if db == nil {
-		return nil, fmt.Errorf("db is required")
-	}
-
-	return newAdapter(sqlRunner{db: db}, dialect, metadata, db.PingContext, db.Close)
-}
-
 func newAdapter(runner Runner, dialect Dialect, metadata MetadataProvider, healthCheckFn func(context.Context) error, closeFn func() error) (*SQLAdapter, error) {
 	if runner == nil {
 		return nil, fmt.Errorf("runner is required")

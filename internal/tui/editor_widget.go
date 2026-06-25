@@ -42,7 +42,6 @@ type EditorViewContext struct {
 	Width           int      // textarea.Width()
 	Height          int      // commandModeModel.innerHeight
 	Prompt          string
-	Placeholder     string
 	ShowLineNumbers bool
 	MaxHeight       int // for line number digit width
 	// Autocomplete — pre-computed by app in Update
@@ -195,19 +194,8 @@ func (w EditorWidget) View(ctx EditorViewContext) string {
 
 	transcriptLines := w.renderTranscriptLines()
 
-	var editorStrings []string
-	var cursorRowInEditor int
-	var totalEditorRows int
-	if ctx.Value == "" && strings.TrimSpace(ctx.Placeholder) != "" {
-		editorStrings = []string{w.renderPlaceholderLine(ctx)}
-		cursorRowInEditor = 0
-		totalEditorRows = 1
-	} else {
-		wrappedLines, editorCursor, editorTotal := w.renderedLines(ctx)
-		editorStrings = w.renderAllEditorLines(wrappedLines, ctx)
-		cursorRowInEditor = editorCursor
-		totalEditorRows = editorTotal
-	}
+	wrappedLines, cursorRowInEditor, totalEditorRows := w.renderedLines(ctx)
+	editorStrings := w.renderAllEditorLines(wrappedLines, ctx)
 
 	contentRows := len(transcriptLines) + totalEditorRows
 	topPadding := max(0, viewportH-editorBottomPadding-contentRows)
@@ -511,33 +499,14 @@ func (w EditorWidget) renderAllEditorLines(lines []editorRenderedLine, ctx Edito
 	return result
 }
 
-func (w EditorWidget) renderPlaceholderLine(ctx EditorViewContext) string {
-	cursorCol := -1
-	if ctx.ShowCursor {
-		cursorCol = 0
-	}
-	line := editorRenderedLine{
-		logicalLine: 0,
-		lineNumber:  1,
-		runes:       sqlStyledLine{},
-		isCursor:    true,
-		cursorCol:   cursorCol,
-	}
-	return w.renderEditorLine(line, "", ctx)
-}
-
 func (w EditorWidget) renderEditorLine(line editorRenderedLine, ghostText string, ctx EditorViewContext) string {
 	lineStyle := AppTheme.PanelText
 	lineNumberStyle := w.highlighter.lineNumberStyle
-	content := w.highlighter.renderLineContentWithGhost(line.runes, line.cursorCol, ctx.Width, false, ghostText)
+	content := w.highlighter.renderLineContentWithGhost(line.runes, line.cursorCol, ctx.Width, ghostText)
 
 	if line.isCursor {
 		lineStyle = w.highlighter.cursorLineStyle
 		lineNumberStyle = w.highlighter.cursorLineNumberStyle
-	}
-
-	if line.logicalLine == 0 && ctx.Value == "" && strings.TrimSpace(ctx.Placeholder) != "" {
-		content = w.highlighter.renderLineContentWithGhost(line.runes, line.cursorCol, ctx.Width, true, "")
 	}
 
 	var prompt string

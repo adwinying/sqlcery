@@ -12,19 +12,6 @@ type Dialect interface {
 	ValueLiteral(value ResultValue) string
 }
 
-func DialectByName(name string) (Dialect, error) {
-	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "sqlite":
-		return SQLiteDialect(), nil
-	case "postgres", "postgresql":
-		return PostgresDialect(), nil
-	case "mysql":
-		return MySQLDialect(), nil
-	default:
-		return nil, fmt.Errorf("unsupported dialect %q", name)
-	}
-}
-
 func SQLiteDialect() Dialect {
 	return dialect{
 		name:            "sqlite",

@@ -373,9 +373,9 @@ func TestWrapUsesDatabaseSQL(t *testing.T) {
 		t.Fatalf("sql.Open() error = %v", err)
 	}
 
-	adapter, err := Wrap(db, PostgresDialect(), nil)
+	adapter, err := newAdapter(sqlRunner{db: db}, PostgresDialect(), nil, db.PingContext, db.Close)
 	if err != nil {
-		t.Fatalf("Wrap() error = %v", err)
+		t.Fatalf("newAdapter() error = %v", err)
 	}
 	defer adapter.Close()
 
@@ -538,15 +538,15 @@ func TestPostgresConnectionString(t *testing.T) {
 }
 
 func TestPostgresConnConfig(t *testing.T) {
-	connConfig, err := postgresConnConfig(config.Connection{
+	connConfig, err := postgresConnConfigWithLifecycle(config.Connection{
 		Host:     "db.example.com",
 		Port:     5433,
 		Database: "warehouse",
 		Username: "app",
 		Password: "secret",
-	})
+	}, config.ConnectionLifecycleOptions{})
 	if err != nil {
-		t.Fatalf("postgresConnConfig() error = %v", err)
+		t.Fatalf("postgresConnConfigWithLifecycle() error = %v", err)
 	}
 
 	if got, want := connConfig.Host, "db.example.com"; got != want {

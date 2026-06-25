@@ -43,10 +43,6 @@ func (e *AuthenticationError) Unwrap() error {
 	return errors.Join(ErrAuthentication, e.Err)
 }
 
-func IsAuthenticationError(err error) bool {
-	return errors.Is(err, ErrAuthentication)
-}
-
 func wrapConnectionError(dialect string, message string, err error) error {
 	if err == nil {
 		return nil

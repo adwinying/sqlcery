@@ -73,10 +73,6 @@ func openPostgres(ctx context.Context, connection config.Connection, settings li
 	return adapter, nil
 }
 
-func postgresConnConfig(connection config.Connection) (*pgx.ConnConfig, error) {
-	return postgresConnConfigWithLifecycle(connection, config.ConnectionLifecycleOptions{})
-}
-
 func postgresConnConfigWithLifecycle(connection config.Connection, lifecycle config.ConnectionLifecycleOptions) (*pgx.ConnConfig, error) {
 	connConfig, err := pgx.ParseConfig(postgresConnectionString(connection))
 	if err != nil {

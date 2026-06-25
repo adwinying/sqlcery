@@ -95,20 +95,20 @@ func TestRenderLineContentWithGhostCJKCursorPosition(t *testing.T) {
 	line, _ := h.highlightLine("世A", sqlLexerState{})
 
 	// cursorCol=2 puts the cursor ON 'A'
-	rendered := h.renderLineContentWithGhost(line, 2, 10, false, "")
+	rendered := h.renderLineContentWithGhost(line, 2, 10, "")
 	if !strings.Contains(rendered, "A") {
 		t.Fatalf("renderLineContentWithGhost with CJK: expected 'A' in rendered output, got %q", rendered)
 	}
 
 	// cursorCol=3 (end of "世A") → ghost text should appear
 	ghost := "GHOST"
-	renderedGhost := h.renderLineContentWithGhost(line, 3, 20, false, ghost)
+	renderedGhost := h.renderLineContentWithGhost(line, 3, 20, ghost)
 	if !strings.Contains(renderedGhost, ghost) {
 		t.Fatalf("renderLineContentWithGhost with CJK and ghost: expected ghost %q at end-of-line, got %q", ghost, renderedGhost)
 	}
 
 	// cursorCol=2 (ON 'A') → ghost text must NOT appear
-	renderedNoGhost := h.renderLineContentWithGhost(line, 2, 20, false, ghost)
+	renderedNoGhost := h.renderLineContentWithGhost(line, 2, 20, ghost)
 	if strings.Contains(renderedNoGhost, ghost) {
 		t.Fatalf("renderLineContentWithGhost with CJK: ghost must not appear when cursor is not at end, got %q", renderedNoGhost)
 	}

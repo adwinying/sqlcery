@@ -60,10 +60,3 @@ func (e *UnknownConnectionError) Unwrap() error {
 	return ErrUnknownConnection
 }
 
-func IsInvalidConfig(err error) bool {
-	return errors.Is(err, ErrInvalidConfig)
-}
-
-func IsUnknownConnection(err error) bool {
-	return errors.Is(err, ErrUnknownConnection)
-}

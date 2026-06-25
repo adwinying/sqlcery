@@ -4,14 +4,12 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/adwinying/sqlcery/internal/db"
 	"github.com/adwinying/sqlcery/internal/tui"
 )
 
@@ -93,7 +91,6 @@ func defaultCommandModeKeys() commandModeKeyMap {
 func newCommandModeModel() commandModeModel {
 	editor := textarea.New()
 	editor.Prompt = "> "
-	editor.Placeholder = "Write SQL here"
 	editor.ShowLineNumbers = false
 	editor.SetWidth(defaultEditorWidth)
 	editor.SetHeight(editorLargeHeight)
@@ -366,7 +363,6 @@ func (m commandModeModel) buildViewContext(interaction InteractionState) tui.Edi
 		Width:                   m.editor.Width(),
 		Height:                  m.innerHeight,
 		Prompt:                  m.editor.Prompt,
-		Placeholder:             m.editor.Placeholder,
 		ShowLineNumbers:         m.editor.ShowLineNumbers,
 		MaxHeight:               m.editor.MaxHeight,
 		AutocompleteSuggestions: m.cachedSuggestions,
@@ -569,20 +565,6 @@ func clampEditorSize(value, minimum int) int {
 	return value
 }
 
-func renderInlineResult(interaction InteractionState) string {
-	latest := interaction.LatestResult
-	if latest == nil || latest.OriginPane != PaneCommand {
-		return ""
-	}
-	if latest.StatementKind == db.StatementResultKindExec {
-		return renderInlineExecResult(latest)
-	}
-	if latest.InlineResult == nil {
-		return ""
-	}
-	return renderInlineQueryResult(latest)
-}
-
 func renderSlashWizardContext(wizard *SlashCommandWizardContext, scrollOffset int, hScrollOffset *int, innerWidth int) string {
 	if wizard == nil {
 		return ""
@@ -710,124 +692,6 @@ func clampWizardIndex(index, size int) int {
 		return size - 1
 	}
 	return index
-}
-
-func renderInlineExecResult(latest *LatestResultContext) string {
-	parts := []string{tui.AppTheme.ResultTitle.Render("Results:")}
-	if latest.RowsAffected != nil {
-		label := "rows"
-		if *latest.RowsAffected == 1 {
-			label = "row"
-		}
-		parts = append(parts, tui.AppTheme.ResultSummary.Render(fmt.Sprintf("%d %s affected", *latest.RowsAffected, label)))
-	} else {
-		parts = append(parts, tui.AppTheme.ResultSummary.Render("Statement executed successfully"))
-	}
-	if latest.LastInsertID != nil && *latest.LastInsertID != 0 {
-		parts = append(parts, tui.AppTheme.ResultSummary.Render(fmt.Sprintf("last insert id %d", *latest.LastInsertID)))
-	}
-	return strings.Join(parts, "\n")
-}
-
-func renderInlineQueryResult(latest *LatestResultContext) string {
-	result := latest.InlineResult
-
-	columns := make([]string, 0, len(result.Columns))
-	widths := make([]int, 0, len(result.Columns))
-	for _, column := range result.Columns {
-		name := strings.TrimSpace(column.Name)
-		if name == "" {
-			name = fmt.Sprintf("column_%d", len(columns)+1)
-		}
-		columns = append(columns, name)
-		widths = append(widths, runeWidth(name))
-	}
-
-	for _, row := range result.Rows {
-		for i, value := range row.Values {
-			formatted := formatInlineResultValue(value)
-			if runeWidth(formatted) > widths[i] {
-				widths[i] = runeWidth(formatted)
-			}
-		}
-	}
-
-	headerLine := tui.AppTheme.ResultHeader.Render(renderInlineResultLine(columns, widths))
-	lines := []string{tui.AppTheme.ResultTitle.Render("Results:"), headerLine, renderInlineSeparator(widths)}
-	for _, row := range result.Rows {
-		values := make([]string, len(row.Values))
-		for i, value := range row.Values {
-			values[i] = formatInlineResultValue(value)
-		}
-		lines = append(lines, renderInlineResultLine(values, widths))
-	}
-
-	if len(result.Rows) == 0 {
-		lines = append(lines, tui.AppTheme.ResultsPaneEmpty.Render("(no rows)"))
-	}
-
-	rowCount := len(result.Rows)
-	if latest.InlineRowsTruncated && latest.PreservedResult != nil {
-		lines = append(lines, tui.AppTheme.PanelHint.Render(fmt.Sprintf("Showing first %d of %d rows.", rowCount, len(latest.PreservedResult.Rows))))
-		return strings.Join(lines, "\n")
-	}
-
-	if rowCount == 1 {
-		lines = append(lines, tui.AppTheme.ResultSummary.Render("1 row."))
-	} else {
-		lines = append(lines, tui.AppTheme.ResultSummary.Render(fmt.Sprintf("%d rows.", rowCount)))
-	}
-
-	return strings.Join(lines, "\n")
-}
-
-func renderInlineResultLine(values []string, widths []int) string {
-	parts := make([]string, 0, len(values))
-	for i, value := range values {
-		padding := widths[i] - runeWidth(value)
-		parts = append(parts, value+strings.Repeat(" ", max(0, padding)))
-	}
-	return strings.Join(parts, " | ")
-}
-
-func renderInlineSeparator(widths []int) string {
-	parts := make([]string, 0, len(widths))
-	for _, width := range widths {
-		parts = append(parts, strings.Repeat("-", max(3, width)))
-	}
-	return tui.AppTheme.ResultSeparator.Render(strings.Join(parts, "-+-"))
-}
-
-func formatInlineResultValue(value db.ResultValue) string {
-	switch value.Kind {
-	case db.ValueKindNull:
-		return "NULL"
-	case db.ValueKindBool:
-		if typed, ok := value.Value.(bool); ok {
-			if typed {
-				return "true"
-			}
-			return "false"
-		}
-	case db.ValueKindInteger, db.ValueKindFloat, db.ValueKindDecimal, db.ValueKindString:
-		return truncateNewlines(fmt.Sprint(value.Value))
-	case db.ValueKindBytes:
-		if typed, ok := value.Value.([]byte); ok {
-			return fmt.Sprintf("0x%x", typed)
-		}
-	case db.ValueKindTime:
-		if typed, ok := value.Value.(time.Time); ok {
-			return typed.Format("2006-01-02 15:04:05")
-		}
-	}
-	if value.Value == nil {
-		return "NULL"
-	}
-	return truncateNewlines(fmt.Sprint(value.Value))
-}
-
-func runeWidth(value string) int {
-	return ansi.StringWidth(value)
 }
 
 func (m commandModeModel) navigateHistoryPrev(interaction InteractionState) (commandModeModel, tea.Cmd) {

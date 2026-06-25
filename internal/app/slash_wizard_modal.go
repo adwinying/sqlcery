@@ -345,19 +345,6 @@ func (s *slashWizardModal) wizardCurrentListLen() int {
 	}
 }
 
-// wizardCurrentSelected returns the current selection index for the active step.
-func (s *slashWizardModal) wizardCurrentSelected() int {
-	switch s.wizard.Step {
-	case SlashCommandWizardStepColumn:
-		return clampWizardIndex(s.wizard.SelectedColumnCursor, len(s.wizard.Columns))
-	case SlashCommandWizardStepTarget:
-		filtered := filterWizardTargets(s.wizard.Targets, s.wizard.TargetFilter)
-		return clampWizardIndex(s.wizard.SelectedTarget, len(filtered))
-	default:
-		return clampWizardIndex(s.wizard.SelectedCommand, len(s.wizard.Commands))
-	}
-}
-
 // wizardViewportStart returns the stored lazy-scroll viewport top for the
 // current step. Used by both Render (via renderSlashWizardContext) and
 // HandleMouse for click-offset → item-index mapping.

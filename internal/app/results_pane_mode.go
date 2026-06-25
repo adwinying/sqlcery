@@ -28,7 +28,6 @@ const sqlceryLogo = `███████╗ ██████╗ ██╗   
 ╚══════╝ ╚══▀▀═╝ ╚══════╝ ╚═════╝╚══════╝╚═╝  ╚═╝   ╚═╝   `
 
 const sqlceryLogoWidth = 58
-const sqlceryLogoHeight = 6
 
 var emptyStateHints = []string{
 	"Press ctrl+r to fuzzy-search your query history",
@@ -328,29 +327,6 @@ func resultsPaneRowCount(latest *LatestResultContext) int {
 	return len(latest.PreservedResult.Rows)
 }
 
-func summarizeResultsPaneStatement(statement string, width int) string {
-	trimmed := strings.Join(strings.Fields(strings.TrimSpace(statement)), " ")
-	if trimmed == "" {
-		return "(unknown query)"
-	}
-
-	maxWidth := max(20, width-8)
-	if ansi.StringWidth(trimmed) <= maxWidth {
-		return trimmed
-	}
-
-	if maxWidth <= 3 {
-		return ansi.Truncate(trimmed, maxWidth, "")
-	}
-	return ansi.Truncate(trimmed, maxWidth, "...")
-}
-
-func truncateNewlines(s string) string {
-	if i := strings.IndexAny(s, "\n\r"); i >= 0 {
-		return s[:i] + "..."
-	}
-	return s
-}
 
 // applyScrollOff recomputes viewportStart for the current selectedRow using
 // the scrolloff guard. Call after any cursor change that does not already

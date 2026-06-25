@@ -2,45 +2,6 @@ package db
 
 import "testing"
 
-func TestDialectByName(t *testing.T) {
-	tests := []struct {
-		name      string
-		input     string
-		wantName  string
-		wantError string
-	}{
-		{name: "sqlite", input: "sqlite", wantName: "sqlite"},
-		{name: "postgres alias", input: "postgresql", wantName: "postgres"},
-		{name: "mysql trims spaces", input: " mysql ", wantName: "mysql"},
-		{name: "unsupported", input: "oracle", wantError: `unsupported dialect "oracle"`},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dialect, err := DialectByName(tt.input)
-			if tt.wantError != "" {
-				if err == nil {
-					t.Fatal("DialectByName() error = nil, want error")
-				}
-
-				if got := err.Error(); got != tt.wantError {
-					t.Fatalf("DialectByName() error = %q, want %q", got, tt.wantError)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("DialectByName() error = %v", err)
-			}
-
-			if got := dialect.Name(); got != tt.wantName {
-				t.Fatalf("dialect.Name() = %q, want %q", got, tt.wantName)
-			}
-		})
-	}
-}
-
 func TestDialectBehavior(t *testing.T) {
 	tests := []struct {
 		name             string

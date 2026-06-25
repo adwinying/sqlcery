@@ -653,12 +653,6 @@ func TestModelUpdateSubmitExecutesSelectAndLimitsInlineRows(t *testing.T) {
 	if got, want := len(model.state.Interaction.LatestResult.PreservedResult.Rows), 6; got != want {
 		t.Fatalf("len(latest.PreservedResult.Rows) = %d, want %d", got, want)
 	}
-	if got, want := len(model.state.Interaction.LatestResult.InlineResult.Rows), 5; got != want {
-		t.Fatalf("len(latest.InlineResult.Rows) = %d, want %d", got, want)
-	}
-	if !model.state.Interaction.LatestResult.InlineRowsTruncated {
-		t.Fatal("latest.InlineRowsTruncated = false, want true")
-	}
 	if got, want := len(model.state.Interaction.History), 1; got != want {
 		t.Fatalf("len(state.Interaction.History) = %d, want %d", got, want)
 	}
@@ -1304,9 +1298,6 @@ func TestModelUpdateModeSwitchPreservesLatestResultContext(t *testing.T) {
 	if got, want := len(model.state.Interaction.LatestResult.PreservedResult.Rows), 6; got != want {
 		t.Fatalf("len(latest preserved rows) = %d, want %d", got, want)
 	}
-	if got, want := len(model.state.Interaction.LatestResult.InlineResult.Rows), 5; got != want {
-		t.Fatalf("len(latest inline rows) = %d, want %d", got, want)
-	}
 	if got, want := model.state.Interaction.LatestResult.Statement, query; got != want {
 		t.Fatalf("latest query = %q, want %q", got, want)
 	}
@@ -1885,9 +1876,6 @@ func TestBuildLatestResultContextInfersSingleTableSource(t *testing.T) {
 	}
 	if got, want := *context.PreservedResult.Source, (db.TableRef{Namespace: "main", Name: "widgets"}); got != want {
 		t.Fatalf("context.PreservedResult.Source = %#v, want %#v", got, want)
-	}
-	if context.InlineResult == nil || context.InlineResult.Source == nil {
-		t.Fatalf("context.InlineResult = %#v, want cloned source", context.InlineResult)
 	}
 }
 

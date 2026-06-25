@@ -674,20 +674,6 @@ func slashWizardCommandByIndex(wizard *SlashCommandWizardContext) (SlashCommandW
 	return wizard.Commands[index], true
 }
 
-func slashWizardTargetByIndex(wizard *SlashCommandWizardContext) (SlashCommandWizardTarget, bool) {
-	if wizard == nil || len(wizard.Targets) == 0 {
-		return SlashCommandWizardTarget{}, false
-	}
-	index := wizard.SelectedTarget
-	if index < 0 {
-		index = 0
-	}
-	if index >= len(wizard.Targets) {
-		index = len(wizard.Targets) - 1
-	}
-	return wizard.Targets[index], true
-}
-
 func slashWizardFilteredTargetByIndex(wizard *SlashCommandWizardContext) (SlashCommandWizardTarget, bool) {
 	if wizard == nil {
 		return SlashCommandWizardTarget{}, false
@@ -877,32 +863,3 @@ func replaceEditorCmd(result slashCommandResult) func(context.Context, time.Time
 	}
 }
 
-func boolWord(value bool) string {
-	if value {
-		return "yes"
-	}
-	return "no"
-}
-
-func buildSlashQueryResult(columns []string, rows [][]string) *db.StatementResult {
-	result := &db.ResultSet{Columns: make([]db.ResultColumn, len(columns))}
-	for i, column := range columns {
-		result.Columns[i] = db.ResultColumn{Name: column, Position: i + 1}
-	}
-	for rowIndex, row := range rows {
-		entry := db.ResultRow{Position: rowIndex + 1, Values: make([]db.ResultValue, len(columns))}
-		for i := range columns {
-			value := ""
-			if i < len(row) {
-				value = row[i]
-			}
-			entry.Values[i] = db.ResultValue{Kind: db.ValueKindString, Value: value}
-		}
-		result.Rows = append(result.Rows, entry)
-	}
-
-	return &db.StatementResult{
-		Kind:      db.StatementResultKindQuery,
-		ResultSet: result,
-	}
-}

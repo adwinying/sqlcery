@@ -164,14 +164,12 @@ type AutocompleteTableContext struct {
 }
 
 type LatestResultContext struct {
-	Statement           string
-	OriginPane          Pane
-	PreservedResult     *db.ResultSet
-	InlineResult        *db.ResultSet
-	StatementKind       db.StatementResultKind
-	RowsAffected        *int64
-	LastInsertID        *int64
-	InlineRowsTruncated bool
+	Statement       string
+	OriginPane      Pane
+	PreservedResult *db.ResultSet
+	StatementKind   db.StatementResultKind
+	RowsAffected    *int64
+	LastInsertID    *int64
 }
 
 type PaneSwitchContext struct {
@@ -361,7 +359,6 @@ func cloneLatestResultContext(context *LatestResultContext) *LatestResultContext
 
 	clone := *context
 	clone.PreservedResult = cloneResultSet(context.PreservedResult)
-	clone.InlineResult = cloneResultSet(context.InlineResult)
 	clone.RowsAffected = cloneInt64Pointer(context.RowsAffected)
 	clone.LastInsertID = cloneInt64Pointer(context.LastInsertID)
 	return &clone

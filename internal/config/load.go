@@ -30,10 +30,6 @@ type validator interface {
 	Validate() error
 }
 
-func DiscoverPaths(cwd string) (Paths, error) {
-	return discoverPaths(os.UserConfigDir, os.Getwd, cwd, FileName)
-}
-
 func Load[T any](cwd string) (Result[T], error) {
 	return load[T](cwd, FileName)
 }

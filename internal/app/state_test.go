@@ -46,25 +46,17 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 		Tables: []AutocompleteTableContext{{Namespace: "main", Name: "widgets", Columns: []string{"id", "payload"}}},
 	})
 	state.SetLatestResultContext(&LatestResultContext{
-		Statement:           "select * from widgets",
-		OriginPane:          PaneCommand,
-		StatementKind:       db.StatementResultKindQuery,
-		RowsAffected:        cloneInt64Pointer(int64PointerForTest(3)),
-		LastInsertID:        cloneInt64Pointer(int64PointerForTest(9)),
-		InlineRowsTruncated: true,
+		Statement:     "select * from widgets",
+		OriginPane:    PaneCommand,
+		StatementKind: db.StatementResultKindQuery,
+		RowsAffected:  cloneInt64Pointer(int64PointerForTest(3)),
+		LastInsertID:  cloneInt64Pointer(int64PointerForTest(9)),
 		PreservedResult: &db.ResultSet{
 			Columns: []db.ResultColumn{{Name: "payload"}},
 			Rows: append([]db.ResultRow{{
 				Position: 1,
 				Values:   []db.ResultValue{{Kind: db.ValueKindBytes, Value: []byte("abc")}},
 			}}, make([]db.ResultRow, 300)...),
-		},
-		InlineResult: &db.ResultSet{
-			Columns: []db.ResultColumn{{Name: "payload"}},
-			Rows: []db.ResultRow{{
-				Position: 1,
-				Values:   []db.ResultValue{{Kind: db.ValueKindBytes, Value: []byte("xyz")}},
-			}},
 		},
 	})
 	state.SetMarkedRows([]int{1, 301})
@@ -97,10 +89,8 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 	state.Interaction.PendingPaneSwitch.ResultContext.Statement = "mutated switch"
 	*state.Interaction.LatestResult.RowsAffected = 99
 	*state.Interaction.LatestResult.LastInsertID = 42
-	state.Interaction.LatestResult.InlineRowsTruncated = false
 	state.Interaction.LatestResult.PreservedResult.Columns[0].Name = "changed"
 	state.Interaction.LatestResult.PreservedResult.Rows[0].Values[0].Value.([]byte)[0] = 'z'
-	state.Interaction.LatestResult.InlineResult.Rows[0].Values[0].Value.([]byte)[0] = 'q'
 
 	if got, want := snapshot.App.Current, StateReconnect; got != want {
 		t.Fatalf("snapshot.App.Current = %q, want %q", got, want)
@@ -178,20 +168,12 @@ func TestSharedAppStateSnapshotClonesInteractionState(t *testing.T) {
 		t.Fatalf("snapshot.Interaction.LatestResult.LastInsertID = %#v, want 9", snapshot.Interaction.LatestResult.LastInsertID)
 	}
 
-	if !snapshot.Interaction.LatestResult.InlineRowsTruncated {
-		t.Fatal("snapshot.Interaction.LatestResult.InlineRowsTruncated = false, want true")
-	}
-
 	if got, want := snapshot.Interaction.LatestResult.PreservedResult.Columns[0].Name, "payload"; got != want {
 		t.Fatalf("snapshot.Interaction.LatestResult.PreservedResult.Columns[0].Name = %q, want %q", got, want)
 	}
 
 	if got, want := string(snapshot.Interaction.LatestResult.PreservedResult.Rows[0].Values[0].Value.([]byte)), "abc"; got != want {
 		t.Fatalf("snapshot.Interaction.LatestResult.PreservedResult.Rows[0].Values[0] = %q, want %q", got, want)
-	}
-
-	if got, want := string(snapshot.Interaction.LatestResult.InlineResult.Rows[0].Values[0].Value.([]byte)), "xyz"; got != want {
-		t.Fatalf("snapshot.Interaction.LatestResult.InlineResult.Rows[0].Values[0] = %q, want %q", got, want)
 	}
 
 	if got, want := snapshot.Interaction.PendingPaneSwitch.ToPane, PaneResults; got != want {

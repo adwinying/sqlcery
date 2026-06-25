@@ -18,17 +18,13 @@ type tuiTheme struct {
 	PanelText                lipgloss.Style
 	PanelMuted               lipgloss.Style
 	PanelSelected            lipgloss.Style
-	PanelHint                lipgloss.Style
 	InfoNotice               lipgloss.Style
 	WarningNotice            lipgloss.Style
 	ErrorNotice              lipgloss.Style
 	NotificationSuccess      lipgloss.Style
 	NotificationInfo         lipgloss.Style
 	NotificationError        lipgloss.Style
-	ResultTitle              lipgloss.Style
-	ResultHeader             lipgloss.Style
 	ResultSeparator          lipgloss.Style
-	ResultSummary            lipgloss.Style
 	ResultsPaneTitle         lipgloss.Style
 	ResultsPaneMeta          lipgloss.Style
 	ResultsPaneSelection     lipgloss.Style
@@ -48,7 +44,6 @@ type tuiTheme struct {
 	PromptStyle              lipgloss.Style
 	LineNumberStyle          lipgloss.Style
 	CursorLineNumberStyle    lipgloss.Style
-	PlaceholderStyle         lipgloss.Style
 	CursorLineStyle          lipgloss.Style
 	CursorStyle              lipgloss.Style
 	GhostTextStyle           lipgloss.Style
@@ -77,17 +72,13 @@ func newTUITheme() tuiTheme {
 		PanelText:                lipgloss.NewStyle(),
 		PanelMuted:               lipgloss.NewStyle().Foreground(muted),
 		PanelSelected:            lipgloss.NewStyle().Foreground(selectedForeground).Background(selectedBackground).Bold(true),
-		PanelHint:                lipgloss.NewStyle().Foreground(muted).Italic(true),
 		InfoNotice:               lipgloss.NewStyle().Foreground(accentSoft).Bold(true),
 		WarningNotice:            lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
 		ErrorNotice:              lipgloss.NewStyle().Foreground(danger).Bold(true),
 		NotificationSuccess:      lipgloss.NewStyle().Foreground(success).Bold(true),
 		NotificationInfo:         lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
 		NotificationError:        lipgloss.NewStyle().Foreground(danger).Bold(true),
-		ResultTitle:              lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
-		ResultHeader:             lipgloss.NewStyle().Foreground(accentSoft).Bold(true),
 		ResultSeparator:          lipgloss.NewStyle().Foreground(muted),
-		ResultSummary:            lipgloss.NewStyle().Foreground(success),
 		ResultsPaneTitle:         lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
 		ResultsPaneMeta:          lipgloss.NewStyle(),
 		ResultsPaneSelection:     lipgloss.NewStyle().Foreground(accentSoft).Bold(true),
@@ -100,16 +91,15 @@ func newTUITheme() tuiTheme {
 		KeywordStyle:             lipgloss.NewStyle().Foreground(accent).Bold(true),
 		StringStyle:              lipgloss.NewStyle().Foreground(success),
 		NumberStyle:              lipgloss.NewStyle().Foreground(accentSoft),
-		CommentStyle:             lipgloss.NewStyle().Foreground(muted).Italic(true),
+		CommentStyle:             lipgloss.NewStyle().Foreground(muted),
 		QuotedIdentifierStyle:    lipgloss.NewStyle().Foreground(accentSoft),
 		ParameterStyle:           lipgloss.NewStyle().Foreground(accentWarm),
 		OperatorStyle:            lipgloss.NewStyle().Foreground(accentWarm),
 		PromptStyle:              lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
 		LineNumberStyle:          lipgloss.NewStyle().Foreground(muted),
 		CursorLineNumberStyle:    lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
-		PlaceholderStyle:         lipgloss.NewStyle().Foreground(muted).Italic(true),
 		CursorLineStyle:          lipgloss.NewStyle(),
 		CursorStyle:              lipgloss.NewStyle().Reverse(true),
-		GhostTextStyle:           lipgloss.NewStyle().Foreground(muted).Italic(true),
+		GhostTextStyle:           lipgloss.NewStyle().Foreground(muted),
 	}
 }

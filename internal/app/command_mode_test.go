@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -444,50 +443,6 @@ func TestCommandModeViewRendersHistorySearch(t *testing.T) {
 	for _, want := range []string{"enter restore", "ctrl+p up", "ctrl+n down", "esc", "ctrl+t keybindings"} {
 		if !strings.Contains(hintsStr, want) {
 			t.Fatalf("historySearchModal.StatusBarHints() = %q, want to contain %q", hintsStr, want)
-		}
-	}
-}
-
-func TestCommandModeViewRendersInlineSelectResult(t *testing.T) {
-	query := InteractionState{
-		LatestResult: &LatestResultContext{
-			OriginPane:    PaneCommand,
-			StatementKind: db.StatementResultKindQuery,
-			InlineResult: &db.ResultSet{
-				Columns: []db.ResultColumn{{Name: "id"}, {Name: "name"}, {Name: "created_at"}},
-				Rows: []db.ResultRow{{
-					Values: []db.ResultValue{
-						{Kind: db.ValueKindInteger, Value: int64(1)},
-						{Kind: db.ValueKindString, Value: "Ada"},
-						{Kind: db.ValueKindTime, Value: time.Date(2026, time.April, 7, 11, 30, 0, 0, time.UTC)},
-					},
-				}},
-			},
-		},
-	}
-	result := renderInlineResult(query)
-	for _, want := range []string{"Results:", "id | name | created_at", "1  | Ada  | 2026-04-07 11:30:00", "1 row."} {
-		if !strings.Contains(result, want) {
-			t.Fatalf("renderInlineResult() = %q, want to contain %q", result, want)
-		}
-	}
-}
-
-func TestCommandModeViewRendersInlineExecResult(t *testing.T) {
-	rowsAffected := int64(2)
-	lastInsertID := int64(9)
-	query := InteractionState{
-		LatestResult: &LatestResultContext{
-			OriginPane:    PaneCommand,
-			StatementKind: db.StatementResultKindExec,
-			RowsAffected:  &rowsAffected,
-			LastInsertID:  &lastInsertID,
-		},
-	}
-	result := renderInlineResult(query)
-	for _, want := range []string{"Results:", "2 rows affected", "last insert id 9"} {
-		if !strings.Contains(result, want) {
-			t.Fatalf("renderInlineResult() = %q, want to contain %q", result, want)
 		}
 	}
 }

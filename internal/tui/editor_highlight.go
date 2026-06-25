@@ -44,7 +44,6 @@ type sqlSyntaxHighlighter struct {
 	promptStyle           lipgloss.Style
 	lineNumberStyle       lipgloss.Style
 	cursorLineNumberStyle lipgloss.Style
-	placeholderStyle      lipgloss.Style
 	cursorLineStyle       lipgloss.Style
 	cursorStyle           lipgloss.Style
 	ghostTextStyle        lipgloss.Style
@@ -71,7 +70,6 @@ func newSQLSyntaxHighlighter() sqlSyntaxHighlighter {
 		promptStyle:           AppTheme.PromptStyle,
 		lineNumberStyle:       AppTheme.LineNumberStyle,
 		cursorLineNumberStyle: AppTheme.CursorLineNumberStyle,
-		placeholderStyle:      AppTheme.PlaceholderStyle,
 		cursorLineStyle:       AppTheme.CursorLineStyle,
 		cursorStyle:           AppTheme.CursorStyle,
 		ghostTextStyle:        AppTheme.GhostTextStyle,
@@ -113,7 +111,7 @@ func editorWrapStyledLine(line sqlStyledLine, width int) []sqlStyledLine {
 	return wrapped
 }
 
-func (h sqlSyntaxHighlighter) renderLineContent(line sqlStyledLine, cursorCol, width int, placeholder bool) string {
+func (h sqlSyntaxHighlighter) renderLineContentWithGhost(line sqlStyledLine, cursorCol, width int, ghostText string) string {
 	var builder strings.Builder
 	currentWidth := 0
 	cursorRendered := false
@@ -126,40 +124,7 @@ func (h sqlSyntaxHighlighter) renderLineContent(line sqlStyledLine, cursorCol, w
 			builder.WriteString(h.cursorStyle.Render(rendered))
 			cursorRendered = true
 		} else {
-			builder.WriteString(h.styleFor(sr.kind, placeholder).Render(rendered))
-		}
-		currentWidth += runeWidth
-	}
-
-	if cursorCol == currentWidth && !cursorRendered {
-		builder.WriteString(h.cursorStyle.Render(" "))
-		cursorRendered = true
-	}
-
-	paddingWidth := max(0, width-currentWidth)
-	if cursorCol == currentWidth && cursorRendered && paddingWidth > 0 {
-		paddingWidth--
-	}
-	if paddingWidth > 0 {
-		builder.WriteString(strings.Repeat(" ", paddingWidth))
-	}
-	return builder.String()
-}
-
-func (h sqlSyntaxHighlighter) renderLineContentWithGhost(line sqlStyledLine, cursorCol, width int, placeholder bool, ghostText string) string {
-	var builder strings.Builder
-	currentWidth := 0
-	cursorRendered := false
-
-	for _, sr := range line {
-		rendered := string(sr.rune)
-		runeWidth := max(1, rw.RuneWidth(sr.rune))
-
-		if cursorCol == currentWidth && !cursorRendered {
-			builder.WriteString(h.cursorStyle.Render(rendered))
-			cursorRendered = true
-		} else {
-			builder.WriteString(h.styleFor(sr.kind, placeholder).Render(rendered))
+			builder.WriteString(h.styleFor(sr.kind).Render(rendered))
 		}
 		currentWidth += runeWidth
 	}
@@ -189,10 +154,7 @@ func (h sqlSyntaxHighlighter) renderLineContentWithGhost(line sqlStyledLine, cur
 	return builder.String()
 }
 
-func (h sqlSyntaxHighlighter) styleFor(kind sqlTokenKind, placeholder bool) lipgloss.Style {
-	if placeholder {
-		return h.placeholderStyle
-	}
+func (h sqlSyntaxHighlighter) styleFor(kind sqlTokenKind) lipgloss.Style {
 	switch kind {
 	case sqlTokenKeyword:
 		return h.keywordStyle
