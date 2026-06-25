@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -133,7 +134,7 @@ func (m Model) handlePickerConnectFailed(msg pickerConnectFailedMsg) (Model, tea
 	m.picker.PendingAbort = false
 
 	errText := FormatTerminalError(msg.err)
-	if strings.Contains(msg.err.Error(), "context canceled") {
+	if errors.Is(msg.err, context.Canceled) {
 		// Aborted by user — return silently without error.
 		errText = ""
 	}
