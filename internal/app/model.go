@@ -361,6 +361,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.schema = msg.schema
 		m.syncAutocompleteSchemaSnapshot()
 		return m, nil
+	case midRunConnectMsg:
+		return m.handleMidRunConnect(msg)
+	case midRunConnectSuccessMsg:
+		return m.handleMidRunConnectSuccess(msg)
+	case midRunConnectFailedMsg:
+		return m.handleMidRunConnectFailed(msg)
 	case startupCompleteMsg:
 		m.state.SetReady("", NotificationNone)
 		return m, tea.Batch(m.command.Init(), m.refreshAutocompleteSchemaCmd())
@@ -552,6 +558,9 @@ func (m Model) handleSubmitIntent() (tea.Model, tea.Cmd) {
 		}
 		if parsedSlash.Name == "commands" {
 			return m.openCommandWizard()
+		}
+		if parsedSlash.Name == "connect" {
+			return m.openConnectionPickerModal()
 		}
 		return m, m.startExecution(parsedSlash.DisplayName, fmt.Sprintf("Dispatching %s.", parsedSlash.DisplayName), NotificationInfo, executeSlashCommandCmd(slashCommandContext{
 			Session: m.session,

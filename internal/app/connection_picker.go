@@ -126,6 +126,10 @@ func (m Model) handlePickerConnectSuccess(msg pickerConnectSuccessMsg) (Model, t
 }
 
 // handlePickerConnectFailed returns to the Picker with the error shown inline.
+// UX fix (D): when the failure is from the auto-connect startup path AND the
+// candidate list is empty (e.g. a bare connection-string CLI arg), the app
+// exits with the formatted error instead of dropping into an empty picker.
+// A named-arg failure still returns to the picker because that name IS a candidate.
 func (m Model) handlePickerConnectFailed(msg pickerConnectFailedMsg) (Model, tea.Cmd) {
 	if m.cancelConnect != nil {
 		m.cancelConnect()
@@ -133,11 +137,24 @@ func (m Model) handlePickerConnectFailed(msg pickerConnectFailedMsg) (Model, tea
 	}
 	m.picker.PendingAbort = false
 
-	errText := FormatTerminalError(msg.err)
+	// If the user aborted via double-Esc, return silently without error.
 	if errors.Is(msg.err, context.Canceled) {
-		// Aborted by user — return silently without error.
-		errText = ""
+		m.picker.ConnectError = ""
+		m.state.App.Current = StateSelectConnection
+		return m, nil
 	}
+
+	errText := FormatTerminalError(msg.err)
+
+	// UX fix: auto-connect failure on a path that has no picker candidates → quit.
+	// This covers bare Connection String args (no Name) where the picker would be empty.
+	if m.autoConnectTarget.Connection.Type != "" && len(m.picker.Candidates) == 0 {
+		// Print the error and quit — the picker would be useless (nothing to pick).
+		m.state.App.Current = StateError
+		m.state.App.Error = errText
+		return m, tea.Quit
+	}
+
 	m.picker.ConnectError = errText
 	m.state.App.Current = StateSelectConnection
 	return m, nil
