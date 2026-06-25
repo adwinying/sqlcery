@@ -12,6 +12,23 @@ import (
 	apphistory "github.com/adwinying/sqlcery/internal/history"
 )
 
+var (
+	version string
+	commit  string
+)
+
+func buildVersion() string {
+	v := version
+	if v == "" {
+		v = "dev"
+	}
+	c := commit
+	if c == "" {
+		c = "unknown"
+	}
+	return fmt.Sprintf("%s (%s)", v, c)
+}
+
 func main() {
 	if err := run(os.Args[1:], os.Getwd); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -20,6 +37,10 @@ func main() {
 }
 
 func run(args []string, getwd func() (string, error)) error {
+	if len(args) == 1 && args[0] == "--version" {
+		fmt.Println(buildVersion())
+		return nil
+	}
 	return runWithDependencies(args, getwd, runDependencies{
 		open: db.Open,
 		start: func(ctx context.Context, session app.Session) error {
@@ -27,7 +48,7 @@ func run(args []string, getwd func() (string, error)) error {
 			if err != nil {
 				return err
 			}
-			return app.Run(ctx, session, app.RunOptions{History: history})
+			return app.Run(ctx, session, app.RunOptions{History: history, Version: buildVersion()})
 		},
 	})
 }

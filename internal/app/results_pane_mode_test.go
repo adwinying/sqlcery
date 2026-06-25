@@ -13,7 +13,7 @@ import (
 )
 
 func TestResultsPaneModeViewAcceptsResultsPaneViewContext(t *testing.T) {
-	mode := newResultsPaneModeModel()
+	mode := newResultsPaneModeModel("")
 	mode.SetSize(80, 8)
 
 	interaction := InteractionState{
@@ -39,7 +39,7 @@ func TestResultsPaneModeViewAcceptsResultsPaneViewContext(t *testing.T) {
 }
 
 func TestResultsPaneModeViewRendersFullResultSet(t *testing.T) {
-	mode := newResultsPaneModeModel()
+	mode := newResultsPaneModeModel("")
 	mode.SetSize(80, 8)
 
 	interaction := InteractionState{
@@ -73,7 +73,7 @@ func TestResultsPaneModeViewRendersFullResultSet(t *testing.T) {
 }
 
 func TestResultsPaneModeViewRendersSelectedPage(t *testing.T) {
-	mode := newResultsPaneModeModel()
+	mode := newResultsPaneModeModel("")
 	mode.SetSize(80, 12)
 
 	rows := make([]db.ResultRow, 0, 305)
@@ -110,7 +110,7 @@ func TestResultsPaneModeViewRendersSelectedPage(t *testing.T) {
 }
 
 func TestResultsPaneModeViewClipsRowsToVisibleViewport(t *testing.T) {
-	mode := newResultsPaneModeModel()
+	mode := newResultsPaneModeModel("")
 	mode.SetSize(80, 14)
 	mode.selectedRow = 15
 	mode.viewportStart = 9 // scrolloffViewport(15, 0, visibleRows=12, totalRows=30, scrolloff=5) = 9
@@ -386,7 +386,7 @@ func TestClampResultsPanePage(t *testing.T) {
 }
 
 func TestResultsPaneModeNavigateSupportsArrowsAndHJKL(t *testing.T) {
-	mode := newResultsPaneModeModel()
+	mode := newResultsPaneModeModel("")
 	query := InteractionState{
 		LatestResult: &LatestResultContext{
 			PreservedResult: &db.ResultSet{
@@ -466,7 +466,7 @@ func TestResultsPaneBorderCounterShowsSelectedRowCount(t *testing.T) {
 }
 
 func TestResultsPaneModeToggleSelectedRowTracksMultipleRows(t *testing.T) {
-	mode := newResultsPaneModeModel()
+	mode := newResultsPaneModeModel("")
 	query := InteractionState{
 		LatestResult: &LatestResultContext{
 			PreservedResult: &db.ResultSet{
@@ -569,7 +569,7 @@ func TestRenderInlineResultLineCJKPadding(t *testing.T) {
 // TestResultsPaneModeViewCJKCharacters is an end-to-end test ensuring the
 // Results Pane renders CJK column headers and values with correct alignment.
 func TestResultsPaneModeViewCJKCharacters(t *testing.T) {
-	mode := newResultsPaneModeModel()
+	mode := newResultsPaneModeModel("")
 	mode.SetSize(80, 12)
 
 	cjkInteraction := InteractionState{
@@ -659,7 +659,7 @@ func TestPrepareResultsPanePageTruncatesNewlineValues(t *testing.T) {
 }
 
 func TestResultsPaneTableTruncatesMultilineValues(t *testing.T) {
-	mode := newResultsPaneModeModel()
+	mode := newResultsPaneModeModel("")
 	mode.SetSize(80, 8)
 
 	truncInteraction := InteractionState{
@@ -694,7 +694,7 @@ func TestResultsPaneTableTruncatesMultilineValues(t *testing.T) {
 }
 
 func TestResultsPaneModeNavigateEdgeLockScrollsOnEveryHorizontalPress(t *testing.T) {
-	mode := newResultsPaneModeModel()
+	mode := newResultsPaneModeModel("")
 	mode.SetSize(20, 8)
 
 	query := InteractionState{
@@ -752,7 +752,7 @@ func TestResultsPaneModeNavigateClampsAtPageBoundary(t *testing.T) {
 	}
 
 	// On page 0, pressing down on the last row of that page must not advance to page 1.
-	mode := newResultsPaneModeModel()
+	mode := newResultsPaneModeModel("")
 	mode.selectedRow = tui.ResultsPanePageSize - 1
 	query := InteractionState{ResultsPanePage: 0, LatestResult: &LatestResultContext{PreservedResult: result}}
 	page, handled := mode.Navigate(tea.KeyPressMsg{Code: tea.KeyDown}, query)
@@ -767,7 +767,7 @@ func TestResultsPaneModeNavigateClampsAtPageBoundary(t *testing.T) {
 	}
 
 	// On page 1, pressing up on its first row must not retreat to page 0.
-	mode2 := newResultsPaneModeModel()
+	mode2 := newResultsPaneModeModel("")
 	mode2.selectedRow = tui.ResultsPanePageSize
 	query2 := InteractionState{ResultsPanePage: 1, LatestResult: &LatestResultContext{PreservedResult: result}}
 	page2, handled2 := mode2.Navigate(tea.KeyPressMsg{Code: tea.KeyUp}, query2)
@@ -783,7 +783,7 @@ func TestResultsPaneModeNavigateClampsAtPageBoundary(t *testing.T) {
 }
 
 func BenchmarkResultsPaneModeViewLargePage(b *testing.B) {
-	mode := newResultsPaneModeModel()
+	mode := newResultsPaneModeModel("")
 	mode.SetSize(140, 24)
 	mode.selectedRow = 150
 	mode.selectedColumn = 3

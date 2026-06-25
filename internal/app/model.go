@@ -45,6 +45,7 @@ type autocompleteSchemaLoader func(context.Context, *db.SQLAdapter) (*Autocomple
 type modelDependencies struct {
 	loader  autocompleteSchemaLoader
 	history *apphistory.History
+	version string
 }
 
 // nopCmd is a non-nil tea.Cmd that produces no message. Use it when a key
@@ -177,7 +178,7 @@ func newModelWithDependencies(session Session, deps modelDependencies) Model {
 		session:     session,
 		history:     sessionHistory,
 		command:     newCommandModeModel(),
-		resultsPane: newResultsPaneModeModel(),
+		resultsPane: newResultsPaneModeModel(deps.version),
 		state:       NewSharedAppState(),
 		loader:      loader,
 		splitRatio:  0.65,

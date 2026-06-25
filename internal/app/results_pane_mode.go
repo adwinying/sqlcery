@@ -59,13 +59,15 @@ type resultsPaneModeModel struct {
 	pendingAction   resultsPanePendingAction
 	cachedPage      *tui.ResultsPanePreparedPage
 	hintIdx         int
+	version         string
 }
 
-func newResultsPaneModeModel() resultsPaneModeModel {
+func newResultsPaneModeModel(version string) resultsPaneModeModel {
 	return resultsPaneModeModel{
 		width:   defaultResultsPaneWidth,
 		height:  defaultResultsPaneHeight,
 		hintIdx: rand.Intn(len(emptyStateHints)),
+		version: version,
 	}
 }
 
@@ -89,6 +91,13 @@ func (m *resultsPaneModeModel) renderEmptyState() string {
 		centeredLogoLines = append(centeredLogoLines, padStr+tui.AppTheme.ResultsPaneEmptyLogo.Render(line))
 	}
 
+	versionWidth := ansi.StringWidth(m.version)
+	versionLeftPad := (m.width - versionWidth) / 2
+	if versionLeftPad < 0 {
+		versionLeftPad = 0
+	}
+	centeredVersion := strings.Repeat(" ", versionLeftPad) + tui.AppTheme.ResultsPaneEmpty.Render(m.version)
+
 	subtitleWidth := len("Hint: ") + ansi.StringWidth(hintText)
 	subLeftPad := (m.width - subtitleWidth) / 2
 	if subLeftPad < 0 {
@@ -98,7 +107,7 @@ func (m *resultsPaneModeModel) renderEmptyState() string {
 		tui.AppTheme.ResultsPaneEmptySubtitle.Bold(true).Render("Hint:") + " " +
 		tui.AppTheme.ResultsPaneEmptySubtitle.Render(hintText)
 
-	contentLines := append(centeredLogoLines, "", styledSubtitle)
+	contentLines := append(centeredLogoLines, centeredVersion, "", styledSubtitle)
 	contentHeight := len(contentLines)
 
 	topPad := (m.height - contentHeight) / 2

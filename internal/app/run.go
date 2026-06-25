@@ -29,6 +29,7 @@ type RunOptions struct {
 	NewProgram     ProgramFactory
 	ProgramOptions []tea.ProgramOption
 	History        *apphistory.History
+	Version        string
 }
 
 func Run(ctx context.Context, session Session, options RunOptions) error {
@@ -51,7 +52,7 @@ func Run(ctx context.Context, session Session, options RunOptions) error {
 	programOptions = append(programOptions, tea.WithContext(ctx))
 	programOptions = append(programOptions, options.ProgramOptions...)
 
-	model := newModelWithDependencies(session, modelDependencies{history: options.History})
+	model := newModelWithDependencies(session, modelDependencies{history: options.History, version: options.Version})
 	_, err := newProgram(model, programOptions...).Run()
 	return err
 }
