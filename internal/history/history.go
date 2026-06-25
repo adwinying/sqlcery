@@ -12,11 +12,11 @@ import (
 )
 
 const (
-	DirName              = "sqlcery"
-	FileName             = "audit.log"
-	maxAuditLogSize    = 1 << 20
+	DirName               = "sqlcery"
+	FileName              = "audit.log"
+	maxAuditLogSize       = 1 << 20
 	rotatedAuditLogSuffix = ".1"
-	maxLoadedEntries     = 1000
+	maxLoadedEntries      = 1000
 )
 
 type Entry struct {

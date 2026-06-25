@@ -4,8 +4,8 @@ import (
 	"math/rand"
 	"strings"
 
-	"github.com/adwinying/sqlcery/internal/db"
 	tea "charm.land/bubbletea/v2"
+	"github.com/adwinying/sqlcery/internal/db"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/adwinying/sqlcery/internal/tui"
@@ -326,7 +326,6 @@ func resultsPaneRowCount(latest *LatestResultContext) int {
 	}
 	return len(latest.PreservedResult.Rows)
 }
-
 
 // applyScrollOff recomputes viewportStart for the current selectedRow using
 // the scrolloff guard. Call after any cursor change that does not already

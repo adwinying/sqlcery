@@ -862,4 +862,3 @@ func replaceEditorCmd(result slashCommandResult) func(context.Context, time.Time
 		}
 	}
 }
-

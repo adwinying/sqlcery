@@ -283,7 +283,7 @@ func TestLoadFromFileCapsAtMaxLoadedEntries(t *testing.T) {
 	all := make([]Entry, maxLoadedEntries+10)
 	for i := range all {
 		all[i] = Entry{
-			Statement:        fmt.Sprintf("select %d", i),
+			Statement:      fmt.Sprintf("select %d", i),
 			ConnectionName: "local",
 			ExecutedAt:     stamp.Add(time.Duration(i) * time.Second),
 		}

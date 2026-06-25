@@ -30,7 +30,16 @@ func TestRunStartsProgram(t *testing.T) {
 	started := false
 	var captured tea.Model
 
-	err := Run(context.Background(), Session{ConnectionName: "local", DatabaseType: "sqlite", Adapter: adapter}, RunOptions{
+	// Inject an open func that returns the pre-opened adapter.
+	err := Run(context.Background(), RunOptions{
+		Open: func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
+			return adapter, nil
+		},
+		AutoConnectTarget: config.ResolvedConnection{
+			Name:       "local",
+			Raw:        "local",
+			Connection: config.Connection{Type: "sqlite", Database: ":memory:"},
+		},
 		NewProgram: func(model tea.Model, _ ...tea.ProgramOption) Program {
 			captured = model
 			return fakeProgram{run: func() (tea.Model, error) {
@@ -61,13 +70,36 @@ func TestRunUsesProvidedHistorySession(t *testing.T) {
 	}()
 
 	historyPath := filepath.Join(t.TempDir(), apphistory.DirName, apphistory.FileName)
-	history := apphistory.NewFileBackedHistory(historyPath)
 
-	err := Run(context.Background(), Session{ConnectionName: "local", DatabaseType: "sqlite", Adapter: adapter}, RunOptions{
-		History: history,
+	// Inject a NewHistory factory that returns a file-backed history at historyPath.
+	err := Run(context.Background(), RunOptions{
+		Open: func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
+			return adapter, nil
+		},
+		AutoConnectTarget: config.ResolvedConnection{
+			Name:       "local",
+			Raw:        "local",
+			Connection: config.Connection{Type: "sqlite", Database: ":memory:"},
+		},
+		NewHistory: func(_ string) (*apphistory.History, error) {
+			return apphistory.NewFileBackedHistory(historyPath), nil
+		},
 		NewProgram: func(model tea.Model, _ ...tea.ProgramOption) Program {
 			return fakeProgram{run: func() (tea.Model, error) {
 				typed := model.(Model)
+				// The model starts in StateStartup (auto-connect target), drive Init.
+				cmd := typed.Init()
+				for _, msg := range collectCommandMessagesForTest(t, cmd) {
+					var nextModel tea.Model
+					nextModel, cmd = typed.Update(msg)
+					typed = nextModel.(Model)
+				}
+				// Now drive the connect success.
+				for _, msg := range collectCommandMessagesForTest(t, cmd) {
+					var nextModel tea.Model
+					nextModel, _ = typed.Update(msg)
+					typed = nextModel.(Model)
+				}
 				typed.state.SetReady("", NotificationNone)
 				typed.command.editor.SetValue("select 1;")
 				typed.syncCurrentSQL()
@@ -282,7 +314,7 @@ func TestModelAutocompleteUsesCachedSchemaWhileTyping(t *testing.T) {
 func TestModelViewIncludesSharedInteractionStatePlaceholders(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("", NotificationNone)
-	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select 1", ConnectionName: "local"}})
+	model.state.SetHistory([]HistoryEntryContext{{Statement: "select 1", ConnectionName: "local"}})
 	model.state.SetLatestResultContext(&LatestResultContext{Statement: "select 1", OriginPane: PaneCommand})
 	model.state.SetPendingPaneSwitch(&PaneSwitchContext{FromLayout: LayoutCommandOnly, ToLayout: LayoutResultsOnly, FromPane: PaneCommand, ToPane: PaneResults})
 	if model.state.Interaction.LatestResult == nil {
@@ -297,7 +329,15 @@ func TestModelViewIncludesSharedInteractionStatePlaceholders(t *testing.T) {
 }
 
 func TestModelInitTransitionsStartupToReady(t *testing.T) {
-	model := NewModel(Session{})
+	// A model with a live adapter starts in StateStartup and transitions to StateReady.
+	adapter := openTestAdapter(t)
+	defer func() {
+		if err := adapter.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	}()
+
+	model := NewModel(Session{Adapter: adapter})
 
 	if got, want := model.state.App.Current, StateStartup; got != want {
 		t.Fatalf("initial state = %q, want %q", got, want)
@@ -322,7 +362,15 @@ func TestModelInitTransitionsStartupToReady(t *testing.T) {
 }
 
 func TestModelViewRendersStartupState(t *testing.T) {
-	view := NewModel(Session{ConnectionName: "local", DatabaseType: "sqlite"}).View().Content
+	// A model with a live adapter (SessionName + adapter) renders the startup view.
+	adapter := openTestAdapter(t)
+	defer func() {
+		if err := adapter.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	}()
+
+	view := NewModel(Session{ConnectionName: "local", DatabaseType: "sqlite", Adapter: adapter}).View().Content
 
 	for _, want := range []string{
 		"[ startup ]",
@@ -876,7 +924,7 @@ func TestAutocompleteMenuStaysClosedOnCursorMovement(t *testing.T) {
 func TestAutocompleteMenuStaysClosedOnHistoryRecall(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("", NotificationNone)
-	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select * from users"}})
+	model.state.SetHistory([]HistoryEntryContext{{Statement: "select * from users"}})
 
 	// Open history search, select the entry (auto-selected), then restore.
 	next, _ := model.Update(historyIntentMsg{})
@@ -1016,7 +1064,7 @@ func TestStatementExecutionTimeoutUsesFriendlyStatus(t *testing.T) {
 func TestModelUpdateHistorySetsPendingIntent(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("", NotificationNone)
-	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select 1"}, {	Statement: "/tables"}})
+	model.state.SetHistory([]HistoryEntryContext{{Statement: "select 1"}, {Statement: "/tables"}})
 	next, cmd := model.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("Update() cmd = nil, want history intent command")
@@ -1102,7 +1150,7 @@ func TestModelUpdateHistoryHandlesEmptyHistory(t *testing.T) {
 func TestModelUpdateHistorySearchFiltersAndCyclesEntries(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("", NotificationNone)
-	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select * from users"}, {	Statement: "delete from users"}, {	Statement: "select * from user_sessions"}})
+	model.state.SetHistory([]HistoryEntryContext{{Statement: "select * from users"}, {Statement: "delete from users"}, {Statement: "select * from user_sessions"}})
 
 	next, _ := model.Update(historyIntentMsg{})
 	model = next.(Model)
@@ -1143,7 +1191,7 @@ func TestModelUpdateHistorySearchFiltersAndCyclesEntries(t *testing.T) {
 func TestModelUpdateHistorySearchCancelReturnsToCommandMode(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("", NotificationNone)
-	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select 1"}})
+	model.state.SetHistory([]HistoryEntryContext{{Statement: "select 1"}})
 
 	next, _ := model.Update(historyIntentMsg{})
 	model = next.(Model)
@@ -1168,7 +1216,7 @@ func TestModelUpdateHistorySearchCancelReturnsToCommandMode(t *testing.T) {
 func TestModelUpdateHistorySearchRestoreLoadsEditorAndClosesSearch(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("", NotificationNone)
-	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select * from users"}, {	Statement: "select * from user_sessions"}})
+	model.state.SetHistory([]HistoryEntryContext{{Statement: "select * from users"}, {Statement: "select * from user_sessions"}})
 	model.command.editor.SetValue("partial")
 	model.command.editor.CursorEnd()
 	model.syncCurrentSQL()
@@ -1758,7 +1806,7 @@ func TestModelUpdateQQuitsWhenResultsPaneFocusedInSplitLayout(t *testing.T) {
 func TestModelUpdateFocusResultsPaneFromHistorySearchClosesHistorySearch(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("", NotificationNone)
-	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select 1"}})
+	model.state.SetHistory([]HistoryEntryContext{{Statement: "select 1"}})
 	next, _ := model.Update(historyIntentMsg{})
 	model = next.(Model)
 
@@ -1783,7 +1831,7 @@ func TestModelUpdateFocusResultsPaneFromHistorySearchClosesHistorySearch(t *test
 func TestModelUpdateLayoutSwitchesToResultsPaneOnlyAndClosesHistorySearch(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("", NotificationNone)
-	model.state.SetHistory([]HistoryEntryContext{{	Statement: "select 1"}})
+	model.state.SetHistory([]HistoryEntryContext{{Statement: "select 1"}})
 	next, _ := model.Update(historyIntentMsg{})
 	model = next.(Model)
 

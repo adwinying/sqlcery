@@ -4,7 +4,7 @@ package app
 type sqlAssistSurface string
 
 const (
-	sqlAssistSurfaceAutocomplete    sqlAssistSurface = "autocomplete"
+	sqlAssistSurfaceAutocomplete       sqlAssistSurface = "autocomplete"
 	sqlAssistSurfaceStatementExpansion sqlAssistSurface = "statement-expansion"
 )
 

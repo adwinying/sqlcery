@@ -17,9 +17,6 @@ func TestExampleConfigFilesDecodeAndValidate(t *testing.T) {
 	if err := appConfig.Validate(); err != nil {
 		t.Fatalf("Config.Validate() error = %v", err)
 	}
-	if got, want := appConfig.Connection, "mypgsql"; got != want {
-		t.Fatalf("appConfig.Connection = %q, want %q", got, want)
-	}
 
 	var connections Connections
 	decodeExampleFile(t, filepath.Join(root, "examples", "config", ConnectionsFileName), &connections)
@@ -28,7 +25,7 @@ func TestExampleConfigFilesDecodeAndValidate(t *testing.T) {
 		t.Fatalf("Connections.Validate() error = %v", err)
 	}
 
-	resolved, err := ResolveConnectionReference(connections, appConfig.Connection)
+	resolved, err := ResolveConnectionReference(connections, "mypgsql")
 	if err != nil {
 		t.Fatalf("ResolveConnectionReference() error = %v", err)
 	}

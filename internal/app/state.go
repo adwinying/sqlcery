@@ -11,7 +11,7 @@ import (
 type Pane string
 
 const (
-	PaneCommand     Pane = "command"
+	PaneCommand Pane = "command"
 	PaneResults Pane = "results-pane"
 )
 
@@ -20,11 +20,12 @@ const (
 type AppModal string
 
 const (
-	ModalNone          AppModal = ""
-	ModalHistorySearch AppModal = "history-search"
-	ModalSlashWizard   AppModal = "slash-wizard"
-	ModalKeybindings   AppModal = "keybindings"
-	ModalExportWizard  AppModal = "export-wizard"
+	ModalNone             AppModal = ""
+	ModalHistorySearch    AppModal = "history-search"
+	ModalSlashWizard      AppModal = "slash-wizard"
+	ModalKeybindings      AppModal = "keybindings"
+	ModalExportWizard     AppModal = "export-wizard"
+	ModalConnectionPicker AppModal = "connection-picker"
 )
 
 type AppLayout string
@@ -32,25 +33,26 @@ type AppLayout string
 const (
 	LayoutSplit       AppLayout = "split"
 	LayoutCommandOnly AppLayout = "command-only"
-	LayoutResultsOnly  AppLayout = "results-pane-only"
+	LayoutResultsOnly AppLayout = "results-pane-only"
 )
 
 type AppState string
 
 const (
-	StateStartup   AppState = "startup"
-	StateReady     AppState = "ready"
-	StateReconnect AppState = "reconnect"
-	StateError     AppState = "error"
+	StateSelectConnection AppState = "select-connection"
+	StateStartup          AppState = "startup"
+	StateReady            AppState = "ready"
+	StateReconnect        AppState = "reconnect"
+	StateError            AppState = "error"
 )
 
 type PendingIntent string
 
 const (
-	IntentNone       PendingIntent = ""
-	IntentSubmit     PendingIntent = "submit"
-	IntentHistory    PendingIntent = "history"
-	IntentSwitchPane PendingIntent = "switch-pane"
+	IntentNone             PendingIntent = ""
+	IntentSubmit           PendingIntent = "submit"
+	IntentHistory          PendingIntent = "history"
+	IntentSwitchPane       PendingIntent = "switch-pane"
 	IntentClearCommandPane PendingIntent = "clear-command-pane"
 )
 
@@ -186,6 +188,25 @@ type HistoryEntryContext struct {
 	ExecutedAt     time.Time
 }
 
+// ConnectionPickerContext is the shared selection state for the Connection
+// Picker, usable both as a full-screen startup screen (StateSelectConnection)
+// and as a mid-run ModalConnectionPicker host (a later slice).
+// The context owns filtering and selection; opening/error sub-state sits
+// alongside it in the Model so the context itself remains presentation-only.
+type ConnectionPickerContext struct {
+	// Candidates holds the ordered Connection names (frecency-sorted).
+	Candidates []string
+	// Filter is the current fuzzy-filter string typed by the user.
+	Filter string
+	// Selected is the index into the filtered candidate list.
+	Selected int
+	// ConnectError is the last connection error (inline in the picker), if any.
+	ConnectError string
+	// PendingAbort is true when the first Esc was pressed during StateStartup
+	// (mirroring pendingQuit for the abort-connect gesture).
+	PendingAbort bool
+}
+
 func NewSharedAppState() SharedAppState {
 	return SharedAppState{
 		App: AppStateContext{
@@ -198,6 +219,21 @@ func NewSharedAppState() SharedAppState {
 			WindowFocused:   true,
 		},
 		Notification: Notification{Text: "Starting SQLcery.", Level: NotificationInfo, CreatedAt: time.Now()},
+	}
+}
+
+// newSelectConnectionState returns a SharedAppState seeded for the Picker.
+func newSelectConnectionState() SharedAppState {
+	return SharedAppState{
+		App: AppStateContext{
+			Current: StateSelectConnection,
+		},
+		Interaction: InteractionState{
+			Layout:          LayoutSplit,
+			ActivePane:      PaneCommand,
+			ResultsPanePage: 0,
+			WindowFocused:   true,
+		},
 	}
 }
 
@@ -384,7 +420,7 @@ func cloneAutocompleteSchemaContext(schema *AutocompleteSchemaContext) *Autocomp
 		entry := AutocompleteTableContext{
 			Namespace: table.Namespace,
 			Name:      table.Name,
-			Columns: append([]string(nil), table.Columns...),
+			Columns:   append([]string(nil), table.Columns...),
 		}
 		if table.ColumnTypes != nil {
 			entry.ColumnTypes = make(map[string]string, len(table.ColumnTypes))

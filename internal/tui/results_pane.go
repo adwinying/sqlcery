@@ -379,4 +379,3 @@ func ResultsPaneRowAtVisibleOffset(prepared *ResultsPanePreparedPage, height int
 	absoluteRow := prepared.Context.StartRow - 1 + start + offset
 	return absoluteRow, true
 }
-

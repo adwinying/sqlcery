@@ -65,12 +65,12 @@ func TestLoadLayersGlobalAndLocal(t *testing.T) {
 	}
 
 	globalPath := filepath.Join(globalDir, FileName)
-	if err := os.WriteFile(globalPath, []byte("connection = \"analytics\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(globalPath, []byte("mouse_disabled = false\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(global) error = %v", err)
 	}
 
 	localPath := filepath.Join(workingDir, FileName)
-	if err := os.WriteFile(localPath, []byte("connection = \"reporting\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(localPath, []byte("mouse_disabled = true\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(local) error = %v", err)
 	}
 
@@ -91,8 +91,9 @@ func TestLoadLayersGlobalAndLocal(t *testing.T) {
 		t.Fatalf("result.Loaded = %#v, want %#v", got, want)
 	}
 
-	if got, want := result.Value.Connection, "reporting"; got != want {
-		t.Fatalf("result.Value.Connection = %q, want %q", got, want)
+	// Local file takes precedence over global; mouse_disabled = true is the local value.
+	if got, want := result.Value.MouseDisabled, true; got != want {
+		t.Fatalf("result.Value.MouseDisabled = %v, want %v", got, want)
 	}
 }
 
@@ -191,49 +192,24 @@ func TestLoadReturnsDecodeErrors(t *testing.T) {
 	}
 }
 
-func TestLoadReturnsValidationErrors(t *testing.T) {
-	configHome := t.TempDir()
+func TestLoadConfigReturnsValidationErrors(t *testing.T) {
+	// Config.Validate() now always returns nil (connection field removed).
+	// Verify that valid TOML with mouse_disabled loads without error.
 	workingDir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", configHome)
-
-	globalDir := filepath.Join(configHome, DirName)
-	if err := os.MkdirAll(globalDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
 	localPath := filepath.Join(workingDir, FileName)
-	if err := os.WriteFile(localPath, []byte("connection = \"   \"\n"), 0o644); err != nil {
+	if err := os.WriteFile(localPath, []byte("mouse_disabled = true\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	_, err := Load[Config](workingDir)
-	if err == nil {
-		t.Fatal("Load() error = nil, want validation error")
+	result, err := Load[Config](workingDir)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil (Config.Validate always succeeds)", err)
 	}
 
-	if got, want := err.Error(), fmt.Sprintf("validate %s:", localPath); !strings.Contains(got, want) {
-		t.Fatalf("Load() error = %q, want to contain %q", got, want)
-	}
-
-	if got, want := err.Error(), "connection must not be blank"; !strings.Contains(got, want) {
-		t.Fatalf("Load() error = %q, want to contain %q", got, want)
-	}
-
-	if !errors.Is(err, ErrInvalidConfig) {
-		t.Fatalf("Load() error = %v, want errors.Is(..., ErrInvalidConfig)", err)
-	}
-
-	var invalidErr *InvalidConfigError
-	if !errors.As(err, &invalidErr) {
-		t.Fatalf("Load() error = %v, want InvalidConfigError", err)
-	}
-
-	if got, want := invalidErr.Op, "validate"; got != want {
-		t.Fatalf("invalidErr.Op = %q, want %q", got, want)
-	}
-
-	if got, want := invalidErr.Path, localPath; got != want {
-		t.Fatalf("invalidErr.Path = %q, want %q", got, want)
+	if got, want := result.Value.MouseDisabled, true; got != want {
+		t.Fatalf("result.Value.MouseDisabled = %v, want %v", got, want)
 	}
 }
 

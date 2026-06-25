@@ -8,10 +8,10 @@ import (
 )
 
 const (
-	ModalMinWidth    = 30
-	ModalMaxWidth    = 64
-	ModalFixedRows   = 16 // single-box inner height (no filter)
-	ModalFilterRows  = 1  // filter box inner height
+	ModalMinWidth      = 30
+	ModalMaxWidth      = 64
+	ModalFixedRows     = 16 // single-box inner height (no filter)
+	ModalFilterRows    = 1  // filter box inner height
 	ModalSplitListRows = 13 // suggestions box inner height when filter is present (ModalFixedRows - ModalFilterRows - 2 border rows)
 )
 

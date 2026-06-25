@@ -11,19 +11,10 @@ import (
 var _ encoding.TextUnmarshaler = (*Duration)(nil)
 
 type Config struct {
-	Connection    string `toml:"connection"`
-	MouseDisabled bool   `toml:"mouse_disabled"`
+	MouseDisabled bool `toml:"mouse_disabled"`
 }
 
 func (c Config) Validate() error {
-	if c.Connection == "" {
-		return nil
-	}
-
-	if strings.TrimSpace(c.Connection) == "" {
-		return fmt.Errorf("connection must not be blank")
-	}
-
 	return nil
 }
 
@@ -192,4 +183,3 @@ func (o ConnectionLifecycleOptions) Validate() error {
 
 	return nil
 }
-

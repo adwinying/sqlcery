@@ -323,8 +323,6 @@ func isSlashCommandPart(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_'
 }
 
-
-
 func analyzeAutocompleteScope(tokens []sqlToken) autocompleteScope {
 	tokens = currentStatementTokens(tokens)
 	if len(tokens) == 0 {
@@ -628,9 +626,9 @@ func buildAutocompleteCatalog(schema *AutocompleteSchemaContext, result *LatestR
 
 	if schema != nil {
 		for _, table := range schema.Tables {
-		entry := autocompleteTable{
-			Namespace:   table.Namespace,
-			Name:        table.Name,
+			entry := autocompleteTable{
+				Namespace:   table.Namespace,
+				Name:        table.Name,
 				Columns:     append([]string(nil), table.Columns...),
 				ColumnTypes: table.ColumnTypes,
 			}
@@ -646,9 +644,9 @@ func buildAutocompleteCatalog(schema *AutocompleteSchemaContext, result *LatestR
 		}
 
 		if latest.PreservedResult.Source != nil && strings.TrimSpace(latest.PreservedResult.Source.Name) != "" {
-		table := autocompleteTable{
-			Namespace: latest.PreservedResult.Source.Namespace,
-			Name:      latest.PreservedResult.Source.Name,
+			table := autocompleteTable{
+				Namespace: latest.PreservedResult.Source.Namespace,
+				Name:      latest.PreservedResult.Source.Name,
 			}
 			for _, column := range latest.PreservedResult.Columns {
 				if strings.TrimSpace(column.Name) != "" {

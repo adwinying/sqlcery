@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/adwinying/sqlcery/internal/config"
 	"github.com/adwinying/sqlcery/internal/db"
 	"github.com/adwinying/sqlcery/internal/export"
 	apphistory "github.com/adwinying/sqlcery/internal/history"
@@ -38,14 +39,28 @@ type Model struct {
 	pendingQuit   bool
 	lastClickRow  int
 	lastClickTime time.Time
+
+	// Connection Picker state
+	picker            ConnectionPickerContext
+	cancelConnect     context.CancelFunc // non-nil while a connect is in flight
+	open              func(context.Context, config.Connection) (*db.SQLAdapter, error)
+	newHistory        func(connectionName string) (*apphistory.History, error)
+	connectionsLoader func() (config.Connections, error)
+	frecencyStore     FrecencyStore
+	autoConnectTarget config.ResolvedConnection // non-empty → skip Picker, connect on init
 }
 
 type autocompleteSchemaLoader func(context.Context, *db.SQLAdapter) (*AutocompleteSchemaContext, error)
 
 type modelDependencies struct {
-	loader  autocompleteSchemaLoader
-	history *apphistory.History
-	version string
+	loader            autocompleteSchemaLoader
+	history           *apphistory.History
+	version           string
+	open              func(context.Context, config.Connection) (*db.SQLAdapter, error)
+	newHistory        func(connectionName string) (*apphistory.History, error)
+	connectionsLoader func() (config.Connections, error)
+	frecencyStore     FrecencyStore
+	autoConnectTarget config.ResolvedConnection
 }
 
 // nopCmd is a non-nil tea.Cmd that produces no message. Use it when a key
@@ -131,6 +146,35 @@ type slashCommandExecutedMsg struct {
 
 type startupCompleteMsg struct{}
 
+// pickerInitMsg triggers loading of available Connections for the Picker.
+type pickerInitMsg struct{}
+
+// pickerConnectionsLoadedMsg carries the (frecency-ordered) Connection names.
+type pickerConnectionsLoadedMsg struct {
+	names []string
+}
+
+// pickerConnectMsg triggers an async open attempt for a chosen Connection.
+type pickerConnectMsg struct {
+	resolved config.ResolvedConnection
+}
+
+// pickerConnectSuccessMsg signals a successful open.
+type pickerConnectSuccessMsg struct {
+	adapter  *db.SQLAdapter
+	resolved config.ResolvedConnection
+}
+
+// pickerConnectFailedMsg signals a failed open (return to Picker with error).
+type pickerConnectFailedMsg struct {
+	err error
+}
+
+// pickerSchemaReadyMsg is sent after schema introspection finishes post-connect.
+type pickerSchemaReadyMsg struct {
+	schema *AutocompleteSchemaContext
+}
+
 type autocompleteSchemaLoadedMsg struct {
 	Schema *AutocompleteSchemaContext
 	Err    error
@@ -174,14 +218,30 @@ func newModelWithDependencies(session Session, deps modelDependencies) Model {
 		sessionHistory = apphistory.NewHistory()
 	}
 
+	// Determine initial state: Picker when no adapter and no auto-connect target.
+	hasAutoConnect := deps.autoConnectTarget.Connection.Type != ""
+	hasAdapter := session.Adapter != nil
+
+	var initialState SharedAppState
+	if !hasAdapter && !hasAutoConnect {
+		initialState = newSelectConnectionState()
+	} else {
+		initialState = NewSharedAppState()
+	}
+
 	model := Model{
-		session:     session,
-		history:     sessionHistory,
-		command:     newCommandModeModel(),
-		resultsPane: newResultsPaneModeModel(deps.version),
-		state:       NewSharedAppState(),
-		loader:      loader,
-		splitRatio:  0.65,
+		session:           session,
+		history:           sessionHistory,
+		command:           newCommandModeModel(),
+		resultsPane:       newResultsPaneModeModel(deps.version),
+		state:             initialState,
+		loader:            loader,
+		splitRatio:        0.65,
+		open:              deps.open,
+		newHistory:        deps.newHistory,
+		connectionsLoader: deps.connectionsLoader,
+		frecencyStore:     deps.frecencyStore,
+		autoConnectTarget: deps.autoConnectTarget,
 	}
 	model.syncAutocompleteSchemaSnapshot()
 	model.syncHistorySnapshot()
@@ -190,7 +250,16 @@ func newModelWithDependencies(session Session, deps modelDependencies) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return func() tea.Msg { return startupCompleteMsg{} }
+	switch m.state.App.Current {
+	case StateSelectConnection:
+		return func() tea.Msg { return pickerInitMsg{} }
+	default:
+		// Normal startup path (has adapter or auto-connect target).
+		if m.autoConnectTarget.Connection.Type != "" {
+			return func() tea.Msg { return pickerConnectMsg{resolved: m.autoConnectTarget} }
+		}
+		return func() tea.Msg { return startupCompleteMsg{} }
+	}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -278,6 +347,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.handleToggleZoom()
 		m.syncPaneSizes()
 		return m, nil
+	case pickerInitMsg:
+		return m, m.pickerLoadConnectionsCmd()
+	case pickerConnectionsLoadedMsg:
+		return m.handlePickerConnectionsLoaded(msg)
+	case pickerConnectMsg:
+		return m.handlePickerConnect(msg)
+	case pickerConnectSuccessMsg:
+		return m.handlePickerConnectSuccess(msg)
+	case pickerConnectFailedMsg:
+		return m.handlePickerConnectFailed(msg)
+	case pickerSchemaReadyMsg:
+		m.schema = msg.schema
+		m.syncAutocompleteSchemaSnapshot()
+		return m, nil
 	case startupCompleteMsg:
 		m.state.SetReady("", NotificationNone)
 		return m, tea.Batch(m.command.Init(), m.refreshAutocompleteSchemaCmd())
@@ -358,6 +441,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKeyPressMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.state.App.Current == StateSelectConnection {
+		return m.handlePickerKeyPress(msg)
+	}
+
+	if m.state.App.Current == StateStartup && m.autoConnectTarget.Connection.Type == "" && m.cancelConnect != nil {
+		// We are in the connect-in-flight phase (transitioning from Picker).
+		return m.handleConnectingKeyPress(msg)
+	}
+
 	if m.state.App.Current != StateReady {
 		switch msg.String() {
 		case "ctrl+c":
@@ -573,12 +665,30 @@ func (m Model) View() tea.View {
 
 	var content string
 	switch m.state.App.Current {
+	case StateSelectConnection:
+		content = m.pickerView(contentHeight)
 	case StateStartup:
-		content = strings.Join([]string{
-			tui.AppTheme.PanelTitle.Render("[ startup ]"),
-			tui.AppTheme.PanelText.Render("Preparing command mode..."),
-			tui.AppTheme.PanelMuted.Render(m.state.Notification.Text),
-		}, "\n")
+		if m.autoConnectTarget.Connection.Type == "" && m.cancelConnect != nil {
+			// Connecting from the Picker — show a different message.
+			statusText := "Connecting..."
+			if m.state.Notification.Text != "" {
+				statusText = m.state.Notification.Text
+			}
+			lines := []string{
+				tui.AppTheme.PanelTitle.Render("[ connecting ]"),
+				tui.AppTheme.PanelMuted.Render(statusText),
+			}
+			if m.picker.PendingAbort {
+				lines = append(lines, tui.AppTheme.NotificationInfo.Render("Press esc again to cancel connecting."))
+			}
+			content = strings.Join(lines, "\n")
+		} else {
+			content = strings.Join([]string{
+				tui.AppTheme.PanelTitle.Render("[ startup ]"),
+				tui.AppTheme.PanelText.Render("Preparing command mode..."),
+				tui.AppTheme.PanelMuted.Render(m.state.Notification.Text),
+			}, "\n")
+		}
 	case StateReconnect:
 		lines := []string{
 			tui.AppTheme.PanelTitle.Render("[ reconnect ]"),
