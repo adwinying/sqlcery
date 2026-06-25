@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# mise description="Create an annotated git tag for the given version (e.g. mise run tag v1.2.3)"
+set -euo pipefail
+
+VERSION="${1:-}"
+
+if [ -z "$VERSION" ]; then
+  printf 'Usage: mise run tag <version>  (e.g. mise run tag v1.2.3)\n' >&2
+  exit 1
+fi
+
+if ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+(\.[a-zA-Z0-9]+)*)?(\+[a-zA-Z0-9.]+)?$'; then
+  printf 'Error: "%s" is not valid semver (expected vMAJOR.MINOR.PATCH)\n' "$VERSION" >&2
+  exit 1
+fi
+
+version_gt() {
+  local a="${1#v}" b="${2#v}"
+  a="${a%%-*}"; b="${b%%-*}"
+  IFS='.' read -r a1 a2 a3 <<< "$a"
+  IFS='.' read -r b1 b2 b3 <<< "$b"
+  [ "$a1" -gt "$b1" ] && return 0
+  [ "$a1" -lt "$b1" ] && return 1
+  [ "$a2" -gt "$b2" ] && return 0
+  [ "$a2" -lt "$b2" ] && return 1
+  [ "$a3" -gt "$b3" ] && return 0
+  return 1
+}
+
+HIGHEST=$(git tag -l 'v*' --sort=version:refname | tail -1)
+
+if [ -n "$HIGHEST" ] && version_gt "$HIGHEST" "$VERSION"; then
+  printf 'Error: existing tag %s is greater than %s\n' "$HIGHEST" "$VERSION" >&2
+  exit 1
+fi
+
+git tag -a "$VERSION" -m "$VERSION"
+printf 'Tagged HEAD as %s\n' "$VERSION"
+printf 'Push with: git push origin %s\n' "$VERSION"

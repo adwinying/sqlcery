@@ -73,8 +73,8 @@ description = "Build snapshot release binaries"
 run = "go run github.com/goreleaser/goreleaser/v2@v2.15.2 build --snapshot --clean --config .goreleaser.yaml"
 depends = ["check-go-version"]
 
-[tasks.release-draft]
-description = "Create a draft GitHub release"
+[tasks.release]
+description = "Publish a GitHub release"
 run = "go run github.com/goreleaser/goreleaser/v2@v2.15.2 release --clean --config .goreleaser.yaml --release-notes-tmpl .github/release-notes.md.tmpl"
 depends = ["check-go-version"]
 

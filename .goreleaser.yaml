@@ -70,7 +70,6 @@ release:
   github:
     owner: adwinying
     name: sqlcery
-  draft: true
-  replace_existing_draft: true
+  draft: false
   prerelease: auto
   name_template: "{{ .ProjectName }} v{{ .Version }}"
