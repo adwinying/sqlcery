@@ -203,19 +203,7 @@ func TestConnectionPickerModalEscCancelsWithoutConnecting(t *testing.T) {
 func TestMidRunSwapSuccessNewSessionOldAdapterClosed(t *testing.T) {
 	alphaAdapter := openTestAdapter(t)
 	betaAdapter := openTestAdapter(t)
-
-	alphaClosed := false
-	betaClosed := false
-
-	// Wrap adapters with close-tracking via the Close seam.
-	// We can't intercept *db.SQLAdapter.Close directly, so we track via the
-	// open function: return the adapter and instrument the old one's close
-	// by observing it via midRunConnectSuccessMsg.oldAdapter.
-	//
-	// Instead, we verify by having the "old" adapter be a tracked one.
-	// We inject the old adapter directly into the session and observe.
-	_ = alphaClosed
-	_ = betaClosed
+	defer betaAdapter.Close()
 
 	connections := config.Connections{
 		Connection: map[string]config.Connection{
@@ -225,25 +213,22 @@ func TestMidRunSwapSuccessNewSessionOldAdapterClosed(t *testing.T) {
 	}
 	fs := &fakeFrecencyStore{}
 
-	// Track which adapter is closed.
-	type closeRecord struct{ name string }
-	var closes []closeRecord
-
-	wrappedAlpha := wrapAdapterClose(alphaAdapter, func() { closes = append(closes, closeRecord{"alpha"}) })
-	_ = wrappedAlpha
-	_ = betaAdapter
+	// Track which adapters are closed and how many times via the injectable seam.
+	var closedAdapters []*db.SQLAdapter
+	trackingClose := func(a *db.SQLAdapter) error {
+		closedAdapters = append(closedAdapters, a)
+		return a.Close()
+	}
 
 	model := newReadyModel(t, alphaAdapter, "alpha", connections)
 	model.frecencyStore = fs
+	model.closeAdapter = trackingClose
 	model.newHistory = func(_ string) (*apphistory.History, error) { return apphistory.NewHistory(), nil }
 
 	// Inject an open function that returns betaAdapter.
 	model.open = func(_ context.Context, conn config.Connection) (*db.SQLAdapter, error) {
 		return betaAdapter, nil
 	}
-
-	// Capture old adapter before swap.
-	oldAdapter := model.session.Adapter
 
 	// Feed midRunConnectMsg for "beta".
 	next, cmd := model.Update(midRunConnectMsg{name: "beta"})
@@ -259,24 +244,47 @@ func TestMidRunSwapSuccessNewSessionOldAdapterClosed(t *testing.T) {
 		t.Fatalf("cmd() = %T, want midRunConnectSuccessMsg", successMsg)
 	}
 
-	// Verify the old adapter is captured in the message.
-	if smsg.oldAdapter != oldAdapter {
-		t.Fatalf("midRunConnectSuccessMsg.oldAdapter is not the old adapter")
-	}
-	if smsg.adapter != betaAdapter {
-		t.Fatalf("midRunConnectSuccessMsg.adapter is not betaAdapter")
+	// Before processing the success message: old adapter must NOT be closed yet.
+	if len(closedAdapters) != 0 {
+		t.Fatalf("old adapter closed before success processed — want 0 closes before Update, got %d", len(closedAdapters))
 	}
 
-	// Process the success message.
-	next, _ = model.Update(smsg)
+	// Process the success message. This returns a tea.Batch that includes the close cmd.
+	next, batchCmd := model.Update(smsg)
 	model = next.(Model)
 
-	// New session should be on beta.
+	// New session should be on beta immediately.
 	if model.session.ConnectionName != "beta" {
 		t.Fatalf("session.ConnectionName = %q, want %q", model.session.ConnectionName, "beta")
 	}
 	if model.session.Adapter != betaAdapter {
 		t.Fatalf("session.Adapter is not betaAdapter after swap")
+	}
+
+	// Drain the batch to trigger the close goroutine.
+	if batchCmd != nil {
+		msgs := collectCommandMessagesForTest(t, batchCmd)
+		for _, msg := range msgs {
+			if msg != nil {
+				next2, _ := model.Update(msg)
+				model = next2.(Model)
+			}
+		}
+	}
+
+	// Old adapter (alpha) must be closed exactly once.
+	if len(closedAdapters) != 1 {
+		t.Fatalf("old adapter close count = %d, want exactly 1", len(closedAdapters))
+	}
+	if closedAdapters[0] != alphaAdapter {
+		t.Fatal("closed adapter is not alphaAdapter")
+	}
+
+	// New adapter (beta) must NOT be closed.
+	for _, a := range closedAdapters {
+		if a == betaAdapter {
+			t.Fatal("betaAdapter (new adapter) was closed — should not be")
+		}
 	}
 
 	// Frecency recorded exactly once for beta.
@@ -289,14 +297,15 @@ func TestMidRunSwapSuccessNewSessionOldAdapterClosed(t *testing.T) {
 		t.Fatalf("state = %q, want %q", model.state.App.Current, StateReady)
 	}
 
+	// Modal must be dismissed after successful swap.
+	if modal := model.currentModal(); modal != nil && modal.Name() == ModalConnectionPicker {
+		t.Fatal("connectionPickerModal must be dismissed after successful swap")
+	}
+
 	// Per-session UI reset.
 	if model.state.Interaction.LatestResult != nil {
 		t.Fatal("LatestResult should be nil after session swap")
 	}
-
-	// Close alphaAdapter manually to avoid leak in test.
-	alphaAdapter.Close()
-	betaAdapter.Close()
 }
 
 func TestMidRunSwapFailureOldSessionUntouched(t *testing.T) {
@@ -310,7 +319,15 @@ func TestMidRunSwapFailureOldSessionUntouched(t *testing.T) {
 		},
 	}
 
+	// Track close calls — must be zero on failure.
+	var closedAdapters []*db.SQLAdapter
+	trackingClose := func(a *db.SQLAdapter) error {
+		closedAdapters = append(closedAdapters, a)
+		return a.Close()
+	}
+
 	model := newReadyModel(t, alphaAdapter, "alpha", connections)
+	model.closeAdapter = trackingClose
 	connectErr := errors.New("network unreachable")
 	model.open = func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
 		return nil, connectErr
@@ -336,6 +353,11 @@ func TestMidRunSwapFailureOldSessionUntouched(t *testing.T) {
 	}
 	if model.session.Adapter != alphaAdapter {
 		t.Fatalf("session.Adapter changed after failure — old adapter was replaced")
+	}
+
+	// Old adapter must NOT be closed on failure.
+	if len(closedAdapters) != 0 {
+		t.Fatalf("old adapter was closed %d time(s) on failure — must be 0", len(closedAdapters))
 	}
 
 	// State should still be Ready (error surfaced as notification).
@@ -536,11 +558,3 @@ func typeCommandAndSubmit(t *testing.T, model Model, text string) Model {
 	return model
 }
 
-// wrapAdapterClose is a helper that would instrument Close calls if we had a
-// seam. Since *db.SQLAdapter.Close is not injectable, we verify the transactional
-// guarantee via the oldAdapter field in midRunConnectSuccessMsg instead.
-// This stub is provided for symmetry; the actual assertion is in the test body.
-func wrapAdapterClose(adapter *db.SQLAdapter, onClose func()) *db.SQLAdapter {
-	_ = onClose // close tracking via midRunConnectSuccessMsg.oldAdapter
-	return adapter
-}

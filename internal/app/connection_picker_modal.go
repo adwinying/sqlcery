@@ -359,13 +359,17 @@ func (m Model) handleMidRunConnectSuccess(msg midRunConnectSuccessMsg) (Model, t
 	m.schema = nil
 	m.syncAutocompleteSchemaSnapshot()
 
-	// Transition to Ready.
+	// Close the connection picker modal (if still open) and transition to Ready.
+	if m.currentModal() != nil && m.currentModal().Name() == ModalConnectionPicker {
+		m.closeModal()
+	}
 	m.state.SetReady("Connected to "+msg.resolved.Name+".", NotificationSuccess)
 
 	// Close the OLD adapter — only on success.
 	oldAdapter := msg.oldAdapter
 	newAdapter := msg.adapter
 	loader := m.loader
+	closeFn := m.closeAdapter
 
 	return m, tea.Batch(
 		m.command.Init(),
@@ -377,8 +381,8 @@ func (m Model) handleMidRunConnectSuccess(msg midRunConnectSuccessMsg) (Model, t
 			return pickerSchemaReadyMsg{schema: schema}
 		},
 		func() tea.Msg {
-			if oldAdapter != nil {
-				_ = oldAdapter.Close()
+			if oldAdapter != nil && closeFn != nil {
+				_ = closeFn(oldAdapter)
 			}
 			return nil
 		},

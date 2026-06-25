@@ -44,6 +44,7 @@ type Model struct {
 	picker            ConnectionPickerContext
 	cancelConnect     context.CancelFunc // non-nil while a connect is in flight
 	open              func(context.Context, config.Connection) (*db.SQLAdapter, error)
+	closeAdapter      func(*db.SQLAdapter) error // defaults to (*db.SQLAdapter).Close; injectable for tests
 	newHistory        func(connectionName string) (*apphistory.History, error)
 	connectionsLoader func() (config.Connections, error)
 	frecencyStore     FrecencyStore
@@ -57,6 +58,7 @@ type modelDependencies struct {
 	history           *apphistory.History
 	version           string
 	open              func(context.Context, config.Connection) (*db.SQLAdapter, error)
+	closeAdapter      func(*db.SQLAdapter) error // defaults to (*db.SQLAdapter).Close; injectable for tests
 	newHistory        func(connectionName string) (*apphistory.History, error)
 	connectionsLoader func() (config.Connections, error)
 	frecencyStore     FrecencyStore
@@ -229,6 +231,11 @@ func newModelWithDependencies(session Session, deps modelDependencies) Model {
 		initialState = NewSharedAppState()
 	}
 
+	closeAdapter := deps.closeAdapter
+	if closeAdapter == nil {
+		closeAdapter = func(a *db.SQLAdapter) error { return a.Close() }
+	}
+
 	model := Model{
 		session:           session,
 		history:           sessionHistory,
@@ -238,6 +245,7 @@ func newModelWithDependencies(session Session, deps modelDependencies) Model {
 		loader:            loader,
 		splitRatio:        0.65,
 		open:              deps.open,
+		closeAdapter:      closeAdapter,
 		newHistory:        deps.newHistory,
 		connectionsLoader: deps.connectionsLoader,
 		frecencyStore:     deps.frecencyStore,
