@@ -28,3 +28,13 @@ Both files support a global-then-local layering: a file in `<config-home>/sqlcer
 - `./connections.toml` should be added to `.gitignore` in any project that uses it.
 - The two-file structure looks arbitrary without this context — this ADR is the explanation.
 - Users managing only personal machines (never committing config) gain no benefit from the split, but are not harmed by it.
+
+## Amendment (ADR 0019)
+
+The `connection` default-connection field — this ADR's one concrete example of a
+committable app setting — has been **removed** from `sqlcery.toml`. Running
+`sqlcery` with no argument now opens the Connection Picker (see ADR 0019) instead
+of resolving a configured default. `sqlcery.toml` still exists and the split still
+holds (it now carries `mouse_disabled`, and remains the home for future
+non-sensitive, committable app settings), but the original motivating example no
+longer reflects the code. A future reader should not expect a `connection` key.

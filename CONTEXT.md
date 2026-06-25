@@ -7,13 +7,19 @@ SQLcery is a TUI SQL client. Its goal is to minimize the keystrokes needed for d
 ## Glossary
 
 ### Connection
-A named database configuration entry defined in `connections.toml`. Specifies the database type, credentials, and optional lifecycle/SSH settings. A Connection can be referenced by name from the CLI or from `sqlcery.toml`. Distinct from a Session.
+A named database configuration entry defined in `connections.toml`. Specifies the database type, credentials, and optional lifecycle/SSH settings. A Connection can be referenced by name from the CLI, or selected from the Connection Picker. Distinct from a Session.
 
 ### Connection String
-A DSN-style string that identifies a database directly (e.g. `postgres://user:pass@host/db`, `sqlite:path/to/file`). Used as an alternative to referencing a named Connection. Can be passed via CLI argument or the `connection` field in `sqlcery.toml`.
+A DSN-style string that identifies a database directly (e.g. `postgres://user:pass@host/db`, `sqlite:path/to/file`). Used as an alternative to referencing a named Connection. Passed via CLI argument. Unlike a named Connection, it is not eligible for Connection Frecency (it has no stable, non-sensitive key).
 
 ### Session
-The live runtime connection to a database for the duration of a single SQLcery invocation. Created from a Connection or a Connection String at startup. Holds the active database handle. Distinct from a Connection (config) and an Adapter (implementation). When a Session is lost, SQLcery enters the Reconnect state.
+The live runtime connection to a database. Created from a Connection or a Connection String — at startup, or when the user switches via the Connection Picker mid-run. Holds the active database handle. Distinct from a Connection (config) and an Adapter (implementation). When a Session is lost, SQLcery enters the Reconnect state. A SQLcery run may begin with no Session at all — when launched without a connection argument, it opens in the Connection Picker before any Session exists.
+
+### Connection Picker
+A single-step selector for choosing which named Connection to open. Driven by one shared selection state, the **Connection Picker Context**, presented two ways: as a full-screen startup screen when SQLcery is launched without a connection argument (no Session exists yet), and as a Modal over the live panes when switching Connections mid-run. Lists only named Connections from `connections.toml`, ordered by Connection Frecency, with a fuzzy filter over names. Distinct from a Wizard — the Picker is a single pick, not a guided multi-step flow. When `connections.toml` is empty it shows a bare empty state. Creating a *new* Connection is a separate, not-yet-built flow (the New Connection Wizard).
+
+### Connection Frecency
+A per-named-Connection score blending how often and how recently it was opened, used to order the Connection Picker so the most-likely Connection sorts first. Recorded when a Connection is *successfully opened* — covering both Picker selections and direct CLI launches — so usage from any entry path informs the ranking. Only named Connections are scored. Distinct from History and the Audit Log, which record Statements, not Connection opens.
 
 ### Reconnect
 The application state entered when a Session is lost unexpectedly. Tracks the number of attempts made, the reason for the loss, and the last error encountered. Distinct from the initial Session startup — Reconnect is a recovery path, not normal initialisation.
@@ -81,7 +87,7 @@ The severity classification of a Notification. One of:
 Distinct from the running indicator, which occupies the Notification slot during Statement execution but carries no Notification Level.
 
 ### Modal
-An overlay dialog rendered on top of both panes. Does not replace pane focus permanently. Current modals: History Search, Slash Command Wizard, Keybindings, Export Wizard.
+An overlay dialog rendered on top of both panes. Does not replace pane focus permanently. Current modals: History Search, Slash Command Wizard, Keybindings, Export Wizard, Connection Picker (mid-run only — at startup the Connection Picker is a full-screen screen, not a Modal, because there are no panes behind it).
 
 ### Slash Command Wizard
 A guided multi-step Modal for selecting and executing a Slash Command. Opened via `/commands` or by pressing Enter on a Slash Command row in the Keybindings Modal. Distinct from typing a Slash Command directly into the Command Pane.
