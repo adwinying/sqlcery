@@ -18,18 +18,8 @@ description = "Verify Go version stays aligned"
 run = '''
 tool_version="$(go env GOVERSION)"
 tool_version="${tool_version#go}"
-mod_version="$(go mod edit -json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Go"])')"
-mise_version="$(python3 - <<'PY'
-from pathlib import Path
-import re
-
-text = Path("mise.toml").read_text()
-match = re.search(r'^go\s*=\s*"([^"]+)"\s*$', text, re.M)
-if not match:
-    raise SystemExit("could not find [tools].go in mise.toml")
-print(match.group(1))
-PY
-)"
+mod_version="$(grep '^go ' go.mod | awk '{print $2}')"
+mise_version="$(grep -E '^go\s*=' mise.toml | sed 's/.*"\(.*\)".*/\1/')"
 
 if [ "$tool_version" != "$mod_version" ]; then
   printf 'Go toolchain version %s does not match go.mod %s\n' "$tool_version" "$mod_version" >&2
