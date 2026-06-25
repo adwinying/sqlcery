@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strings"
 
@@ -399,9 +400,46 @@ func (m Model) handleMidRunConnectFailed(msg midRunConnectFailedMsg) (Model, tea
 	}
 	m.picker.PendingAbort = false
 
+	// If the user aborted via double-Esc, return silently to the picker.
+	if errors.Is(msg.err, context.Canceled) {
+		m.state.SetReady("Connect cancelled.", NotificationInfo)
+		return m, m.notificationClearCmdIfSet()
+	}
+
 	errText := FormatTerminalError(msg.err)
 	m.state.SetReady("Connection failed: "+errText, NotificationError)
 	return m, m.notificationClearCmdIfSet()
+}
+
+// handleMidRunConnectingKeyPress handles keys while a mid-run connect is in
+// flight (StateReady with cancelConnect set). Mirrors the startup connecting
+// path: double-Esc cancels the connect, ctrl+c quits, any other key is
+// swallowed (the modal stays visible but non-interactive).
+func (m Model) handleMidRunConnectingKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		if m.picker.PendingAbort {
+			// Second Esc: cancel the in-flight connect.
+			if m.cancelConnect != nil {
+				m.cancelConnect()
+			}
+			m.picker.PendingAbort = false
+			return m, nil
+		}
+		// First Esc: arm the pending abort and show the hint.
+		m.picker.PendingAbort = true
+		m.state.SetPendingIntent(IntentNone, "connect", "Press esc again to cancel connecting.", NotificationInfo)
+		return m, nil
+	default:
+		// Any other key disarms the pending abort.
+		if m.picker.PendingAbort {
+			m.picker.PendingAbort = false
+			m.state.SetPendingIntent(IntentNone, "connect", "Connecting...", NotificationInfo)
+		}
+		return m, nil
+	}
 }
 
 // openConnectionPickerModal pushes the mid-run Connection Picker Modal.

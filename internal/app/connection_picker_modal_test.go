@@ -451,6 +451,149 @@ func TestMidRunSwapFrecencyRecordedExactlyOnce(t *testing.T) {
 	}
 }
 
+// ---- Mid-run connect abort (double-Esc) ----
+
+func TestMidRunConnectDoubleEscAborts(t *testing.T) {
+	alphaAdapter := openTestAdapter(t)
+	defer alphaAdapter.Close()
+
+	connections := config.Connections{
+		Connection: map[string]config.Connection{
+			"alpha": {Type: "sqlite", Database: ":memory:"},
+			"beta":  {Type: "sqlite", Database: ":memory:"},
+		},
+	}
+
+	model := newReadyModel(t, alphaAdapter, "alpha", connections)
+	model.open = func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
+		return alphaAdapter, nil
+	}
+
+	// Trigger mid-run connect for "beta".
+	next, _ := model.Update(midRunConnectMsg{name: "beta"})
+	model = next.(Model)
+	if model.cancelConnect == nil {
+		t.Fatal("cancelConnect = nil after starting mid-run connect")
+	}
+
+	// First Esc arms PendingAbort.
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	model = next.(Model)
+	if !model.picker.PendingAbort {
+		t.Fatal("PendingAbort = false after first Esc, want true")
+	}
+
+	// Second Esc cancels the connect.
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	model = next.(Model)
+	if model.picker.PendingAbort {
+		t.Fatal("PendingAbort = true after second Esc, want false (aborted)")
+	}
+}
+
+func TestMidRunConnectAbortDisarmsOnOtherKey(t *testing.T) {
+	alphaAdapter := openTestAdapter(t)
+	defer alphaAdapter.Close()
+
+	connections := config.Connections{
+		Connection: map[string]config.Connection{
+			"alpha": {Type: "sqlite", Database: ":memory:"},
+			"beta":  {Type: "sqlite", Database: ":memory:"},
+		},
+	}
+
+	model := newReadyModel(t, alphaAdapter, "alpha", connections)
+	model.open = func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
+		return alphaAdapter, nil
+	}
+
+	// Trigger mid-run connect for "beta".
+	next, _ := model.Update(midRunConnectMsg{name: "beta"})
+	model = next.(Model)
+
+	// First Esc arms PendingAbort.
+	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	model = next.(Model)
+	if !model.picker.PendingAbort {
+		t.Fatal("PendingAbort = false after first Esc, want true")
+	}
+
+	// Any other key disarms it.
+	next, _ = model.Update(tea.KeyPressMsg{Text: "x"})
+	model = next.(Model)
+	if model.picker.PendingAbort {
+		t.Fatal("PendingAbort = true after non-Esc key, want false")
+	}
+}
+
+func TestMidRunConnectCtrlCQuits(t *testing.T) {
+	alphaAdapter := openTestAdapter(t)
+	defer alphaAdapter.Close()
+
+	connections := config.Connections{
+		Connection: map[string]config.Connection{
+			"alpha": {Type: "sqlite", Database: ":memory:"},
+			"beta":  {Type: "sqlite", Database: ":memory:"},
+		},
+	}
+
+	model := newReadyModel(t, alphaAdapter, "alpha", connections)
+	model.open = func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
+		return alphaAdapter, nil
+	}
+
+	// Trigger mid-run connect for "beta".
+	next, _ := model.Update(midRunConnectMsg{name: "beta"})
+	model = next.(Model)
+
+	// ctrl+c should quit even during a mid-run connect.
+	_, cmd := model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	if cmd == nil {
+		t.Fatal("Update(ctrl+c) cmd = nil, want tea.Quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatalf("Update(ctrl+c) cmd() type = %T, want tea.QuitMsg", cmd())
+	}
+}
+
+func TestMidRunConnectAbortedSilentlyOnContextCanceled(t *testing.T) {
+	alphaAdapter := openTestAdapter(t)
+	defer alphaAdapter.Close()
+
+	connections := config.Connections{
+		Connection: map[string]config.Connection{
+			"alpha": {Type: "sqlite", Database: ":memory:"},
+			"beta":  {Type: "sqlite", Database: ":memory:"},
+		},
+	}
+
+	model := newReadyModel(t, alphaAdapter, "alpha", connections)
+	model.open = func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
+		return alphaAdapter, nil
+	}
+
+	// Trigger mid-run connect for "beta".
+	next, _ := model.Update(midRunConnectMsg{name: "beta"})
+	model = next.(Model)
+
+	// Simulate the abort: context.Canceled failure.
+	next, _ = model.Update(midRunConnectFailedMsg{err: context.Canceled})
+	model = next.(Model)
+
+	// State should be Ready (not Error), and the notification should NOT say
+	// "Connection failed:" — the abort should be silent.
+	if model.state.App.Current != StateReady {
+		t.Fatalf("state = %q, want %q", model.state.App.Current, StateReady)
+	}
+	if containsString(model.state.Notification.Text, "Connection failed:") {
+		t.Fatalf("notification = %q, should not contain 'Connection failed:' for aborted connect", model.state.Notification.Text)
+	}
+	// Old session should still be on alpha.
+	if model.session.ConnectionName != "alpha" {
+		t.Fatalf("session.ConnectionName = %q, want %q", model.session.ConnectionName, "alpha")
+	}
+}
+
 // ---- UX fix: startup auto-connect failure with empty candidates → quit ----
 
 func TestAutoConnectStringArgFailureQuitsWhenNoCandidates(t *testing.T) {

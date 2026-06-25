@@ -472,6 +472,13 @@ func (m Model) handleKeyPressMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// If a mid-run connect is in flight, intercept keys for the double-Esc
+	// abort gesture (mirrors the startup connecting path). The modal stays
+	// visible but non-interactive until the connect resolves or is aborted.
+	if m.cancelConnect != nil {
+		return m.handleMidRunConnectingKeyPress(msg)
+	}
+
 	if modal := m.currentModal(); modal != nil {
 		if msg.String() != "ctrl+c" {
 			m.pendingQuit = false

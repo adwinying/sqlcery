@@ -505,6 +505,34 @@ func TestPickerConnectionSummaryNeverIncludesCredentials(t *testing.T) {
 	}
 }
 
+func TestPickerRenderRowColourSwatch(t *testing.T) {
+	connections := config.Connections{
+		Connection: map[string]config.Connection{
+			"colored": {Type: "sqlite", Database: ":memory:", Color: "red"},
+			"plain":   {Type: "sqlite", Database: ":memory:"},
+		},
+	}
+	loader := func() (config.Connections, error) { return connections, nil }
+
+	// With colour: row should contain the swatch character and the name.
+	withColor := pickerRenderRow("colored", loader, 80)
+	if !containsString(withColor, "■") {
+		t.Fatalf("pickerRenderRow with colour: %q, want to contain swatch ■", withColor)
+	}
+	if !containsString(withColor, "colored") {
+		t.Fatalf("pickerRenderRow with colour: %q, want to contain name", withColor)
+	}
+
+	// Without colour: row should not contain the swatch character.
+	withoutColor := pickerRenderRow("plain", loader, 80)
+	if containsString(withoutColor, "■") {
+		t.Fatalf("pickerRenderRow without colour: %q, should not contain swatch", withoutColor)
+	}
+	if !containsString(withoutColor, "plain") {
+		t.Fatalf("pickerRenderRow without colour: %q, want to contain name", withoutColor)
+	}
+}
+
 func TestPickerStateSelectConnectionViewRendersFilter(t *testing.T) {
 	model := newModelWithDependencies(Session{}, modelDependencies{})
 	model.state.App.Current = StateSelectConnection

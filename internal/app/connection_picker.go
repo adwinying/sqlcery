@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/adwinying/sqlcery/internal/config"
@@ -326,30 +327,41 @@ func pickerFilteredCandidates(candidates []string, filter string) []string {
 	return result
 }
 
-// pickerRenderRow renders a single connection row: name + dimmed credential-free target summary.
+// pickerRenderRow renders a single connection row: colour swatch (when set) +
+// name + dimmed credential-free target summary.
 func pickerRenderRow(name string, loader func() (config.Connections, error), maxWidth int) string {
 	summary := ""
+	color := ""
 	if loader != nil {
 		if connections, err := loader(); err == nil {
 			if conn, ok := connections.Connection[name]; ok {
 				summary = pickerConnectionSummary(conn)
+				color = strings.TrimSpace(conn.Color)
 			}
 		}
 	}
 
-	if summary == "" {
-		return name
+	// Build the name part, optionally prefixed with a colour swatch.
+	namePart := name
+	nameWidth := ansi.StringWidth(name)
+	if color != "" {
+		swatch := lipgloss.NewStyle().Foreground(tui.ResolveColor(color)).Render("■")
+		namePart = swatch + " " + name
+		nameWidth += 2 // swatch (1) + space (1)
 	}
 
-	// Render as "name  summary" with summary dimmed.
+	if summary == "" {
+		return namePart
+	}
+
+	// Render as "[swatch ]name  summary" with summary dimmed.
 	const minPad = 2
-	nameWidth := ansi.StringWidth(name)
 	summaryWidth := ansi.StringWidth(summary)
 	available := maxWidth - nameWidth - minPad
 	if available < summaryWidth {
 		// Truncate summary to fit.
 		if available <= 0 {
-			return name
+			return namePart
 		}
 		summary = ansi.Truncate(summary, available, "…")
 		summaryWidth = ansi.StringWidth(summary)
@@ -359,7 +371,7 @@ func pickerRenderRow(name string, loader func() (config.Connections, error), max
 	if pad < minPad {
 		pad = minPad
 	}
-	return name + strings.Repeat(" ", pad) + tui.AppTheme.PanelMuted.Render(summary)
+	return namePart + strings.Repeat(" ", pad) + tui.AppTheme.PanelMuted.Render(summary)
 }
 
 // pickerConnectionSummary builds a credential-free one-line summary of a connection.
