@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -479,14 +480,14 @@ func TestMidRunConnectDoubleEscAborts(t *testing.T) {
 	// First Esc arms PendingAbort.
 	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	model = next.(Model)
-	if !model.picker.PendingAbort {
+	if !model.pendingConnectAbort {
 		t.Fatal("PendingAbort = false after first Esc, want true")
 	}
 
 	// Second Esc cancels the connect.
 	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	model = next.(Model)
-	if model.picker.PendingAbort {
+	if model.pendingConnectAbort {
 		t.Fatal("PendingAbort = true after second Esc, want false (aborted)")
 	}
 }
@@ -514,14 +515,14 @@ func TestMidRunConnectAbortDisarmsOnOtherKey(t *testing.T) {
 	// First Esc arms PendingAbort.
 	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	model = next.(Model)
-	if !model.picker.PendingAbort {
+	if !model.pendingConnectAbort {
 		t.Fatal("PendingAbort = false after first Esc, want true")
 	}
 
 	// Any other key disarms it.
 	next, _ = model.Update(tea.KeyPressMsg{Text: "x"})
 	model = next.(Model)
-	if model.picker.PendingAbort {
+	if model.pendingConnectAbort {
 		t.Fatal("PendingAbort = true after non-Esc key, want false")
 	}
 }
@@ -640,13 +641,13 @@ func TestAutoConnectNamedArgFailureReturnsToPicker(t *testing.T) {
 			}}, nil
 		},
 	})
-	// Pre-load candidates so picker has them.
-	model.picker.Candidates = []string{"petworks-local"}
-
+	// A named arg that fails drops into the startup Picker Modal (the named
+	// connection IS a candidate). Constructing the model auto-connects, so no
+	// startup modal is pushed; the failure handler pushes it.
 	next, cmd := model.Update(pickerConnectFailedMsg{err: connectErr})
 	model = next.(Model)
 
-	// Should return to picker (not quit).
+	// Should return to the Picker (not quit).
 	if model.state.App.Current != StateSelectConnection {
 		t.Fatalf("state = %q, want %q", model.state.App.Current, StateSelectConnection)
 	}
@@ -655,8 +656,20 @@ func TestAutoConnectNamedArgFailureReturnsToPicker(t *testing.T) {
 			t.Fatal("named arg failure should NOT quit when picker has candidates")
 		}
 	}
-	if model.picker.ConnectError == "" {
-		t.Fatal("picker.ConnectError should be set after named arg failure")
+
+	// The startup Picker Modal is now open with the failed connection marked.
+	pm, ok := model.currentModal().(*connectionPickerModal)
+	if !ok {
+		t.Fatalf("currentModal() = %T, want *connectionPickerModal", model.currentModal())
+	}
+	if !pm.startup {
+		t.Fatal("pushed Picker Modal should be in startup mode")
+	}
+	if pm.lastFailedConnection != "petworks-local" {
+		t.Fatalf("lastFailedConnection = %q, want %q", pm.lastFailedConnection, "petworks-local")
+	}
+	if !strings.Contains(model.state.Notification.Text, "Connection failed") {
+		t.Fatalf("notification = %q, want it to contain %q", model.state.Notification.Text, "Connection failed")
 	}
 }
 
@@ -700,4 +713,3 @@ func typeCommandAndSubmit(t *testing.T, model Model, text string) Model {
 	}
 	return model
 }
-

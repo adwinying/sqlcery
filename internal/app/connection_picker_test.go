@@ -30,16 +30,42 @@ func (f *fakeFrecencyStore) Order(names []string) []string {
 	return out
 }
 
+// newStartupPickerModel constructs a no-Adapter Model and drives the first tick
+// (pickerInitMsg) so the startup Connection Picker Modal is pushed — mirroring
+// what Init does in production.
+func newStartupPickerModel(t *testing.T, deps modelDependencies) Model {
+	t.Helper()
+	model := newModelWithDependencies(Session{}, deps)
+	next, _ := model.Update(pickerInitMsg{})
+	return next.(Model)
+}
+
+// startupPicker returns the current modal as the startup Connection Picker,
+// failing the test if it is not one.
+func startupPicker(t *testing.T, model Model) *connectionPickerModal {
+	t.Helper()
+	pm, ok := model.currentModal().(*connectionPickerModal)
+	if !ok {
+		t.Fatalf("currentModal() = %T, want *connectionPickerModal", model.currentModal())
+	}
+	return pm
+}
+
 // --- Picker state machine tests ---
 
 func TestPickerInitialStateIsSelectConnection(t *testing.T) {
-	model := newModelWithDependencies(Session{}, modelDependencies{
+	model := newStartupPickerModel(t, modelDependencies{
 		open: func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
 			return nil, nil
 		},
 	})
 	if got, want := model.state.App.Current, StateSelectConnection; got != want {
 		t.Fatalf("initial state = %q, want %q", got, want)
+	}
+	// The startup Picker Modal is pushed eagerly at construction.
+	pm := startupPicker(t, model)
+	if !pm.startup {
+		t.Fatal("startup Picker Modal should have startup=true")
 	}
 }
 
@@ -57,9 +83,13 @@ func TestPickerAutoConnectTargetUsesStartupState(t *testing.T) {
 	if got, want := model.state.App.Current, StateStartup; got != want {
 		t.Fatalf("initial state = %q, want %q (auto-connect target should start in StateStartup)", got, want)
 	}
+	// No Picker Modal is pushed when auto-connecting.
+	if model.currentModal() != nil {
+		t.Fatalf("currentModal() = %T, want nil for auto-connect", model.currentModal())
+	}
 }
 
-func TestPickerLoadConnectionsOrdered(t *testing.T) {
+func TestPickerStartupModalLoadsOrderedCandidates(t *testing.T) {
 	connections := config.Connections{
 		Connection: map[string]config.Connection{
 			"beta":  {Type: "sqlite", Database: ":memory:"},
@@ -68,38 +98,17 @@ func TestPickerLoadConnectionsOrdered(t *testing.T) {
 		},
 	}
 
-	model := newModelWithDependencies(Session{}, modelDependencies{
+	model := newStartupPickerModel(t, modelDependencies{
 		connectionsLoader: func() (config.Connections, error) { return connections, nil },
 	})
 
-	cmd := model.Init()
-	if cmd == nil {
-		t.Fatal("Init() cmd = nil, want pickerInitMsg command")
-	}
-
-	// pickerInitMsg should trigger pickerLoadConnectionsCmd
-	msg := cmd()
-	if _, ok := msg.(pickerInitMsg); !ok {
-		t.Fatalf("Init() msg type = %T, want pickerInitMsg", msg)
-	}
-
-	next, loadCmd := model.Update(pickerInitMsg{})
-	model = next.(Model)
-	if loadCmd == nil {
-		t.Fatal("Update(pickerInitMsg{}) cmd = nil, want load command")
-	}
-
-	loadMsg := loadCmd()
-	next, _ = model.Update(loadMsg)
-	model = next.(Model)
-
-	if got := len(model.picker.Candidates); got != 3 {
-		t.Fatalf("picker.Candidates = %d items, want 3", got)
+	pm := startupPicker(t, model)
+	if got := len(pm.candidates); got != 3 {
+		t.Fatalf("candidates = %d items, want 3", got)
 	}
 	// Without frecency, should be sorted alphabetically by default.
-	wantFirst := "alpha"
-	if got := model.picker.Candidates[0]; got != wantFirst {
-		t.Fatalf("picker.Candidates[0] = %q, want %q", got, wantFirst)
+	if got, want := pm.candidates[0], "alpha"; got != want {
+		t.Fatalf("candidates[0] = %q, want %q", got, want)
 	}
 }
 
@@ -130,16 +139,14 @@ func TestPickerSelectionEmitsConnectMsg(t *testing.T) {
 		},
 	}
 
-	model := newModelWithDependencies(Session{}, modelDependencies{
+	model := newStartupPickerModel(t, modelDependencies{
 		connectionsLoader: func() (config.Connections, error) { return connections, nil },
 		open: func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
 			return nil, errors.New("not called in this test")
 		},
 	})
-	model.picker.Candidates = []string{"local"}
-	model.picker.Selected = 0
 
-	// Press Enter to select.
+	// Press Enter to select the highlighted "local".
 	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	_ = next
 	if cmd == nil {
@@ -147,19 +154,26 @@ func TestPickerSelectionEmitsConnectMsg(t *testing.T) {
 	}
 
 	msg := cmd()
-	connectMsg, ok := msg.(pickerConnectMsg)
+	connectMsg, ok := msg.(midRunConnectMsg)
 	if !ok {
-		t.Fatalf("cmd() type = %T, want pickerConnectMsg", msg)
+		t.Fatalf("cmd() type = %T, want midRunConnectMsg", msg)
 	}
-	if got, want := connectMsg.resolved.Name, "local"; got != want {
-		t.Fatalf("connectMsg.resolved.Name = %q, want %q", got, want)
+	if got, want := connectMsg.name, "local"; got != want {
+		t.Fatalf("connectMsg.name = %q, want %q", got, want)
 	}
 }
 
 func TestPickerFilterTypingNarrows(t *testing.T) {
-	model := newModelWithDependencies(Session{}, modelDependencies{})
-	model.state.App.Current = StateSelectConnection
-	model.picker.Candidates = []string{"postgres-prod", "postgres-dev", "sqlite-local"}
+	connections := config.Connections{
+		Connection: map[string]config.Connection{
+			"postgres-prod": {Type: "postgres"},
+			"postgres-dev":  {Type: "postgres"},
+			"sqlite-local":  {Type: "sqlite", Database: ":memory:"},
+		},
+	}
+	model := newStartupPickerModel(t, modelDependencies{
+		connectionsLoader: func() (config.Connections, error) { return connections, nil },
+	})
 
 	// Type "sqlite"
 	for _, ch := range "sqlite" {
@@ -167,11 +181,12 @@ func TestPickerFilterTypingNarrows(t *testing.T) {
 		model = next.(Model)
 	}
 
-	if got, want := model.picker.Filter, "sqlite"; got != want {
-		t.Fatalf("picker.Filter = %q, want %q", got, want)
+	pm := startupPicker(t, model)
+	if got, want := pm.filter, "sqlite"; got != want {
+		t.Fatalf("filter = %q, want %q", got, want)
 	}
 
-	filtered := pickerFilteredCandidates(model.picker.Candidates, model.picker.Filter)
+	filtered := pickerFilteredCandidates(pm.candidates, pm.filter)
 	if got, want := len(filtered), 1; got != want {
 		t.Fatalf("len(filtered) = %d, want %d", got, want)
 	}
@@ -190,7 +205,7 @@ func TestPickerSuccessTransitionsToReady(t *testing.T) {
 
 	fs := &fakeFrecencyStore{}
 
-	model := newModelWithDependencies(Session{}, modelDependencies{
+	model := newStartupPickerModel(t, modelDependencies{
 		frecencyStore: fs,
 		newHistory:    func(_ string) (*apphistory.History, error) { return apphistory.NewHistory(), nil },
 		open: func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
@@ -202,31 +217,27 @@ func TestPickerSuccessTransitionsToReady(t *testing.T) {
 			}}, nil
 		},
 	})
-	model.state.App.Current = StateSelectConnection
-	model.picker.Candidates = []string{"local"}
 
-	// Simulate selecting "local".
+	// Enter selects "local" → modal forwards midRunConnectMsg.
 	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = next.(Model)
 	if cmd == nil {
 		t.Fatal("Update(Enter) cmd = nil")
 	}
-
-	// cmd should produce pickerConnectMsg → pickerConnectMsg → pickerConnectSuccessMsg
-	msg := cmd()
-	connectMsg, ok := msg.(pickerConnectMsg)
+	connectMsg, ok := cmd().(midRunConnectMsg)
 	if !ok {
-		t.Fatalf("cmd() = %T, want pickerConnectMsg", msg)
+		t.Fatalf("cmd() = %T, want midRunConnectMsg", cmd())
 	}
 
+	// handleMidRunConnect keeps the Picker open (StateSelectConnection) while
+	// connecting, rather than switching to a full-screen StateStartup.
 	next, cmd = model.Update(connectMsg)
 	model = next.(Model)
-	if got, want := model.state.App.Current, StateStartup; got != want {
-		t.Fatalf("state after connect = %q, want %q", got, want)
+	if got, want := model.state.App.Current, StateSelectConnection; got != want {
+		t.Fatalf("state while connecting = %q, want %q (modal stays open)", got, want)
 	}
-
 	if cmd == nil {
-		t.Fatal("Update(pickerConnectMsg) cmd = nil, want open command")
+		t.Fatal("Update(midRunConnectMsg) cmd = nil, want open command")
 	}
 	successMsg := cmd()
 
@@ -235,6 +246,10 @@ func TestPickerSuccessTransitionsToReady(t *testing.T) {
 
 	if got, want := model.state.App.Current, StateReady; got != want {
 		t.Fatalf("state after connect success = %q, want %q", got, want)
+	}
+	// The Modal is closed once connected.
+	if model.currentModal() != nil {
+		t.Fatalf("currentModal() = %T after success, want nil", model.currentModal())
 	}
 
 	// Frecency should have been recorded exactly once.
@@ -246,10 +261,10 @@ func TestPickerSuccessTransitionsToReady(t *testing.T) {
 	}
 }
 
-func TestPickerFailureReturnsToPickerWithError(t *testing.T) {
+func TestPickerFailureKeepsPickerOpenWithMarker(t *testing.T) {
 	connectErr := errors.New("connection refused")
 
-	model := newModelWithDependencies(Session{}, modelDependencies{
+	model := newStartupPickerModel(t, modelDependencies{
 		open: func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
 			return nil, connectErr
 		},
@@ -259,27 +274,32 @@ func TestPickerFailureReturnsToPickerWithError(t *testing.T) {
 			}}, nil
 		},
 	})
-	model.state.App.Current = StateSelectConnection
-	model.picker.Candidates = []string{"broken"}
 
-	// Select "broken"
+	// Select "broken" → connect → fail.
 	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = next.(Model)
-	connectMsg := cmd().(pickerConnectMsg)
+	connectMsg := cmd().(midRunConnectMsg)
 
 	next, cmd = model.Update(connectMsg)
 	model = next.(Model)
 
-	// Get the open result (fail).
 	failMsg := cmd()
 	next, _ = model.Update(failMsg)
 	model = next.(Model)
 
+	// Stays in the Picker (no Session to fall back to), Modal still open.
 	if got, want := model.state.App.Current, StateSelectConnection; got != want {
 		t.Fatalf("state after connect failure = %q, want %q", got, want)
 	}
-	if model.picker.ConnectError == "" {
-		t.Fatal("picker.ConnectError = empty, want non-empty error message")
+	pm := startupPicker(t, model)
+	if pm.lastFailedConnection != "broken" {
+		t.Fatalf("lastFailedConnection = %q, want %q", pm.lastFailedConnection, "broken")
+	}
+	if model.state.Notification.Text == "" {
+		t.Fatal("notification = empty, want a connection-failed message in the Status Bar")
+	}
+	if model.state.Notification.Level != NotificationError {
+		t.Fatalf("notification level = %v, want NotificationError", model.state.Notification.Level)
 	}
 }
 
@@ -294,7 +314,7 @@ func TestPickerDoubleEscArmsAndAborts(t *testing.T) {
 	connectStarted := make(chan struct{})
 	connectUnblock := make(chan struct{})
 
-	model := newModelWithDependencies(Session{}, modelDependencies{
+	model := newStartupPickerModel(t, modelDependencies{
 		open: func(ctx context.Context, _ config.Connection) (*db.SQLAdapter, error) {
 			close(connectStarted)
 			select {
@@ -310,43 +330,39 @@ func TestPickerDoubleEscArmsAndAborts(t *testing.T) {
 			}}, nil
 		},
 	})
-	model.state.App.Current = StateSelectConnection
-	model.picker.Candidates = []string{"local"}
 
-	// Select "local" → fires pickerConnectMsg
+	// Select "local" → fires midRunConnectMsg.
 	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = next.(Model)
-	connectMsg := cmd().(pickerConnectMsg)
+	connectMsg := cmd().(midRunConnectMsg)
 
-	// Process pickerConnectMsg → transitions to StateStartup, starts async open
+	// Process midRunConnectMsg → stays in the Picker, starts async open.
 	next, asyncCmd := model.Update(connectMsg)
 	model = next.(Model)
-	if got, want := model.state.App.Current, StateStartup; got != want {
-		t.Fatalf("state after connect start = %q, want %q", got, want)
+	if got, want := model.state.App.Current, StateSelectConnection; got != want {
+		t.Fatalf("state while connecting = %q, want %q", got, want)
 	}
 
 	// Start the async open in background.
-	go func() {
-		_ = asyncCmd
-	}()
+	go func() { _ = asyncCmd }()
 	_ = connectStarted
 
-	// First Esc arms PendingAbort.
+	// First Esc arms the abort.
 	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	model = next.(Model)
-	if !model.picker.PendingAbort {
-		t.Fatal("picker.PendingAbort = false after first Esc, want true")
+	if !model.pendingConnectAbort {
+		t.Fatal("pendingConnectAbort = false after first Esc, want true")
 	}
 
-	// Second Esc cancels the context and arms the cancel.
 	if model.cancelConnect == nil {
 		t.Skip("cancelConnect is nil: async connect completed too fast for test")
 	}
 
+	// Second Esc cancels the in-flight connect.
 	next, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	model = next.(Model)
-	if model.picker.PendingAbort {
-		t.Fatal("picker.PendingAbort = true after second Esc, want false (aborted)")
+	if model.pendingConnectAbort {
+		t.Fatal("pendingConnectAbort = true after second Esc, want false (aborted)")
 	}
 
 	// Allow the blocked open to exit via context cancel.
@@ -359,47 +375,49 @@ func TestPickerAbortArmedDisarmsOnOtherKey(t *testing.T) {
 			return nil, nil
 		},
 	})
-	// Simulate being in StateStartup with a pending connect (picker origin).
-	model.state.App.Current = StateStartup
+	// Simulate a connect in flight from the startup Picker.
 	ctx, cancel := context.WithCancel(context.Background())
 	model.cancelConnect = cancel
 	_ = ctx
 
-	// First Esc arms PendingAbort.
+	// First Esc arms the abort.
 	next, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	model = next.(Model)
-	if !model.picker.PendingAbort {
-		t.Fatal("picker.PendingAbort = false after first Esc, want true")
+	if !model.pendingConnectAbort {
+		t.Fatal("pendingConnectAbort = false after first Esc, want true")
 	}
 
 	// Any other key disarms it.
 	next, _ = model.Update(tea.KeyPressMsg{Text: "x"})
 	model = next.(Model)
-	if model.picker.PendingAbort {
-		t.Fatal("picker.PendingAbort = true after non-Esc key, want false")
+	if model.pendingConnectAbort {
+		t.Fatal("pendingConnectAbort = true after non-Esc key, want false")
 	}
 	cancel()
 }
 
 func TestPickerEmptyStateShowsMessage(t *testing.T) {
-	model := newModelWithDependencies(Session{}, modelDependencies{
+	model := newStartupPickerModel(t, modelDependencies{
 		connectionsLoader: func() (config.Connections, error) {
 			return config.Connections{}, nil
 		},
 	})
-	model.state.App.Current = StateSelectConnection
 
-	// After loading (empty), the view should mention "No connections defined".
-	model.picker.Candidates = nil
+	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	model = next.(Model)
+
 	view := model.View().Content
 	if !containsString(view, "No connections") {
 		t.Fatalf("View() = %q, want to contain %q", view, "No connections")
 	}
+	// At startup the dead-end hint is shown.
+	if !containsString(view, "connections.toml") {
+		t.Fatalf("View() = %q, want startup hint mentioning connections.toml", view)
+	}
 }
 
 func TestPickerCtrlCQuitsFromPickerState(t *testing.T) {
-	model := newModelWithDependencies(Session{}, modelDependencies{})
-	model.state.App.Current = StateSelectConnection
+	model := newStartupPickerModel(t, modelDependencies{})
 
 	_, cmd := model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if cmd == nil {
@@ -407,6 +425,24 @@ func TestPickerCtrlCQuitsFromPickerState(t *testing.T) {
 	}
 	if _, ok := cmd().(tea.QuitMsg); !ok {
 		t.Fatalf("Update(ctrl+c) cmd() type = %T, want tea.QuitMsg", cmd())
+	}
+}
+
+func TestPickerEscQuitsFromStartup(t *testing.T) {
+	model := newStartupPickerModel(t, modelDependencies{
+		connectionsLoader: func() (config.Connections, error) {
+			return config.Connections{Connection: map[string]config.Connection{
+				"local": {Type: "sqlite", Database: ":memory:"},
+			}}, nil
+		},
+	})
+
+	_, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	if cmd == nil {
+		t.Fatal("Update(Esc) cmd = nil, want tea.Quit at startup")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatalf("Update(Esc) cmd() type = %T, want tea.QuitMsg", cmd())
 	}
 }
 
@@ -533,17 +569,25 @@ func TestPickerRenderRowColourSwatch(t *testing.T) {
 	}
 }
 
-func TestPickerStateSelectConnectionViewRendersFilter(t *testing.T) {
-	model := newModelWithDependencies(Session{}, modelDependencies{})
-	model.state.App.Current = StateSelectConnection
-	model.picker.Candidates = []string{"local", "prod"}
+func TestPickerStartupViewRendersAsModal(t *testing.T) {
+	connections := config.Connections{
+		Connection: map[string]config.Connection{
+			"local": {Type: "sqlite", Database: ":memory:"},
+			"prod":  {Type: "postgres"},
+		},
+	}
+	model := newStartupPickerModel(t, modelDependencies{
+		connectionsLoader: func() (config.Connections, error) { return connections, nil },
+	})
 
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)
 
 	view := model.View().Content
-	if !containsString(view, "connection picker") {
-		t.Fatalf("View() = %q, want to contain %q", view, "connection picker")
+	// The startup Picker renders through the same Modal chrome as mid-run:
+	// a titled box ("Connection Picker") plus a "Filter:" box.
+	if !containsString(view, "Connection Picker") {
+		t.Fatalf("View() = %q, want to contain %q", view, "Connection Picker")
 	}
 	if !containsString(view, "Filter:") {
 		t.Fatalf("View() = %q, want to contain %q", view, "Filter:")
@@ -572,7 +616,7 @@ func TestPickerFrecencyRecordedExactlyOnce(t *testing.T) {
 
 	fs := &fakeFrecencyStore{}
 
-	model := newModelWithDependencies(Session{}, modelDependencies{
+	model := newStartupPickerModel(t, modelDependencies{
 		frecencyStore: fs,
 		newHistory:    func(_ string) (*apphistory.History, error) { return apphistory.NewHistory(), nil },
 		open: func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
@@ -584,13 +628,11 @@ func TestPickerFrecencyRecordedExactlyOnce(t *testing.T) {
 			}}, nil
 		},
 	})
-	model.state.App.Current = StateSelectConnection
-	model.picker.Candidates = []string{"mydb"}
 
 	// Full path: select → connect → success
 	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = next.(Model)
-	connectMsg := cmd().(pickerConnectMsg)
+	connectMsg := cmd().(midRunConnectMsg)
 
 	next, cmd = model.Update(connectMsg)
 	model = next.(Model)

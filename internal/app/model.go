@@ -41,14 +41,14 @@ type Model struct {
 	lastClickTime time.Time
 
 	// Connection Picker state
-	picker            ConnectionPickerContext
-	cancelConnect     context.CancelFunc // non-nil while a connect is in flight
-	open              func(context.Context, config.Connection) (*db.SQLAdapter, error)
-	closeAdapter      func(*db.SQLAdapter) error // defaults to (*db.SQLAdapter).Close; injectable for tests
-	newHistory        func(connectionName string) (*apphistory.History, error)
-	connectionsLoader func() (config.Connections, error)
-	frecencyStore     FrecencyStore
-	autoConnectTarget config.ResolvedConnection // non-empty → skip Picker, connect on init
+	pendingConnectAbort bool               // first Esc armed during a connect-in-flight (double-Esc to abort)
+	cancelConnect       context.CancelFunc // non-nil while a connect is in flight
+	open                func(context.Context, config.Connection) (*db.SQLAdapter, error)
+	closeAdapter        func(*db.SQLAdapter) error // defaults to (*db.SQLAdapter).Close; injectable for tests
+	newHistory          func(connectionName string) (*apphistory.History, error)
+	connectionsLoader   func() (config.Connections, error)
+	frecencyStore       FrecencyStore
+	autoConnectTarget   config.ResolvedConnection // non-empty → skip Picker, connect on init
 }
 
 type autocompleteSchemaLoader func(context.Context, *db.SQLAdapter) (*AutocompleteSchemaContext, error)
@@ -148,13 +148,8 @@ type slashCommandExecutedMsg struct {
 
 type startupCompleteMsg struct{}
 
-// pickerInitMsg triggers loading of available Connections for the Picker.
+// pickerInitMsg pushes the startup Connection Picker Modal on the first tick.
 type pickerInitMsg struct{}
-
-// pickerConnectionsLoadedMsg carries the (frecency-ordered) Connection names.
-type pickerConnectionsLoadedMsg struct {
-	names []string
-}
 
 // pickerConnectMsg triggers an async open attempt for a chosen Connection.
 type pickerConnectMsg struct {
@@ -260,6 +255,8 @@ func newModelWithDependencies(session Session, deps modelDependencies) Model {
 func (m Model) Init() tea.Cmd {
 	switch m.state.App.Current {
 	case StateSelectConnection:
+		// Push the startup Picker Modal on first tick (not in the constructor,
+		// so test models that fake StateReady without an Adapter stay modal-free).
 		return func() tea.Msg { return pickerInitMsg{} }
 	default:
 		// Normal startup path (has adapter or auto-connect target).
@@ -356,9 +353,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncPaneSizes()
 		return m, nil
 	case pickerInitMsg:
-		return m, m.pickerLoadConnectionsCmd()
-	case pickerConnectionsLoadedMsg:
-		return m.handlePickerConnectionsLoaded(msg)
+		return m.handlePickerInit()
 	case pickerConnectMsg:
 		return m.handlePickerConnect(msg)
 	case pickerConnectSuccessMsg:
@@ -455,13 +450,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKeyPressMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// Startup Connection Picker: route to the same Modal as mid-run. While a
+	// connect is in flight the Modal stays visible but non-interactive — only
+	// the double-Esc abort gesture is handled (mirroring mid-run).
 	if m.state.App.Current == StateSelectConnection {
-		return m.handlePickerKeyPress(msg)
-	}
-
-	if m.state.App.Current == StateStartup && m.autoConnectTarget.Connection.Type == "" && m.cancelConnect != nil {
-		// We are in the connect-in-flight phase (transitioning from Picker).
-		return m.handleConnectingKeyPress(msg)
+		// ctrl+c always quits at startup, even before the Modal is pushed.
+		if msg.String() == "ctrl+c" {
+			return m, tea.Quit
+		}
+		if m.cancelConnect != nil {
+			return m.handleMidRunConnectingKeyPress(msg)
+		}
+		if modal := m.currentModal(); modal != nil {
+			result := modal.HandleKey(msg, ModalContext{
+				Interaction: m.state.Interaction.snapshot(),
+				Session:     m.session,
+				Dialect:     m.adapterDialect(),
+			})
+			return m, m.applyModalResult(result)
+		}
+		return m, nil
 	}
 
 	if m.state.App.Current != StateReady {
@@ -690,29 +698,15 @@ func (m Model) View() tea.View {
 	var content string
 	switch m.state.App.Current {
 	case StateSelectConnection:
-		content = m.pickerView(contentHeight)
+		// The startup Connection Picker is the same Modal as mid-run, centered
+		// over the (empty) panes — so the two presentations look identical.
+		content = m.readyStateView(contentHeight)
 	case StateStartup:
-		if m.autoConnectTarget.Connection.Type == "" && m.cancelConnect != nil {
-			// Connecting from the Picker — show a different message.
-			statusText := "Connecting..."
-			if m.state.Notification.Text != "" {
-				statusText = m.state.Notification.Text
-			}
-			lines := []string{
-				tui.AppTheme.PanelTitle.Render("[ connecting ]"),
-				tui.AppTheme.PanelMuted.Render(statusText),
-			}
-			if m.picker.PendingAbort {
-				lines = append(lines, tui.AppTheme.NotificationInfo.Render("Press esc again to cancel connecting."))
-			}
-			content = strings.Join(lines, "\n")
-		} else {
-			content = strings.Join([]string{
-				tui.AppTheme.PanelTitle.Render("[ startup ]"),
-				tui.AppTheme.PanelText.Render("Preparing command mode..."),
-				tui.AppTheme.PanelMuted.Render(m.state.Notification.Text),
-			}, "\n")
-		}
+		content = strings.Join([]string{
+			tui.AppTheme.PanelTitle.Render("[ startup ]"),
+			tui.AppTheme.PanelText.Render("Preparing command mode..."),
+			tui.AppTheme.PanelMuted.Render(m.state.Notification.Text),
+		}, "\n")
 	case StateReconnect:
 		lines := []string{
 			tui.AppTheme.PanelTitle.Render("[ reconnect ]"),
@@ -886,15 +880,18 @@ func (m Model) statusBarView() string {
 
 	// Middle: keybind hints (priority-ordered; lower-priority hints drop at narrow widths)
 	var hintParts []string
-	if m.state.App.Current == StateReady {
-		if modal := m.currentModal(); modal != nil {
-			hintParts = modal.StatusBarHints(interaction)
-		} else if interaction.ActivePane == PaneResults && interaction.Layout != LayoutCommandOnly {
+	switch {
+	case m.currentModal() != nil && (m.state.App.Current == StateReady || m.state.App.Current == StateSelectConnection):
+		// The Connection Picker Modal supplies its own hints both mid-run
+		// (StateReady) and at startup (StateSelectConnection).
+		hintParts = m.currentModal().StatusBarHints(interaction)
+	case m.state.App.Current == StateReady:
+		if interaction.ActivePane == PaneResults && interaction.Layout != LayoutCommandOnly {
 			hintParts = m.resultsPane.StatusBarHints(interaction)
 		} else {
 			hintParts = m.command.StatusBarHints(interaction)
 		}
-	} else {
+	default:
 		hintParts = []string{"ctrl+c quit"}
 	}
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -29,12 +30,14 @@ import (
 // The active connection name is captured at push time from m.session.ConnectionName;
 // the connections loader is captured for row rendering.
 type connectionPickerModal struct {
-	activeConnection  string                             // m.session.ConnectionName at push time
-	connectionsLoader func() (config.Connections, error) // captured for row rendering
-	filter            string
-	selected          int
-	candidates        []string
-	vpStart           int // lazy viewport start for the 16-row visible window
+	startup              bool                               // true when opened at startup (no Session yet)
+	activeConnection     string                             // m.session.ConnectionName at push time
+	connectionsLoader    func() (config.Connections, error) // captured for row rendering
+	filter               string
+	selected             int
+	candidates           []string
+	vpStart              int    // lazy viewport start for the 16-row visible window
+	lastFailedConnection string // name marked with ✗ after a failed connect; cleared on next attempt
 }
 
 func (c *connectionPickerModal) Name() AppModal { return ModalConnectionPicker }
@@ -53,9 +56,14 @@ func (c *connectionPickerModal) CounterText(_ InteractionState) string {
 }
 
 func (c *connectionPickerModal) StatusBarHints(_ InteractionState) []string {
-	escHint := "esc cancel"
-	if strings.TrimSpace(c.filter) != "" {
+	var escHint string
+	switch {
+	case strings.TrimSpace(c.filter) != "":
 		escHint = "esc clear filter"
+	case c.startup:
+		escHint = "esc quit"
+	default:
+		escHint = "esc cancel"
 	}
 	return []string{"enter connect", escHint, "ctrl+p up", "ctrl+n down"}
 }
@@ -65,16 +73,26 @@ func (c *connectionPickerModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext)
 
 	switch {
 	case msg.String() == "ctrl+c":
+		// At startup ctrl+c quits the app (nothing to return to); mid-run it
+		// closes the Modal back to the live Session.
+		if c.startup {
+			return modalResultForward{cmd: tea.Quit}
+		}
 		return modalResultReady{status: "", level: NotificationNone, dismiss: true}
 	case key.Matches(msg, keys.Help):
 		return modalResultForward{cmd: func() tea.Msg { return toggleHelpIntentMsg{} }}
 	case key.Matches(msg, keys.Cancel):
-		// Mid-run Esc: clear filter first if set; otherwise close the Modal non-destructively.
+		// Esc clears a non-empty filter first, in both modes.
 		if strings.TrimSpace(c.filter) != "" {
 			c.filter = ""
 			c.selected = 0
 			c.vpStart = 0
 			return modalResultNone{}
+		}
+		// Empty-filter Esc forks on entry path: at startup there is nothing to
+		// return to, so quit; mid-run closes the Modal non-destructively.
+		if c.startup {
+			return modalResultForward{cmd: tea.Quit}
 		}
 		return modalResultReady{status: "", level: NotificationNone, dismiss: true}
 	case key.Matches(msg, keys.PrevSuggestion), msg.String() == "up":
@@ -141,7 +159,12 @@ func (c *connectionPickerModal) Render(_ InteractionState, innerWidth int) strin
 	filtered := pickerFilteredCandidates(c.candidates, c.filter)
 
 	if len(c.candidates) == 0 {
-		return tui.AppTheme.PanelMuted.Render("No connections defined.")
+		empty := tui.AppTheme.PanelMuted.Render("No connections defined.")
+		if c.startup {
+			// Startup is a dead-end (Esc quits), so tell the user how to escape it.
+			empty += "\n\n" + tui.AppTheme.PanelMuted.Render("Define connections in connections.toml and restart.")
+		}
+		return empty
 	}
 	if len(filtered) == 0 {
 		return tui.AppTheme.PanelMuted.Render("No fuzzy matches.")
@@ -179,13 +202,21 @@ func (c *connectionPickerModal) Render(_ InteractionState, innerWidth int) strin
 	return strings.Join(lines, "\n")
 }
 
-// renderRow renders a single row. Active connection is prefixed with ●; the
-// pickerRenderRow helper is reused for the name+summary layout.
+// renderRow renders a single row. The 2-char prefix slot shows ✗ for the
+// last-failed connection (error-coloured), ● for the active connection, or
+// blanks otherwise; the pickerRenderRow helper is reused for the name+summary
+// layout. A failed connection is never the active one, so the markers never
+// collide.
 func (c *connectionPickerModal) renderRow(name string, availWidth int) string {
-	prefix := "  "
-	prefixWidth := 2
-	if name == c.activeConnection {
+	const prefixWidth = 2
+	var prefix string
+	switch {
+	case name == c.lastFailedConnection:
+		prefix = tui.AppTheme.NotificationError.Render("✗") + " "
+	case name == c.activeConnection:
 		prefix = "● "
+	default:
+		prefix = "  "
 	}
 
 	// Delegate to the shared row renderer, then prepend the prefix.
@@ -264,9 +295,11 @@ type midRunConnectSuccessMsg struct {
 	resolved   config.ResolvedConnection
 }
 
-// midRunConnectFailedMsg signals a failed mid-run open; the old Session is untouched.
+// midRunConnectFailedMsg signals a failed open; the old Session (if any) is
+// untouched. name is the Connection that failed, marked with ✗ in the Picker.
 type midRunConnectFailedMsg struct {
-	err error
+	err  error
+	name string
 }
 
 // ---- Mid-run connect handlers ----
@@ -288,8 +321,12 @@ func (m Model) handleMidRunConnect(msg midRunConnectMsg) (Model, tea.Cmd) {
 		Connection: conn,
 	}
 
-	m.picker.PendingAbort = false
-	m.picker.ConnectError = ""
+	m.pendingConnectAbort = false
+
+	// Clear any prior ✗ marker on the Picker — a fresh attempt is starting.
+	if pm, ok := m.currentModal().(*connectionPickerModal); ok {
+		pm.lastFailedConnection = ""
+	}
 
 	oldAdapter := m.session.Adapter
 	openFn := m.open
@@ -304,7 +341,7 @@ func (m Model) handleMidRunConnect(msg midRunConnectMsg) (Model, tea.Cmd) {
 	return m, func() tea.Msg {
 		adapter, err := openFn(ctx, resolved.Connection)
 		if err != nil {
-			return midRunConnectFailedMsg{err: err}
+			return midRunConnectFailedMsg{err: err, name: resolved.Name}
 		}
 		return midRunConnectSuccessMsg{
 			adapter:    adapter,
@@ -322,7 +359,7 @@ func (m Model) handleMidRunConnectSuccess(msg midRunConnectSuccessMsg) (Model, t
 		m.cancelConnect()
 		m.cancelConnect = nil
 	}
-	m.picker.PendingAbort = false
+	m.pendingConnectAbort = false
 
 	// Swap the session.
 	m.session = Session{
@@ -392,23 +429,47 @@ func (m Model) handleMidRunConnectSuccess(msg midRunConnectSuccessMsg) (Model, t
 }
 
 // handleMidRunConnectFailed leaves the existing Session completely untouched.
-// The old Adapter is NOT closed here.
+// The old Adapter is NOT closed here. The Picker Modal stays open; the failed
+// Connection is marked with ✗ and the detailed error goes to the Status Bar.
+// At startup there is no Session to fall back to, so the app state returns to
+// StateSelectConnection rather than StateReady.
 func (m Model) handleMidRunConnectFailed(msg midRunConnectFailedMsg) (Model, tea.Cmd) {
 	if m.cancelConnect != nil {
 		m.cancelConnect()
 		m.cancelConnect = nil
 	}
-	m.picker.PendingAbort = false
+	m.pendingConnectAbort = false
 
-	// If the user aborted via double-Esc, return silently to the picker.
+	// Mark the failed Connection inline and learn whether this is the startup
+	// Picker (no Session behind it) from the live modal.
+	startup := false
+	if pm, ok := m.currentModal().(*connectionPickerModal); ok {
+		pm.lastFailedConnection = msg.name
+		startup = pm.startup
+	}
+
+	// If the user aborted via double-Esc, return silently to the Picker.
 	if errors.Is(msg.err, context.Canceled) {
-		m.state.SetReady("Connect cancelled.", NotificationInfo)
-		return m, m.notificationClearCmdIfSet()
+		return m, m.returnToPickerOrReady(startup, "Connect cancelled.", NotificationInfo)
 	}
 
 	errText := FormatTerminalError(msg.err)
-	m.state.SetReady("Connection failed: "+errText, NotificationError)
-	return m, m.notificationClearCmdIfSet()
+	return m, m.returnToPickerOrReady(startup, "Connection failed: "+errText, NotificationError)
+}
+
+// returnToPickerOrReady sets the post-connect-failure status. Mid-run lands in
+// StateReady (the old Session is still live); startup stays in
+// StateSelectConnection (there is no Session) with the status in the Status Bar.
+func (m *Model) returnToPickerOrReady(startup bool, status string, level NotificationLevel) tea.Cmd {
+	if startup {
+		m.state.App.Current = StateSelectConnection
+		m.state.App.Error = ""
+		m.state.App.Reconnect = nil
+		m.state.Notification = Notification{Text: status, Level: level, CreatedAt: time.Now()}
+		return m.notificationClearCmdIfSet()
+	}
+	m.state.SetReady(status, level)
+	return m.notificationClearCmdIfSet()
 }
 
 // handleMidRunConnectingKeyPress handles keys while a mid-run connect is in
@@ -420,22 +481,22 @@ func (m Model) handleMidRunConnectingKeyPress(msg tea.KeyPressMsg) (tea.Model, t
 	case "ctrl+c":
 		return m, tea.Quit
 	case "esc":
-		if m.picker.PendingAbort {
+		if m.pendingConnectAbort {
 			// Second Esc: cancel the in-flight connect.
 			if m.cancelConnect != nil {
 				m.cancelConnect()
 			}
-			m.picker.PendingAbort = false
+			m.pendingConnectAbort = false
 			return m, nil
 		}
 		// First Esc: arm the pending abort and show the hint.
-		m.picker.PendingAbort = true
+		m.pendingConnectAbort = true
 		m.state.SetPendingIntent(IntentNone, "connect", "Press esc again to cancel connecting.", NotificationInfo)
 		return m, nil
 	default:
 		// Any other key disarms the pending abort.
-		if m.picker.PendingAbort {
-			m.picker.PendingAbort = false
+		if m.pendingConnectAbort {
+			m.pendingConnectAbort = false
 			m.state.SetPendingIntent(IntentNone, "connect", "Connecting...", NotificationInfo)
 		}
 		return m, nil

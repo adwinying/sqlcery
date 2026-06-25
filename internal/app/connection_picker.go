@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
@@ -16,40 +16,24 @@ import (
 	"github.com/adwinying/sqlcery/internal/tui"
 )
 
-// pickerLoadConnectionsCmd loads and frecency-orders Connection names.
-func (m Model) pickerLoadConnectionsCmd() tea.Cmd {
-	connectionsLoader := m.connectionsLoader
-	frecencyStore := m.frecencyStore
-	return func() tea.Msg {
-		var names []string
-		if connectionsLoader != nil {
-			connections, err := connectionsLoader()
-			if err == nil {
-				for name := range connections.Connection {
-					names = append(names, name)
-				}
-			}
-		}
-		sort.Strings(names) // stable base order before frecency
-		if frecencyStore != nil {
-			names = frecencyStore.Order(names)
-		}
-		return pickerConnectionsLoadedMsg{names: names}
-	}
-}
-
-func (m Model) handlePickerConnectionsLoaded(msg pickerConnectionsLoadedMsg) (Model, tea.Cmd) {
-	m.picker.Candidates = msg.names
-	m.picker.Selected = 0
-	m.picker.Filter = ""
-	m.picker.ConnectError = ""
+// handlePickerInit pushes the startup Connection Picker Modal — the same Modal
+// shown mid-run, in startup mode — with the frecency-ordered candidate list.
+func (m Model) handlePickerInit() (Model, tea.Cmd) {
+	m.pushModal(&connectionPickerModal{
+		startup:           true,
+		connectionsLoader: m.connectionsLoader,
+		candidates:        loadPickerCandidates(m.connectionsLoader, m.frecencyStore),
+	})
 	return m, nil
 }
 
-// handlePickerConnect fires an async open attempt.
+// handlePickerConnect fires an async open attempt for the auto-connect path
+// (a CLI connection argument). It shows the full-screen StateStartup
+// "Connecting…" indicator — there is no Picker Modal to keep open here, because
+// the user bypassed the Picker by naming a target. Picker-initiated connects go
+// through handleMidRunConnect instead (which keeps the Modal open).
 func (m Model) handlePickerConnect(msg pickerConnectMsg) (Model, tea.Cmd) {
-	m.picker.PendingAbort = false
-	m.picker.ConnectError = ""
+	m.pendingConnectAbort = false
 
 	// Transition to StateStartup to show a connecting indicator.
 	m.state.SetStartup("Connecting to " + pickerConnectionDisplayName(msg.resolved) + "...")
@@ -75,7 +59,7 @@ func (m Model) handlePickerConnectSuccess(msg pickerConnectSuccessMsg) (Model, t
 		m.cancelConnect()
 		m.cancelConnect = nil
 	}
-	m.picker.PendingAbort = false
+	m.pendingConnectAbort = false
 
 	// Build the session.
 	m.session = Session{
@@ -126,190 +110,57 @@ func (m Model) handlePickerConnectSuccess(msg pickerConnectSuccessMsg) (Model, t
 	)
 }
 
-// handlePickerConnectFailed returns to the Picker with the error shown inline.
-// UX fix (D): when the failure is from the auto-connect startup path AND the
-// candidate list is empty (e.g. a bare connection-string CLI arg), the app
-// exits with the formatted error instead of dropping into an empty picker.
-// A named-arg failure still returns to the picker because that name IS a candidate.
+// handlePickerConnectFailed handles a failed auto-connect open. A bare
+// Connection String arg with no Picker candidates quits with the error (the
+// Picker would be useless). Otherwise — including a named-arg failure or a
+// double-Esc abort — it drops into the startup Connection Picker, marking the
+// failed Connection with ✗ and surfacing the detail in the Status Bar.
 func (m Model) handlePickerConnectFailed(msg pickerConnectFailedMsg) (Model, tea.Cmd) {
 	if m.cancelConnect != nil {
 		m.cancelConnect()
 		m.cancelConnect = nil
 	}
-	m.picker.PendingAbort = false
+	m.pendingConnectAbort = false
 
-	// If the user aborted via double-Esc, return silently without error.
+	candidates := loadPickerCandidates(m.connectionsLoader, m.frecencyStore)
+
+	// Aborted via double-Esc during auto-connect: drop into the Picker silently.
 	if errors.Is(msg.err, context.Canceled) {
-		m.picker.ConnectError = ""
-		m.state.App.Current = StateSelectConnection
-		return m, nil
+		return m.dropIntoStartupPicker(candidates, "", "", NotificationNone)
 	}
 
 	errText := FormatTerminalError(msg.err)
 
-	// UX fix: auto-connect failure on a path that has no picker candidates → quit.
-	// This covers bare Connection String args (no Name) where the picker would be empty.
-	if m.autoConnectTarget.Connection.Type != "" && len(m.picker.Candidates) == 0 {
-		// Print the error and quit — the picker would be useless (nothing to pick).
+	// A bare Connection String arg has nothing to pick — print and quit.
+	if m.autoConnectTarget.Connection.Type != "" && len(candidates) == 0 {
 		m.state.App.Current = StateError
 		m.state.App.Error = errText
 		return m, tea.Quit
 	}
 
-	m.picker.ConnectError = errText
+	// A named-arg failure drops into the Picker with the failure marked.
+	return m.dropIntoStartupPicker(candidates, m.autoConnectTarget.Name, "Connection failed: "+errText, NotificationError)
+}
+
+// dropIntoStartupPicker pushes the startup Connection Picker Modal after an
+// auto-connect failure, optionally marking failedName with ✗ and setting the
+// Status Bar message.
+func (m Model) dropIntoStartupPicker(candidates []string, failedName, status string, level NotificationLevel) (Model, tea.Cmd) {
+	m.pushModal(&connectionPickerModal{
+		startup:              true,
+		connectionsLoader:    m.connectionsLoader,
+		candidates:           candidates,
+		lastFailedConnection: failedName,
+	})
 	m.state.App.Current = StateSelectConnection
-	return m, nil
-}
-
-// handlePickerKeyPress handles keys while in StateSelectConnection.
-func (m Model) handlePickerKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
-		return m, tea.Quit
-	case "esc":
-		// At startup with no adapter, Esc quits (nothing to return to).
-		return m, tea.Quit
-	case "enter":
-		return m.pickerSelect()
-	case "up", "ctrl+p":
-		return m.pickerMove(-1)
-	case "down", "ctrl+n":
-		return m.pickerMove(1)
-	case "backspace", "ctrl+h", "delete":
-		m.picker.Filter = trimLastRune(m.picker.Filter)
-		m.picker.Selected = 0
-		return m, nil
-	case "space":
-		m.picker.Filter += " "
-		m.picker.Selected = 0
-		return m, nil
-	default:
-		if len(msg.Text) > 0 && !msg.Mod.Contains(tea.ModAlt) && !msg.Mod.Contains(tea.ModCtrl) {
-			m.picker.Filter += msg.Text
-			m.picker.Selected = 0
-			return m, nil
-		}
+	m.state.App.Error = ""
+	m.state.App.Reconnect = nil
+	if strings.TrimSpace(status) == "" {
+		m.state.Notification = Notification{}
+	} else {
+		m.state.Notification = Notification{Text: status, Level: level, CreatedAt: time.Now()}
 	}
-	return m, nil
-}
-
-// handleConnectingKeyPress handles keys while a connect is in flight (StateStartup from Picker).
-func (m Model) handleConnectingKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
-		return m, tea.Quit
-	case "esc":
-		if m.picker.PendingAbort {
-			// Second Esc: cancel the in-flight connect and return to Picker.
-			if m.cancelConnect != nil {
-				m.cancelConnect()
-				// cancelConnect will cause pickerConnectFailedMsg with context.Canceled
-				// which returns to the Picker.
-			}
-			m.picker.PendingAbort = false
-			return m, nil
-		}
-		// First Esc: arm the pending abort.
-		m.picker.PendingAbort = true
-		return m, nil
-	default:
-		// Any other key disarms the pending abort.
-		m.picker.PendingAbort = false
-		return m, nil
-	}
-}
-
-// pickerSelect selects the currently highlighted connection and triggers a connect.
-func (m Model) pickerSelect() (tea.Model, tea.Cmd) {
-	filtered := pickerFilteredCandidates(m.picker.Candidates, m.picker.Filter)
-	if len(filtered) == 0 {
-		return m, nil
-	}
-	idx := wrapSelection(m.picker.Selected, len(filtered))
-	name := filtered[idx]
-
-	var conn config.Connection
-	if m.connectionsLoader != nil {
-		connections, err := m.connectionsLoader()
-		if err == nil {
-			conn = connections.Connection[name]
-		}
-	}
-
-	resolved := config.ResolvedConnection{
-		Name:       name,
-		Raw:        name,
-		Connection: conn,
-	}
-	return m, func() tea.Msg { return pickerConnectMsg{resolved: resolved} }
-}
-
-func (m Model) pickerMove(delta int) (tea.Model, tea.Cmd) {
-	filtered := pickerFilteredCandidates(m.picker.Candidates, m.picker.Filter)
-	if len(filtered) == 0 {
-		return m, nil
-	}
-	m.picker.Selected = wrapSelection(m.picker.Selected+delta, len(filtered))
-	return m, nil
-}
-
-// pickerView renders the full-screen Connection Picker.
-func (m Model) pickerView(contentHeight int) string {
-	filtered := pickerFilteredCandidates(m.picker.Candidates, m.picker.Filter)
-
-	lines := []string{
-		tui.AppTheme.PanelTitle.Render("[ connection picker ]"),
-	}
-
-	// Filter box.
-	filterText := m.picker.Filter + "█"
-	lines = append(lines, tui.AppTheme.PanelText.Render("Filter: "+filterText))
-	lines = append(lines, "")
-
-	switch {
-	case len(m.picker.Candidates) == 0:
-		lines = append(lines, tui.AppTheme.PanelMuted.Render("No connections defined."))
-		lines = append(lines, "")
-		lines = append(lines, tui.AppTheme.PanelMuted.Render("Define connections in connections.toml and restart."))
-	case len(filtered) == 0:
-		lines = append(lines, tui.AppTheme.PanelMuted.Render("No fuzzy matches."))
-	default:
-		// Viewport: show up to 16 rows.
-		const maxRows = 16
-		selected := wrapSelection(m.picker.Selected, len(filtered))
-		vpStart := lazyScroll(selected, 0, maxRows)
-		vpEnd := vpStart + maxRows
-		if vpEnd > len(filtered) {
-			vpEnd = len(filtered)
-		}
-
-		availWidth := m.width - 4
-		if availWidth < 20 {
-			availWidth = 20
-		}
-
-		for i := vpStart; i < vpEnd; i++ {
-			name := filtered[i]
-			row := pickerRenderRow(name, m.connectionsLoader, availWidth)
-			if i == selected {
-				if pad := availWidth - ansi.StringWidth(row); pad > 0 {
-					row += strings.Repeat(" ", pad)
-				}
-				lines = append(lines, tui.AppTheme.PanelSelected.Render(row))
-			} else {
-				lines = append(lines, tui.AppTheme.PanelText.Render(row))
-			}
-		}
-	}
-
-	// Error display.
-	if m.picker.ConnectError != "" {
-		lines = append(lines, "")
-		lines = append(lines, tui.AppTheme.NotificationError.Render("Error: "+m.picker.ConnectError))
-	}
-
-	_ = contentHeight
-	return strings.Join(lines, "\n")
+	return m, m.notificationClearCmdIfSet()
 }
 
 // pickerFilteredCandidates applies the fuzzy filter and returns matching names.

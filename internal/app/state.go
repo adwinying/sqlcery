@@ -188,25 +188,6 @@ type HistoryEntryContext struct {
 	ExecutedAt     time.Time
 }
 
-// ConnectionPickerContext is the shared selection state for the Connection
-// Picker, usable both as a full-screen startup screen (StateSelectConnection)
-// and as a mid-run ModalConnectionPicker host (a later slice).
-// The context owns filtering and selection; opening/error sub-state sits
-// alongside it in the Model so the context itself remains presentation-only.
-type ConnectionPickerContext struct {
-	// Candidates holds the ordered Connection names (frecency-sorted).
-	Candidates []string
-	// Filter is the current fuzzy-filter string typed by the user.
-	Filter string
-	// Selected is the index into the filtered candidate list.
-	Selected int
-	// ConnectError is the last connection error (inline in the picker), if any.
-	ConnectError string
-	// PendingAbort is true when the first Esc was pressed during StateStartup
-	// (mirroring pendingQuit for the abort-connect gesture).
-	PendingAbort bool
-}
-
 func NewSharedAppState() SharedAppState {
 	return SharedAppState{
 		App: AppStateContext{
