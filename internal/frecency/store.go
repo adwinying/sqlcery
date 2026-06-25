@@ -38,6 +38,9 @@ func DefaultPath() (string, error) {
 // A missing file is not an error — the store starts empty. A corrupt file is
 // treated as empty (consistent with history's silent-skip of malformed lines).
 func Load(path string, now func() time.Time) (*Store, error) {
+	if now == nil {
+		now = time.Now
+	}
 	s := &Store{
 		path:   path,
 		scorer: newScorer(now),
