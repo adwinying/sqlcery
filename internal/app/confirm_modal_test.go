@@ -96,18 +96,21 @@ func TestConfirmYesForwardsAndPops(t *testing.T) {
 	}
 }
 
-// TestConfirmEnterForwardsAndPops verifies that pressing Enter also confirms.
-func TestConfirmEnterForwardsAndPops(t *testing.T) {
+// TestConfirmEnterOnYesFocusedForwardsAndPops verifies that Enter confirms when Yes is focused.
+func TestConfirmEnterOnYesFocusedForwardsAndPops(t *testing.T) {
 	model := buildConfirmModel(t, "Confirm?", sentinelMsg{id: 7})
+
+	// Tab to move focus from No (default) to Yes.
+	model = pressKey(model, "tab")
 
 	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = next.(Model)
 
 	if model.currentModal() != nil && model.currentModal().Name() == ModalConfirm {
-		t.Fatal("confirm modal should be popped after Enter")
+		t.Fatal("confirm modal should be popped after Enter on Yes")
 	}
 	if cmd == nil {
-		t.Fatal("cmd = nil after Enter, want sentinelMsg forwarded")
+		t.Fatal("cmd = nil after Enter on Yes, want sentinelMsg forwarded")
 	}
 	msgs := collectCommandMessagesForTest(t, cmd)
 	var found bool
@@ -117,7 +120,74 @@ func TestConfirmEnterForwardsAndPops(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("no sentinelMsg{id:7} in cmd messages %v after Enter", msgs)
+		t.Fatalf("no sentinelMsg{id:7} in cmd messages %v after Enter on Yes", msgs)
+	}
+}
+
+// TestConfirmEnterOnNoFocusedDeclines verifies that Enter dismisses when No is focused (the default).
+func TestConfirmEnterOnNoFocusedDeclines(t *testing.T) {
+	model := buildConfirmModel(t, "Confirm?", sentinelMsg{id: 8})
+	stackBefore := len(model.modals)
+
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = next.(Model)
+
+	if model.currentModal() != nil && model.currentModal().Name() == ModalConfirm {
+		t.Fatal("confirm modal should be popped after Enter on No")
+	}
+	if len(model.modals) != stackBefore-1 {
+		t.Fatalf("modal stack len = %d, want %d after Enter on No", len(model.modals), stackBefore-1)
+	}
+	if cmd != nil {
+		msgs := collectCommandMessagesForTest(t, cmd)
+		for _, m := range msgs {
+			if _, ok := m.(sentinelMsg); ok {
+				t.Fatalf("sentinelMsg forwarded after Enter on No; should only pop")
+			}
+		}
+	}
+}
+
+// TestConfirmTabTogglesFocus verifies that Tab switches focus between No and Yes.
+func TestConfirmTabTogglesFocus(t *testing.T) {
+	model := buildConfirmModel(t, "Confirm?", sentinelMsg{id: 9})
+
+	// Default: No focused — Enter should decline.
+	{
+		next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		m2 := next.(Model)
+		if m2.currentModal() != nil && m2.currentModal().Name() == ModalConfirm {
+			t.Fatal("confirm should pop on Enter with No focused")
+		}
+		if cmd != nil {
+			for _, msg := range collectCommandMessagesForTest(t, cmd) {
+				if _, ok := msg.(sentinelMsg); ok {
+					t.Fatal("sentinelMsg forwarded with No focused")
+				}
+			}
+		}
+	}
+
+	// Tab → Yes focused — Enter should confirm.
+	model = pressKey(model, "tab")
+	{
+		next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		m2 := next.(Model)
+		if m2.currentModal() != nil && m2.currentModal().Name() == ModalConfirm {
+			t.Fatal("confirm should pop on Enter with Yes focused")
+		}
+		if cmd == nil {
+			t.Fatal("cmd = nil after Enter with Yes focused")
+		}
+		var found bool
+		for _, msg := range collectCommandMessagesForTest(t, cmd) {
+			if s, ok := msg.(sentinelMsg); ok && s.id == 9 {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("sentinelMsg not forwarded after Enter with Yes focused")
+		}
 	}
 }
 

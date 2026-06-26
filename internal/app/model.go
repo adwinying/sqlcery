@@ -906,7 +906,11 @@ func (m Model) readyStateView(totalHeight int) string {
 				suggestionsBox := tui.RenderTitledBox(title, modal.Render(interaction, innerWidth), counter, maxW, tui.ModalSplitListRows)
 				rendered = filterBox + "\n" + suggestionsBox
 			} else {
-				rendered = tui.RenderTitledBox(title, modal.Render(interaction, innerWidth), counter, maxW, tui.ModalFixedRows)
+				rows := tui.ModalFixedRows
+				if d, ok := modal.(interface{ DialogRows() int }); ok {
+					rows = d.DialogRows()
+				}
+				rendered = tui.RenderTitledBox(title, modal.Render(interaction, innerWidth), counter, maxW, rows)
 			}
 			base = tui.OverlayCenter(base, rendered, w, totalHeight)
 		}
