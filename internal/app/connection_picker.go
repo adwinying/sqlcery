@@ -192,14 +192,16 @@ func pickerRenderRow(name string, loader func() (config.Connections, error), max
 		}
 	}
 
-	// Build the name part, optionally prefixed with a colour swatch.
-	namePart := name
-	nameWidth := ansi.StringWidth(name)
+	// Build the name part, always prefixed with a colour swatch slot.
+	// Filled square (■) when a color is set; muted outline square (□) otherwise.
+	var swatch string
 	if color != "" {
-		swatch := lipgloss.NewStyle().Foreground(tui.ResolveColor(color)).Render("■")
-		namePart = swatch + " " + name
-		nameWidth += 2 // swatch (1) + space (1)
+		swatch = lipgloss.NewStyle().Foreground(tui.ResolveColor(color)).Render("■")
+	} else {
+		swatch = tui.AppTheme.PanelMuted.Render("□")
 	}
+	namePart := swatch + " " + name
+	nameWidth := ansi.StringWidth(name) + 2 // swatch (1) + space (1)
 
 	if summary == "" {
 		return namePart

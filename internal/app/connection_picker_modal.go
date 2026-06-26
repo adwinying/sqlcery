@@ -188,12 +188,13 @@ func (c *connectionPickerModal) Render(_ InteractionState, innerWidth int) strin
 		name := filtered[i]
 		row := c.renderRow(name, availWidth)
 		if i == selected {
-			// Pad so the highlight fills the full width.
-			stripped := ansi.Strip(row)
-			if pad := availWidth - ansi.StringWidth(stripped); pad > 0 {
-				row += strings.Repeat(" ", pad)
+			// Strip embedded ANSI (e.g. the colour swatch reset) so it doesn't
+			// cancel the selection background mid-row, then pad to full width.
+			plain := ansi.Strip(row)
+			if pad := availWidth - ansi.StringWidth(plain); pad > 0 {
+				plain += strings.Repeat(" ", pad)
 			}
-			lines = append(lines, tui.AppTheme.PanelSelected.Render(row))
+			lines = append(lines, tui.AppTheme.PanelSelected.Render(plain))
 		} else {
 			lines = append(lines, tui.AppTheme.PanelText.Render(row))
 		}
