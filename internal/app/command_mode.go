@@ -68,6 +68,7 @@ type commandModeKeyMap struct {
 	ScrollTranscriptUp   key.Binding
 	ScrollTranscriptDown key.Binding
 	OpenEditor           key.Binding
+	SwitchConnection     key.Binding
 }
 
 func defaultCommandModeKeys() commandModeKeyMap {
@@ -85,6 +86,7 @@ func defaultCommandModeKeys() commandModeKeyMap {
 		ScrollTranscriptUp:   key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "scroll up")),
 		ScrollTranscriptDown: key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "scroll down")),
 		OpenEditor:           key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "open in $EDITOR")),
+		SwitchConnection:     key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("ctrl+s", "switch connection")),
 	}
 }
 

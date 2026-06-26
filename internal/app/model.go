@@ -118,6 +118,8 @@ type historyNavBoundaryMsg struct{}
 
 type toggleHelpIntentMsg struct{}
 
+type openConnectionPickerIntentMsg struct{}
+
 type toggleZoomIntentMsg struct{}
 
 type switchPaneIntentMsg struct{}
@@ -352,6 +354,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.handleToggleZoom()
 		m.syncPaneSizes()
 		return m, nil
+	case openConnectionPickerIntentMsg:
+		if m.state.Interaction.Running != nil {
+			m.state.SetPendingIntent(IntentNone, "switch-connection", "Cancel the running statement first.", NotificationInfo)
+			return m, m.notificationClearCmdIfSet()
+		}
+		return m.openConnectionPickerModal()
 	case pickerInitMsg:
 		return m.handlePickerInit()
 	case pickerConnectMsg:
@@ -1015,6 +1023,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return func() tea.Msg { return openEditorIntentMsg{} }
 	case key.Matches(msg, keys.Help):
 		return func() tea.Msg { return toggleHelpIntentMsg{} }
+	case key.Matches(msg, keys.SwitchConnection):
+		return func() tea.Msg { return openConnectionPickerIntentMsg{} }
 	case key.Matches(msg, keys.SwitchMode):
 		return func() tea.Msg { return switchPaneIntentMsg{} }
 	case msg.String() == "ctrl+q":

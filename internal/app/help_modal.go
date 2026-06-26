@@ -306,6 +306,7 @@ func (h *helpModal) HandleMouseWheel(_ ModalContext, msg tea.MouseWheelMsg) Moda
 func buildHelpRows(pane Pane, modal AppModal) []helpRow {
 	global := []helpRow{
 		{keyText: "ctrl+t", desc: "toggle keybindings"},
+		{keyText: "ctrl+s", desc: "switch connection", actionKey: "ctrl+s"},
 		{keyText: "ctrl+c", desc: "quit"},
 	}
 
@@ -387,6 +388,8 @@ func keyToMsgFn(actionKey string) func() tea.Msg {
 	switch actionKey {
 	case "enter":
 		return func() tea.Msg { return submitIntentMsg{} }
+	case "ctrl+s":
+		return func() tea.Msg { return openConnectionPickerIntentMsg{} }
 	case "ctrl+r":
 		return func() tea.Msg { return historyIntentMsg{} }
 	case "ctrl+e":
