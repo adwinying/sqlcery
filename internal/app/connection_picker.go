@@ -114,7 +114,7 @@ func (m Model) handlePickerConnectSuccess(msg pickerConnectSuccessMsg) (Model, t
 // Connection String arg with no Picker candidates quits with the error (the
 // Picker would be useless). Otherwise — including a named-arg failure or a
 // double-Esc abort — it drops into the startup Connection Picker, marking the
-// failed Connection with ✗ and surfacing the detail in the Status Bar.
+// failed Connection with ! and surfacing the detail in the Status Bar.
 func (m Model) handlePickerConnectFailed(msg pickerConnectFailedMsg) (Model, tea.Cmd) {
 	if m.cancelConnect != nil {
 		m.cancelConnect()
@@ -143,7 +143,7 @@ func (m Model) handlePickerConnectFailed(msg pickerConnectFailedMsg) (Model, tea
 }
 
 // dropIntoStartupPicker pushes the startup Connection Picker Modal after an
-// auto-connect failure, optionally marking failedName with ✗ and setting the
+// auto-connect failure, optionally marking failedName with ! and setting the
 // Status Bar message.
 func (m Model) dropIntoStartupPicker(candidates []string, failedName, status string, level NotificationLevel) (Model, tea.Cmd) {
 	m.pushModal(&connectionPickerModal{

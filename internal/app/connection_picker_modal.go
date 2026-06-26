@@ -37,7 +37,7 @@ type connectionPickerModal struct {
 	selected             int
 	candidates           []string
 	vpStart              int    // lazy viewport start for the 16-row visible window
-	lastFailedConnection string // name marked with ✗ after a failed connect; cleared on next attempt
+	lastFailedConnection string // name marked with ! after a failed connect; cleared on next attempt
 }
 
 func (c *connectionPickerModal) Name() AppModal { return ModalConnectionPicker }
@@ -203,7 +203,7 @@ func (c *connectionPickerModal) Render(_ InteractionState, innerWidth int) strin
 	return strings.Join(lines, "\n")
 }
 
-// renderRow renders a single row. The 2-char prefix slot shows ✗ for the
+// renderRow renders a single row. The 2-char prefix slot shows ! for the
 // last-failed connection (error-coloured), ● for the active connection, or
 // blanks otherwise; the pickerRenderRow helper is reused for the name+summary
 // layout. A failed connection is never the active one, so the markers never
@@ -213,7 +213,7 @@ func (c *connectionPickerModal) renderRow(name string, availWidth int) string {
 	var prefix string
 	switch {
 	case name == c.lastFailedConnection:
-		prefix = tui.AppTheme.NotificationError.Render("✗") + " "
+		prefix = tui.AppTheme.WarningNotice.Render("!") + " "
 	case name == c.activeConnection:
 		prefix = "● "
 	default:
@@ -297,7 +297,7 @@ type midRunConnectSuccessMsg struct {
 }
 
 // midRunConnectFailedMsg signals a failed open; the old Session (if any) is
-// untouched. name is the Connection that failed, marked with ✗ in the Picker.
+// untouched. name is the Connection that failed, marked with ! in the Picker.
 type midRunConnectFailedMsg struct {
 	err  error
 	name string
@@ -324,7 +324,7 @@ func (m Model) handleMidRunConnect(msg midRunConnectMsg) (Model, tea.Cmd) {
 
 	m.pendingConnectAbort = false
 
-	// Clear any prior ✗ marker on the Picker — a fresh attempt is starting.
+	// Clear any prior ! marker on the Picker — a fresh attempt is starting.
 	if pm, ok := m.currentModal().(*connectionPickerModal); ok {
 		pm.lastFailedConnection = ""
 	}
@@ -431,7 +431,7 @@ func (m Model) handleMidRunConnectSuccess(msg midRunConnectSuccessMsg) (Model, t
 
 // handleMidRunConnectFailed leaves the existing Session completely untouched.
 // The old Adapter is NOT closed here. The Picker Modal stays open; the failed
-// Connection is marked with ✗ and the detailed error goes to the Status Bar.
+// Connection is marked with ! and the detailed error goes to the Status Bar.
 // At startup there is no Session to fall back to, so the app state returns to
 // StateSelectConnection rather than StateReady.
 func (m Model) handleMidRunConnectFailed(msg midRunConnectFailedMsg) (Model, tea.Cmd) {
