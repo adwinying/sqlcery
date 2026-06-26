@@ -396,7 +396,7 @@ func TestPickerAbortArmedDisarmsOnOtherKey(t *testing.T) {
 	cancel()
 }
 
-func TestPickerEmptyStateShowsMessage(t *testing.T) {
+func TestPickerEmptyStateShowsCreateRow(t *testing.T) {
 	model := newStartupPickerModel(t, modelDependencies{
 		connectionsLoader: func() (config.Connections, error) {
 			return config.Connections{}, nil
@@ -407,12 +407,13 @@ func TestPickerEmptyStateShowsMessage(t *testing.T) {
 	model = next.(Model)
 
 	view := model.View().Content
-	if !containsString(view, "No connections") {
-		t.Fatalf("View() = %q, want to contain %q", view, "No connections")
+	// With no connections the pinned create row is the only item shown.
+	if !containsString(view, "Create a new connection") {
+		t.Fatalf("View() = %q, want to contain %q", view, "Create a new connection")
 	}
-	// At startup the dead-end hint is shown.
-	if !containsString(view, "connections.toml") {
-		t.Fatalf("View() = %q, want startup hint mentioning connections.toml", view)
+	// The old dead-end hint must be gone.
+	if containsString(view, "Define connections") {
+		t.Fatalf("View() should not contain old empty-state hint 'Define connections'")
 	}
 }
 

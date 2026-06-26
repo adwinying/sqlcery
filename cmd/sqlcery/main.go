@@ -57,9 +57,19 @@ func run(args []string, getwd func() (string, error)) error {
 				return err
 			}
 
+			// Shared in-memory cache so ConnectionsLoader stays a cheap read
+			// (called once per visible row per render frame).
+			cache := connections.Value
 			opts.Version = buildVersion()
 			opts.FrecencyStore = frecencyStore
-			opts.ConnectionsLoader = func() (config.Connections, error) { return connections.Value, nil }
+			opts.ConnectionsLoader = func() (config.Connections, error) { return cache, nil }
+			opts.ReloadConnections = func() error {
+				r, err := config.LoadConnections[config.Connections](cwd)
+				if err == nil {
+					cache = r.Value
+				}
+				return err
+			}
 			opts.AutoConnectTarget = autoConnectTarget
 
 			return app.Run(ctx, opts)

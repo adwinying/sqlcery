@@ -20,12 +20,13 @@ const (
 type AppModal string
 
 const (
-	ModalNone             AppModal = ""
-	ModalHistorySearch    AppModal = "history-search"
-	ModalSlashWizard      AppModal = "slash-wizard"
-	ModalKeybindings      AppModal = "keybindings"
-	ModalExportWizard     AppModal = "export-wizard"
-	ModalConnectionPicker AppModal = "connection-picker"
+	ModalNone                AppModal = ""
+	ModalHistorySearch       AppModal = "history-search"
+	ModalSlashWizard         AppModal = "slash-wizard"
+	ModalKeybindings         AppModal = "keybindings"
+	ModalExportWizard        AppModal = "export-wizard"
+	ModalConnectionPicker    AppModal = "connection-picker"
+	ModalNewConnectionWizard AppModal = "new-connection-wizard"
 )
 
 type AppLayout string

@@ -48,11 +48,9 @@ func (c *connectionPickerModal) Title() string       { return "Connection Picker
 
 func (c *connectionPickerModal) CounterText(_ InteractionState) string {
 	filtered := pickerFilteredCandidates(c.candidates, c.filter)
-	if len(filtered) == 0 {
-		return ""
-	}
-	sel := wrapSelection(c.selected, len(filtered))
-	return strings.Join([]string{intStr(sel + 1), "of", intStr(len(filtered))}, " ")
+	total := len(filtered) + 1 // +1 for the pinned "Create a new connection" row
+	sel := wrapSelection(c.selected, total)
+	return strings.Join([]string{intStr(sel + 1), "of", intStr(total)}, " ")
 }
 
 func (c *connectionPickerModal) StatusBarHints(_ InteractionState) []string {
@@ -123,15 +121,24 @@ func (c *connectionPickerModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext)
 	}
 }
 
-// confirmSelection resolves the currently highlighted Connection and emits the
-// appropriate ModalResult. Selecting the active Connection is a NO-OP close.
-func (c *connectionPickerModal) confirmSelection(ctx ModalContext) ModalResult {
-	_ = ctx
+// confirmSelection resolves the currently highlighted row and emits the
+// appropriate ModalResult.
+//
+//   - The last row is the pinned "Create a new connection" row → push the wizard.
+//   - Selecting the already-active Connection is a NO-OP close.
+//   - Any other row emits a midRunConnectMsg.
+func (c *connectionPickerModal) confirmSelection(_ ModalContext) ModalResult {
 	filtered := pickerFilteredCandidates(c.candidates, c.filter)
-	if len(filtered) == 0 {
-		return modalResultNone{}
+	total := len(filtered) + 1 // +1 for the create row
+	idx := wrapSelection(c.selected, total)
+
+	// Create row: push the New Connection Wizard.
+	if idx == len(filtered) {
+		return modalResultForward{cmd: func() tea.Msg {
+			return openNewConnectionWizardMsg{}
+		}}
 	}
-	idx := wrapSelection(c.selected, len(filtered))
+
 	name := filtered[idx]
 
 	// NO-OP: selecting the already-active Connection just closes the Modal.
@@ -147,49 +154,39 @@ func (c *connectionPickerModal) confirmSelection(ctx ModalContext) ModalResult {
 
 func (c *connectionPickerModal) move(delta int) {
 	filtered := pickerFilteredCandidates(c.candidates, c.filter)
-	if len(filtered) == 0 {
-		return
-	}
-	c.selected = wrapSelection(c.selected+delta, len(filtered))
+	total := len(filtered) + 1 // +1 for the pinned create row
+	c.selected = wrapSelection(c.selected+delta, total)
 	const maxRows = 16
 	c.vpStart = lazyScroll(c.selected, c.vpStart, maxRows)
 }
 
 func (c *connectionPickerModal) Render(_ InteractionState, innerWidth int) string {
 	filtered := pickerFilteredCandidates(c.candidates, c.filter)
-
-	if len(c.candidates) == 0 {
-		empty := tui.AppTheme.PanelMuted.Render("No connections defined.")
-		if c.startup {
-			// Startup is a dead-end (Esc quits), so tell the user how to escape it.
-			empty += "\n\n" + tui.AppTheme.PanelMuted.Render("Define connections in connections.toml and restart.")
-		}
-		return empty
-	}
-	if len(filtered) == 0 {
-		return tui.AppTheme.PanelMuted.Render("No fuzzy matches.")
-	}
+	total := len(filtered) + 1 // +1 for the pinned "Create a new connection" row
 
 	const maxRows = 16
-	selected := wrapSelection(c.selected, len(filtered))
+	selected := wrapSelection(c.selected, total)
 	vpStart := lazyScroll(selected, c.vpStart, maxRows)
-	vpEnd := vpStart + maxRows
-	if vpEnd > len(filtered) {
-		vpEnd = len(filtered)
-	}
+	vpEnd := min(vpStart+maxRows, total)
 
 	availWidth := innerWidth
 	if availWidth < 20 {
 		availWidth = 20
 	}
 
+	createIdx := len(filtered) // index of the create row in the effective list
+
 	lines := make([]string, 0, vpEnd-vpStart)
 	for i := vpStart; i < vpEnd; i++ {
-		name := filtered[i]
-		row := c.renderRow(name, availWidth)
+		var row string
+		if i == createIdx {
+			row = c.renderCreateRow(availWidth)
+		} else {
+			row = c.renderRow(filtered[i], availWidth)
+		}
 		if i == selected {
-			// Strip embedded ANSI (e.g. the colour swatch reset) so it doesn't
-			// cancel the selection background mid-row, then pad to full width.
+			// Strip embedded ANSI so it doesn't cancel the selection background
+			// mid-row, then pad to full width.
 			plain := ansi.Strip(row)
 			if pad := availWidth - ansi.StringWidth(plain); pad > 0 {
 				plain += strings.Repeat(" ", pad)
@@ -201,6 +198,11 @@ func (c *connectionPickerModal) Render(_ InteractionState, innerWidth int) strin
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// renderCreateRow renders the pinned "Create a new connection" row.
+func (c *connectionPickerModal) renderCreateRow(_ int) string {
+	return "  + Create a new connection"
 }
 
 // renderRow renders a single row. The 2-char prefix slot shows ! for the
@@ -231,11 +233,9 @@ func (c *connectionPickerModal) HandleMouse(_ tea.MouseClickMsg, ctx ModalContex
 		return modalResultNone{}
 	}
 	filtered := pickerFilteredCandidates(c.candidates, c.filter)
-	if len(filtered) == 0 {
-		return modalResultNone{}
-	}
+	total := len(filtered) + 1 // +1 for the create row
 	idx := c.vpStart + ctx.MouseListOffset
-	if idx < 0 || idx >= len(filtered) {
+	if idx < 0 || idx >= total {
 		return modalResultNone{}
 	}
 	c.selected = idx
@@ -248,14 +248,12 @@ func (c *connectionPickerModal) HandleMouse(_ tea.MouseClickMsg, ctx ModalContex
 // HandleMouseWheel implements Modal.HandleMouseWheel for connectionPickerModal.
 func (c *connectionPickerModal) HandleMouseWheel(_ ModalContext, msg tea.MouseWheelMsg) ModalResult {
 	filtered := pickerFilteredCandidates(c.candidates, c.filter)
-	if len(filtered) == 0 {
-		return modalResultNone{}
-	}
+	total := len(filtered) + 1 // +1 for the create row
 	switch msg.Button {
 	case tea.MouseWheelUp:
 		c.selected = max(0, c.selected-1)
 	case tea.MouseWheelDown:
-		c.selected = min(c.selected+1, len(filtered)-1)
+		c.selected = min(c.selected+1, total-1)
 	}
 	const maxRows = 16
 	c.vpStart = lazyScroll(c.selected, c.vpStart, maxRows)

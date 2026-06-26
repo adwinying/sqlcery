@@ -47,6 +47,7 @@ type Model struct {
 	closeAdapter        func(*db.SQLAdapter) error // defaults to (*db.SQLAdapter).Close; injectable for tests
 	newHistory          func(connectionName string) (*apphistory.History, error)
 	connectionsLoader   func() (config.Connections, error)
+	reloadConnections   func() error // re-reads disk and refreshes the connectionsLoader cache
 	frecencyStore       FrecencyStore
 	autoConnectTarget   config.ResolvedConnection // non-empty → skip Picker, connect on init
 }
@@ -61,6 +62,7 @@ type modelDependencies struct {
 	closeAdapter      func(*db.SQLAdapter) error // defaults to (*db.SQLAdapter).Close; injectable for tests
 	newHistory        func(connectionName string) (*apphistory.History, error)
 	connectionsLoader func() (config.Connections, error)
+	reloadConnections func() error // re-reads disk and refreshes the connectionsLoader cache
 	frecencyStore     FrecencyStore
 	autoConnectTarget config.ResolvedConnection
 }
@@ -191,6 +193,29 @@ type appErrorMsg struct {
 
 type openEditorIntentMsg struct{}
 
+// openNewConnectionWizardMsg pushes the New Connection Wizard modal.
+type openNewConnectionWizardMsg struct{}
+
+// writeConnectionMsg triggers an async write of a new connection config entry.
+type writeConnectionMsg struct {
+	name     string
+	conn     config.Connection
+	location string // "global" | "project"
+	paths    config.Paths
+}
+
+// writeConnectionSuccessMsg signals that the new connection was written successfully.
+type writeConnectionSuccessMsg struct {
+	name string
+}
+
+// writeConnectionFailedMsg signals that the write failed; the wizard stays open.
+type writeConnectionFailedMsg struct {
+	name string
+	path string
+	err  error
+}
+
 type editorReadyMsg struct {
 	path string
 }
@@ -245,6 +270,7 @@ func newModelWithDependencies(session Session, deps modelDependencies) Model {
 		closeAdapter:      closeAdapter,
 		newHistory:        deps.newHistory,
 		connectionsLoader: deps.connectionsLoader,
+		reloadConnections: deps.reloadConnections,
 		frecencyStore:     deps.frecencyStore,
 		autoConnectTarget: deps.autoConnectTarget,
 	}
@@ -390,6 +416,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case reconnectStateMsg:
 		m.state.SetReconnect(msg.Status, &msg.Context)
 		return m, nil
+	case openNewConnectionWizardMsg:
+		return m.handleOpenNewConnectionWizard()
+	case writeConnectionMsg:
+		return m.handleWriteConnection(msg)
+	case writeConnectionSuccessMsg:
+		return m.handleWriteConnectionSuccess(msg)
+	case writeConnectionFailedMsg:
+		return m.handleWriteConnectionFailed(msg)
 	case openEditorIntentMsg:
 		return m, m.openInEditorCmd()
 	case editorReadyMsg:
@@ -2056,4 +2090,72 @@ func (m *Model) openInEditorCmd() tea.Cmd {
 		}
 		return editorReadyMsg{path: f.Name()}
 	}
+}
+
+// handleWriteConnection starts the async write of a new connection entry.
+// It runs config.AppendConnection in a goroutine and emits a success or failure msg.
+func (m Model) handleWriteConnection(msg writeConnectionMsg) (Model, tea.Cmd) {
+	var targetPath string
+	switch msg.location {
+	case "project":
+		targetPath = msg.paths.Local
+	default: // "global"
+		targetPath = msg.paths.Global
+	}
+
+	name := msg.name
+	conn := msg.conn
+	path := targetPath
+
+	return m, func() tea.Msg {
+		if err := config.AppendConnection(path, name, conn); err != nil {
+			return writeConnectionFailedMsg{name: name, path: path, err: err}
+		}
+		return writeConnectionSuccessMsg{name: name}
+	}
+}
+
+// handleWriteConnectionSuccess pops the wizard, refreshes the connections cache,
+// rebuilds the picker beneath, and auto-selects the new connection by name.
+func (m Model) handleWriteConnectionSuccess(msg writeConnectionSuccessMsg) (Model, tea.Cmd) {
+	// Pop the wizard modal.
+	m.closeModal()
+
+	// Refresh the connections loader cache.
+	if m.reloadConnections != nil {
+		_ = m.reloadConnections()
+	}
+
+	// Rebuild the picker beneath (if it is still the current modal).
+	if pm, ok := m.currentModal().(*connectionPickerModal); ok {
+		pm.filter = ""
+		pm.vpStart = 0
+		pm.candidates = loadPickerCandidates(m.connectionsLoader, m.frecencyStore)
+		// Auto-select the new connection by name (it has no frecency yet).
+		filtered := pickerFilteredCandidates(pm.candidates, "")
+		pm.selected = len(filtered) // default: "Create" row; overridden below if found
+		for i, name := range filtered {
+			if name == msg.name {
+				pm.selected = i
+				const maxRows = 16
+				pm.vpStart = lazyScroll(pm.selected, 0, maxRows)
+				break
+			}
+		}
+	}
+
+	m.state.SetReady(msg.name+" saved. Press enter to connect.", NotificationSuccess)
+	return m, m.notificationClearCmdIfSet()
+}
+
+// handleWriteConnectionFailed keeps the wizard open and surfaces the error as a
+// status-bar notification.
+// TODO(#20): set an inline writeError field on the wizard and re-render inline instead.
+func (m Model) handleWriteConnectionFailed(msg writeConnectionFailedMsg) (Model, tea.Cmd) {
+	m.state.Notification = Notification{
+		Text:      "Save failed: " + msg.err.Error(),
+		Level:     NotificationError,
+		CreatedAt: time.Now(),
+	}
+	return m, m.notificationClearCmdIfSet()
 }

@@ -44,6 +44,10 @@ type RunOptions struct {
 	// ConnectionsLoader returns the current named Connections for the Picker.
 	// Defaults to an empty Connections when nil.
 	ConnectionsLoader func() (config.Connections, error)
+	// ReloadConnections re-reads the connections files from disk and refreshes
+	// the ConnectionsLoader cache. Called after a successful wizard write.
+	// When nil the cache is not updated (safe to omit in tests).
+	ReloadConnections func() error
 	// FrecencyStore records and orders Connection opens. When nil frecency
 	// recording and ordering are skipped (no-op).
 	FrecencyStore FrecencyStore
@@ -92,6 +96,7 @@ func Run(ctx context.Context, options RunOptions) error {
 		open:              options.Open,
 		newHistory:        options.NewHistory,
 		connectionsLoader: options.ConnectionsLoader,
+		reloadConnections: options.ReloadConnections,
 		frecencyStore:     options.FrecencyStore,
 		autoConnectTarget: options.AutoConnectTarget,
 	})
