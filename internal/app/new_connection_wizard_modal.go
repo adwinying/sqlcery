@@ -692,8 +692,12 @@ func (w *newConnectionWizardModal) handleEsc() ModalResult {
 			return modalResultNone{}
 		}
 		// Go back to StepField if the selected type has fields, else to StepType.
-		if len(w.fieldsForSelectedType()) > 0 {
+		fields := w.fieldsForSelectedType()
+		if len(fields) > 0 {
 			w.step = StepField
+			w.fieldIndex = len(fields) - 1
+			w.fieldValue = w.fieldValues[fields[w.fieldIndex].key]
+			w.fieldError = ""
 		} else {
 			w.step = StepType
 		}
