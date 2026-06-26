@@ -257,6 +257,49 @@ func TestAppendConnectionAddsNewlineBeforeBlock(t *testing.T) {
 	}
 }
 
+// ---- AppendConnection separates entries with a blank line ------------------
+
+func TestAppendConnectionBlankLineSeparator(t *testing.T) {
+	workingDir := setupConnTestDirs(t)
+	targetPath := filepath.Join(workingDir, ConnectionsFileName)
+
+	// First append into a non-existent file: no leading blank line.
+	if err := AppendConnection(targetPath, "alpha", Connection{Type: "sqlite", Database: "a.db"}); err != nil {
+		t.Fatalf("AppendConnection(alpha) error = %v", err)
+	}
+	first, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if strings.HasPrefix(string(first), "\n") {
+		t.Fatalf("first entry into empty file should not start with a blank line, got %q", string(first))
+	}
+
+	// Second append: a blank line must separate it from the first entry.
+	if err := AppendConnection(targetPath, "beta", Connection{Type: "sqlite", Database: "b.db"}); err != nil {
+		t.Fatalf("AppendConnection(beta) error = %v", err)
+	}
+	content, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if !strings.Contains(string(content), "\n\n[connection.beta]") {
+		t.Fatalf("expected a blank line before the appended entry, got:\n%q", string(content))
+	}
+
+	// Both still decode.
+	result, err := LoadConnections[Connections](workingDir)
+	if err != nil {
+		t.Fatalf("LoadConnections() error = %v", err)
+	}
+	if _, ok := result.Value.Connection["alpha"]; !ok {
+		t.Fatal("connection \"alpha\" missing")
+	}
+	if _, ok := result.Value.Connection["beta"]; !ok {
+		t.Fatal("connection \"beta\" missing")
+	}
+}
+
 // ---- AppendConnection creates missing parent directories -------------------
 
 func TestAppendConnectionMkdirAll(t *testing.T) {

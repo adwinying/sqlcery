@@ -83,6 +83,10 @@ func AppendConnection(path string, name string, conn Connection) error {
 	if len(existing) > 0 && existing[len(existing)-1] != '\n' {
 		sb.WriteByte('\n')
 	}
+	// Separate the new entry from existing records with a blank line.
+	if strings.TrimSpace(existing) != "" {
+		sb.WriteByte('\n')
+	}
 
 	fmt.Fprintf(&sb, "[connection.%s]\n", tomlTableKey(name))
 	fmt.Fprintf(&sb, "type = \"%s\"\n", tomlEscapeValue(conn.Type))

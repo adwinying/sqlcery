@@ -40,7 +40,8 @@ write path. The wizard:
 2. `MkdirAll`s the parent directory if it does not exist (a first-time user may
    have no `~/.config/sqlcery/` yet).
 3. Reads the existing file content (empty if absent); ensures it ends with a
-   newline.
+   newline, and inserts a blank line before the new table when the file already
+   holds records (so entries stay visually separated).
 4. Appends a `[connection.<name>]\n` table block with the new Connection's
    fields, using a minimal TOML-string-escape helper for string values (host,
    database, username, password, ssh_host). Integer fields (`port`) render
