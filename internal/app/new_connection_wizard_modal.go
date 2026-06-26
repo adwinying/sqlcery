@@ -307,7 +307,9 @@ func (w *newConnectionWizardModal) HandleKey(msg tea.KeyPressMsg, _ ModalContext
 	keys := defaultCommandModeKeys()
 
 	if msg.String() == "ctrl+c" {
-		return modalResultReady{status: "", level: NotificationNone, dismiss: true}
+		// ctrl+c anywhere in the wizard pushes the discard confirm rather than
+		// immediately dismissing — data-loss safety for in-progress connections.
+		return modalResultForward{cmd: func() tea.Msg { return confirmDiscardWizardMsg{} }}
 	}
 	if key.Matches(msg, keys.Help) {
 		return modalResultForward{cmd: func() tea.Msg { return toggleHelpIntentMsg{} }}
@@ -647,9 +649,9 @@ func (w *newConnectionWizardModal) handleEsc() ModalResult {
 			w.vpMode = 0
 			return modalResultNone{}
 		}
-		// At the first step, Esc closes the wizard and returns to the picker.
-		// TODO(#21): add discard-confirm before closing.
-		return modalResultReady{status: "", level: NotificationNone, dismiss: true}
+		// At the first step with an empty filter, push the discard confirm
+		// rather than immediately closing — data-loss safety.
+		return modalResultForward{cmd: func() tea.Msg { return confirmDiscardWizardMsg{} }}
 	case StepName:
 		w.step = StepMode
 		return modalResultNone{}

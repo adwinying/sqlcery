@@ -216,6 +216,14 @@ type writeConnectionFailedMsg struct {
 	err  error
 }
 
+// confirmDiscardWizardMsg pushes the discard-confirm dialog on top of the wizard.
+// Emitted by the wizard's HandleKey (ctrl+c or Esc at StepMode) via modalResultForward.
+type confirmDiscardWizardMsg struct{}
+
+// abortWizardMsg pops the New Connection Wizard and returns to the picker beneath.
+// It is the onYes continuation stored in the modalConfirm pushed by the wizard.
+type abortWizardMsg struct{}
+
 type editorReadyMsg struct {
 	path string
 }
@@ -418,6 +426,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case openNewConnectionWizardMsg:
 		return m.handleOpenNewConnectionWizard()
+	case confirmDiscardWizardMsg:
+		return m.handleConfirmDiscardWizard()
+	case abortWizardMsg:
+		return m.handleAbortWizard()
 	case writeConnectionMsg:
 		return m.handleWriteConnection(msg)
 	case writeConnectionSuccessMsg:
@@ -496,8 +508,11 @@ func (m Model) handleKeyPressMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// connect is in flight the Modal stays visible but non-interactive — only
 	// the double-Esc abort gesture is handled (mirroring mid-run).
 	if m.state.App.Current == StateSelectConnection {
-		// ctrl+c always quits at startup, even before the Modal is pushed.
-		if msg.String() == "ctrl+c" {
+		// ctrl+c quits immediately only when no modal is open. When a modal is
+		// present, ctrl+c is routed to the modal's HandleKey so each modal can
+		// decide: the startup picker forwards tea.Quit; the wizard pushes a
+		// discard confirmation; the confirm modal simply dismisses itself.
+		if msg.String() == "ctrl+c" && m.currentModal() == nil {
 			return m, tea.Quit
 		}
 		if m.cancelConnect != nil {
@@ -2090,6 +2105,24 @@ func (m *Model) openInEditorCmd() tea.Cmd {
 		}
 		return editorReadyMsg{path: f.Name()}
 	}
+}
+
+// handleConfirmDiscardWizard pushes a generic confirm dialog on top of the wizard.
+// The wizard's state is preserved; if the user declines the confirm pops and the
+// wizard resumes exactly where it was left.
+func (m Model) handleConfirmDiscardWizard() (Model, tea.Cmd) {
+	m.pushModal(&modalConfirm{
+		prompt: "Discard new connection?",
+		onYes:  abortWizardMsg{},
+	})
+	return m, nil
+}
+
+// handleAbortWizard pops the New Connection Wizard and returns to the picker beneath.
+// Called after the user confirms the discard dialog.
+func (m Model) handleAbortWizard() (Model, tea.Cmd) {
+	m.closeModal()
+	return m, nil
 }
 
 // handleWriteConnection starts the async write of a new connection entry.

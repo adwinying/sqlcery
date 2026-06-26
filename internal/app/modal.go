@@ -85,6 +85,18 @@ type modalResultExportWizard struct {
 	path   string // empty = copy to clipboard
 }
 
+// modalResultDismiss pops the topmost modal with no other side effects.
+// Use for confirm dialogs when the user declines: pop self, leave underlying
+// modal intact.
+type modalResultDismiss struct{}
+
+// modalResultDismissForward pops the topmost modal then forwards a tea.Cmd
+// into the message loop. Use for confirm dialogs when the user confirms:
+// pop self, then dispatch the continuation without changing other app state.
+type modalResultDismissForward struct {
+	cmd tea.Cmd
+}
+
 func (modalResultNone) isModalResult()           {}
 func (modalResultPendingStatus) isModalResult()  {}
 func (modalResultReady) isModalResult()          {}
@@ -94,6 +106,8 @@ func (modalResultForward) isModalResult()        {}
 func (modalResultRunHelpRow) isModalResult()     {}
 func (modalResultOpenWizardFor) isModalResult()  {}
 func (modalResultExportWizard) isModalResult()   {}
+func (modalResultDismiss) isModalResult()        {}
+func (modalResultDismissForward) isModalResult() {}
 
 // Modal is the interface implemented by every overlay dialog.
 // When m.modal is non-nil, Update routes all key events to it — no
@@ -217,6 +231,12 @@ func (m *Model) applyModalResult(result ModalResult) tea.Cmd {
 	case modalResultExportWizard:
 		m.closeModal()
 		return m.executeExportWizard(r.format, r.path)
+	case modalResultDismiss:
+		m.closeModal()
+		return nil
+	case modalResultDismissForward:
+		m.closeModal()
+		return r.cmd
 	}
 	return nil
 }

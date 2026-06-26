@@ -311,11 +311,29 @@ func TestWizardEscNavigatesBack(t *testing.T) {
 func TestWizardEscOnModeClosesWizard(t *testing.T) {
 	model := buildWizardModel(t, config.Connections{}, t.TempDir())
 
-	// Wizard is on top; Esc from StepMode should close the wizard.
-	model = pressKey(model, "esc")
+	// Esc from StepMode now pushes the discard confirm instead of immediately
+	// closing the wizard (#21: data-loss safety).
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	model = next.(Model)
+	msgs := collectCommandMessagesForTest(t, cmd)
+	for _, m := range msgs {
+		next2, _ := model.Update(m)
+		model = next2.(Model)
+	}
 
-	if model.currentModal() != nil && model.currentModal().Name() == ModalNewConnectionWizard {
-		t.Fatal("wizard should be dismissed after Esc on StepMode")
+	// The confirm modal is now on top.
+	if model.currentModal() == nil || model.currentModal().Name() != ModalConfirm {
+		t.Fatalf("currentModal = %v, want ModalConfirm after Esc at StepMode", model.currentModal())
+	}
+	// The wizard is still in the modal stack beneath the confirm.
+	var hasWizard bool
+	for _, mod := range model.modals {
+		if mod.Name() == ModalNewConnectionWizard {
+			hasWizard = true
+		}
+	}
+	if !hasWizard {
+		t.Fatal("wizard should still be in the modal stack when confirm is shown")
 	}
 }
 
@@ -329,7 +347,7 @@ func TestWizardEscClearsFilterBeforeGoingBack(t *testing.T) {
 		t.Fatal("modeFilter should be set after typing")
 	}
 
-	// First Esc clears the filter.
+	// First Esc clears the filter (unchanged behaviour).
 	model = pressKey(model, "esc")
 	w = currentWizard(t, model)
 	if w.modeFilter != "" {
@@ -339,10 +357,27 @@ func TestWizardEscClearsFilterBeforeGoingBack(t *testing.T) {
 		t.Fatalf("step = %q, want StepMode (should not navigate back yet)", w.step)
 	}
 
-	// Second Esc dismisses.
-	model = pressKey(model, "esc")
-	if model.currentModal() != nil && model.currentModal().Name() == ModalNewConnectionWizard {
-		t.Fatal("wizard should be dismissed after second Esc")
+	// Second Esc (empty filter at StepMode) now pushes the discard confirm
+	// instead of immediately dismissing the wizard (#21).
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	model = next.(Model)
+	msgs := collectCommandMessagesForTest(t, cmd)
+	for _, m := range msgs {
+		next2, _ := model.Update(m)
+		model = next2.(Model)
+	}
+	if model.currentModal() == nil || model.currentModal().Name() != ModalConfirm {
+		t.Fatalf("currentModal = %v, want ModalConfirm after second Esc", model.currentModal())
+	}
+	// Wizard is still in the stack beneath the confirm.
+	var hasWizard bool
+	for _, mod := range model.modals {
+		if mod.Name() == ModalNewConnectionWizard {
+			hasWizard = true
+		}
+	}
+	if !hasWizard {
+		t.Fatal("wizard should still be in the modal stack when confirm is shown")
 	}
 }
 
