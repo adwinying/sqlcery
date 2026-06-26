@@ -58,6 +58,14 @@ type Connection struct {
 	Color     string                     `toml:"color"`
 }
 
+// ValidatePort returns an error if port is not in the valid range [1, 65535].
+func ValidatePort(port int) error {
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("port must be between 1 and 65535")
+	}
+	return nil
+}
+
 func (c Connection) Validate() error {
 	if c.SSHHost != "" && strings.TrimSpace(c.SSHHost) == "" {
 		return fmt.Errorf("ssh_host must not be blank")
@@ -81,8 +89,8 @@ func (c Connection) Validate() error {
 			return fmt.Errorf("%s: host is required", c.Type)
 		}
 
-		if c.Port < 1 || c.Port > 65535 {
-			return fmt.Errorf("%s: port must be between 1 and 65535", c.Type)
+		if err := ValidatePort(c.Port); err != nil {
+			return fmt.Errorf("%s: %w", c.Type, err)
 		}
 
 		if strings.TrimSpace(c.Database) == "" {
