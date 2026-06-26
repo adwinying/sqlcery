@@ -156,6 +156,10 @@ type newConnectionWizardModal struct {
 	selectedLoc int // 0 = Global, 1 = Project
 	locPaths    config.Paths
 
+	// StepSaveLocation — inline write error surfaced when the async save fails.
+	// Cleared when the user navigates, edits the DSN-mode name, or re-submits.
+	writeError string
+
 	// Injected context
 	connections config.Connections // snapshot for name-uniqueness validation
 	cwd         string
@@ -564,8 +568,10 @@ func (w *newConnectionWizardModal) handleSaveLocationKey(msg tea.KeyPressMsg, ke
 	switch {
 	case key.Matches(msg, keys.PrevSuggestion), msg.String() == "up":
 		w.selectedLoc = wrapSelection(w.selectedLoc-1, 2)
+		w.writeError = ""
 	case key.Matches(msg, keys.NextSuggestion), msg.String() == "down":
 		w.selectedLoc = wrapSelection(w.selectedLoc+1, 2)
+		w.writeError = ""
 	case msg.String() == "enter":
 		return w.submitSaveLocation()
 	}
@@ -578,24 +584,30 @@ func (w *newConnectionWizardModal) handleSaveLocationKeyDSN(msg tea.KeyPressMsg,
 	switch {
 	case key.Matches(msg, keys.PrevSuggestion), msg.String() == "up":
 		w.selectedLoc = wrapSelection(w.selectedLoc-1, 2)
+		w.writeError = ""
 	case key.Matches(msg, keys.NextSuggestion), msg.String() == "down":
 		w.selectedLoc = wrapSelection(w.selectedLoc+1, 2)
+		w.writeError = ""
 	case msg.String() == "enter":
 		return w.submitSaveLocation()
 	case msg.String() == "backspace" || msg.String() == "ctrl+h" || msg.String() == "delete":
 		w.dsnName = trimLastRune(w.dsnName)
 		w.dsnNameError = ""
+		w.writeError = ""
 	case msg.String() == "space":
 		w.dsnName += " "
 		w.dsnNameError = ""
+		w.writeError = ""
 	case len(msg.Text) > 0 && !msg.Mod.Contains(tea.ModAlt) && !msg.Mod.Contains(tea.ModCtrl):
 		w.dsnName += msg.Text
 		w.dsnNameError = ""
+		w.writeError = ""
 	}
 	return modalResultNone{}
 }
 
 func (w *newConnectionWizardModal) submitSaveLocation() ModalResult {
+	w.writeError = "" // clear any prior inline write error before retrying
 	loc := "global"
 	if w.selectedLoc == 1 {
 		loc = "project"
@@ -865,6 +877,12 @@ func (w *newConnectionWizardModal) renderSaveLocationStep(innerWidth int) string
 		}
 	}
 
+	// Inline write error (surfaced after a failed async save).
+	if w.writeError != "" {
+		lines = append(lines, "")
+		lines = append(lines, tui.AppTheme.ErrorNotice.Render(w.writeError))
+	}
+
 	return strings.Join(lines, "\n")
 }
 
@@ -918,6 +936,12 @@ func (w *newConnectionWizardModal) renderSaveLocationStepDSN(innerWidth int) str
 		} else {
 			lines = append(lines, tui.AppTheme.PanelText.Render(label))
 		}
+	}
+
+	// Inline write error (surfaced after a failed async save).
+	if w.writeError != "" {
+		lines = append(lines, "")
+		lines = append(lines, tui.AppTheme.ErrorNotice.Render(w.writeError))
 	}
 
 	return strings.Join(lines, "\n")

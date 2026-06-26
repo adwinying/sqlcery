@@ -2148,14 +2148,16 @@ func (m Model) handleWriteConnectionSuccess(msg writeConnectionSuccessMsg) (Mode
 	return m, m.notificationClearCmdIfSet()
 }
 
-// handleWriteConnectionFailed keeps the wizard open and surfaces the error as a
-// status-bar notification.
-// TODO(#20): set an inline writeError field on the wizard and re-render inline instead.
+// handleWriteConnectionFailed keeps the wizard open and surfaces the error inline
+// on StepSaveLocation. Mirrors the handleMidRunConnectFailed picker precedent:
+// reach into the live modal and set a field; the wizard is NOT popped.
 func (m Model) handleWriteConnectionFailed(msg writeConnectionFailedMsg) (Model, tea.Cmd) {
-	m.state.Notification = Notification{
-		Text:      "Save failed: " + msg.err.Error(),
-		Level:     NotificationError,
-		CreatedAt: time.Now(),
+	if wz, ok := m.currentModal().(*newConnectionWizardModal); ok {
+		wz.writeError = fmt.Sprintf("save failed: %s: %v", msg.path, msg.err)
+		return m, nil
 	}
-	return m, m.notificationClearCmdIfSet()
+	// Fallback: wizard no longer on top (should not occur in normal flow).
+	prevCreatedAt := m.state.Notification.CreatedAt
+	m.state.SetPendingIntent(IntentNone, "write-connection", "Save failed: "+msg.err.Error(), NotificationError)
+	return m, m.newNotificationClearCmdIfChanged(prevCreatedAt)
 }

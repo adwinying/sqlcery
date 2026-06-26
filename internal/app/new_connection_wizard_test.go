@@ -1499,3 +1499,229 @@ func TestNewConnectionWizardEndToEndPostgres(t *testing.T) {
 		t.Fatalf("notification = %q, want to mention 'pg-e2e'", model.state.Notification.Text)
 	}
 }
+
+// ---- Write-failure inline error tests (#20) ----
+
+// driveWizardSqliteToSaveLocation drives a step-by-step SQLite wizard from StepMode
+// to StepSaveLocation, entering the given name and database path.
+func driveWizardSqliteToSaveLocation(model Model, name, dbPath string) Model {
+	model = pressKey(model, "enter") // StepMode → StepName
+	model = typeText(model, name)
+	model = pressKey(model, "enter") // → StepType
+	model = pressKey(model, "enter") // SQLite (index 0) → StepField
+	model = typeText(model, dbPath)
+	model = pressKey(model, "enter") // → StepSaveLocation
+	return model
+}
+
+// driveWriteAttempt submits on StepSaveLocation and drives the async write command
+// to completion.  It returns the updated model, whether the write failed, and the
+// failure message (if any).
+func driveWriteAttempt(t *testing.T, model Model) (Model, bool, writeConnectionFailedMsg) {
+	t.Helper()
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = next.(Model)
+
+	msgs := collectCommandMessagesForTest(t, cmd)
+	var writeCmd tea.Cmd
+	for _, m := range msgs {
+		if _, ok := m.(writeConnectionMsg); ok {
+			next2, c := model.Update(m)
+			model = next2.(Model)
+			writeCmd = c
+			break
+		}
+	}
+	if writeCmd == nil {
+		t.Fatal("no writeConnectionMsg in cmd")
+	}
+
+	writeMsgs := collectCommandMessagesForTest(t, writeCmd)
+	var failMsg writeConnectionFailedMsg
+	var failed bool
+	for _, m := range writeMsgs {
+		if f, ok := m.(writeConnectionFailedMsg); ok {
+			failMsg = f
+			failed = true
+		}
+		next2, _ := model.Update(m)
+		model = next2.(Model)
+	}
+	return model, failed, failMsg
+}
+
+// TestWizardWriteFailureInlineError verifies that a write failure:
+//   - surfaces writeError inline on StepSaveLocation containing the attempted path,
+//   - keeps the wizard open (does not pop it),
+//   - leaves the Connection Picker beneath untouched.
+func TestWizardWriteFailureInlineError(t *testing.T) {
+	cwd := t.TempDir()
+	if err := os.Chmod(cwd, 0o500); err != nil {
+		t.Skip("cannot chmod temp dir:", err)
+	}
+	t.Cleanup(func() { os.Chmod(cwd, 0o700) })
+
+	model := buildWizardModel(t, config.Connections{}, cwd)
+
+	// Snapshot the picker state before the write attempt.
+	pickerBefore, ok := model.modals[0].(*connectionPickerModal)
+	if !ok {
+		t.Fatalf("modals[0] = %T, want *connectionPickerModal", model.modals[0])
+	}
+	candidatesBefore := append([]string(nil), pickerBefore.candidates...)
+	selectedBefore := pickerBefore.selected
+
+	model = driveWizardSqliteToSaveLocation(model, "fail-conn", "fail.db")
+
+	w := currentWizard(t, model)
+	if got, want := w.step, StepSaveLocation; got != want {
+		t.Fatalf("step = %q, want %q", got, want)
+	}
+	// Select Project (index 1) — points to the read-only cwd.
+	model = pressKey(model, "ctrl+n")
+
+	model, failed, failMsg := driveWriteAttempt(t, model)
+	if !failed {
+		t.Skip("write to read-only dir unexpectedly succeeded (filesystem may not enforce permissions)")
+	}
+
+	// Wizard must still be the current modal at StepSaveLocation.
+	if model.currentModal() == nil || model.currentModal().Name() != ModalNewConnectionWizard {
+		t.Fatalf("expected wizard still open, got %v", model.currentModal())
+	}
+	w = currentWizard(t, model)
+	if got, want := w.step, StepSaveLocation; got != want {
+		t.Fatalf("step = %q, want %q (wizard must stay open after write failure)", got, want)
+	}
+
+	// writeError must be set and contain the attempted path and error text.
+	if w.writeError == "" {
+		t.Fatal("writeError must be non-empty after write failure")
+	}
+	if !containsString(w.writeError, failMsg.path) {
+		t.Fatalf("writeError = %q, want to contain attempted path %q", w.writeError, failMsg.path)
+	}
+
+	// Render must include the error.
+	rendered := model.currentModal().Render(model.state.Interaction, 80)
+	if !containsString(rendered, "save failed") {
+		t.Fatalf("Render() = %q, want to contain 'save failed'", rendered)
+	}
+
+	// Picker beneath must be completely untouched.
+	pickerAfter, ok := model.modals[0].(*connectionPickerModal)
+	if !ok {
+		t.Fatalf("modals[0] after failure = %T, want *connectionPickerModal", model.modals[0])
+	}
+	if pickerAfter.selected != selectedBefore {
+		t.Fatalf("picker selected changed after failure: before=%d after=%d", selectedBefore, pickerAfter.selected)
+	}
+	if len(pickerAfter.candidates) != len(candidatesBefore) {
+		t.Fatalf("picker candidates changed after failure: before=%v after=%v", candidatesBefore, pickerAfter.candidates)
+	}
+}
+
+// TestWizardWriteErrorClearsOnLocationToggle verifies that writeError is cleared
+// when the user navigates between save locations.
+func TestWizardWriteErrorClearsOnLocationToggle(t *testing.T) {
+	model := buildWizardModel(t, config.Connections{}, t.TempDir())
+	model = driveWizardSqliteToSaveLocation(model, "clear-conn", "clear.db")
+
+	// Inject a writeError directly (simulates a prior failed write).
+	w := currentWizard(t, model)
+	w.writeError = "save failed: /some/path: permission denied"
+
+	// Toggle location: Global (0) → Project (1).
+	model = pressKey(model, "ctrl+n")
+
+	w = currentWizard(t, model)
+	if w.writeError != "" {
+		t.Fatalf("writeError = %q after location toggle, want empty (must be cleared)", w.writeError)
+	}
+}
+
+// TestWizardWriteFailureRetrySuccess verifies that after a write failure, fixing
+// the underlying cause and re-submitting reaches the normal success path:
+// wizard popped, picker rebuilt with the new connection, success notification.
+func TestWizardWriteFailureRetrySuccess(t *testing.T) {
+	cwd := t.TempDir()
+
+	cache := config.Connections{}
+	reloadCalled := false
+	model := newModelWithDependencies(Session{WorkingDir: cwd}, modelDependencies{
+		connectionsLoader: func() (config.Connections, error) { return cache, nil },
+		reloadConnections: func() error {
+			if cache.Connection == nil {
+				cache.Connection = make(map[string]config.Connection)
+			}
+			cache.Connection["retry-conn"] = config.Connection{Type: "sqlite", Database: "retry.db"}
+			reloadCalled = true
+			return nil
+		},
+	})
+	next, _ := model.Update(pickerInitMsg{})
+	model = next.(Model)
+
+	// Push the wizard with the project paths pointing at cwd.
+	paths, _ := config.DiscoverConnectionPaths(cwd)
+	wizard := newConnectionWizardModalFor(cache, cwd, paths)
+	model.pushModal(wizard)
+
+	model = driveWizardSqliteToSaveLocation(model, "retry-conn", "retry.db")
+
+	w := currentWizard(t, model)
+	if got, want := w.step, StepSaveLocation; got != want {
+		t.Fatalf("step = %q, want %q", got, want)
+	}
+	// Select Project (index 1).
+	model = pressKey(model, "ctrl+n")
+
+	// Make cwd read-only so the first write fails.
+	if err := os.Chmod(cwd, 0o500); err != nil {
+		t.Skip("cannot chmod temp dir:", err)
+	}
+	t.Cleanup(func() { os.Chmod(cwd, 0o700) })
+
+	model, failed, _ := driveWriteAttempt(t, model)
+	if !failed {
+		t.Skip("write to read-only dir unexpectedly succeeded (filesystem may not enforce permissions)")
+	}
+
+	// Verify wizard is open with writeError set.
+	w = currentWizard(t, model)
+	if w.writeError == "" {
+		t.Fatal("writeError should be set after first write failure")
+	}
+
+	// Restore write permissions.
+	if err := os.Chmod(cwd, 0o700); err != nil {
+		t.Fatalf("cannot restore cwd permissions: %v", err)
+	}
+
+	// Retry: press Enter again on StepSaveLocation.
+	model, failed, failMsg := driveWriteAttempt(t, model)
+	if failed {
+		t.Fatalf("retry write failed: %v (path: %q)", failMsg.err, failMsg.path)
+	}
+
+	// Wizard must have been popped; picker is now the current modal.
+	if model.currentModal() == nil || model.currentModal().Name() != ModalConnectionPicker {
+		t.Fatalf("expected connectionPickerModal after successful retry, got %v", model.currentModal())
+	}
+
+	// reloadConnections must have been called.
+	if !reloadCalled {
+		t.Fatal("reloadConnections not called after successful retry")
+	}
+
+	// Success notification must mention the connection name.
+	if !containsString(model.state.Notification.Text, "retry-conn") {
+		t.Fatalf("notification = %q, want to mention 'retry-conn'", model.state.Notification.Text)
+	}
+
+	// connections.toml must have been written to the project path.
+	targetPath := filepath.Join(cwd, "connections.toml")
+	if _, err := os.Stat(targetPath); err != nil {
+		t.Fatalf("connections.toml not found at %q after successful retry: %v", targetPath, err)
+	}
+}
