@@ -346,20 +346,419 @@ func TestWizardEscClearsFilterBeforeGoingBack(t *testing.T) {
 	}
 }
 
-func TestWizardDSNModeShowsNotImplemented(t *testing.T) {
+// ---- DSN mode tests ----
+
+// TestWizardStepModeToDSN verifies that selecting "DSN string" at StepMode
+// advances to StepDSN.
+func TestWizardStepModeToDSN(t *testing.T) {
 	model := buildWizardModel(t, config.Connections{}, t.TempDir())
-	// Move to DSN (index 1) then press Enter.
-	model = pressKey(model, "ctrl+n") // move to index 1 (DSN)
+	// DSN option is index 1; move down then Enter.
+	model = pressKey(model, "ctrl+n") // select DSN (index 1)
 	model = pressKey(model, "enter")
 
 	w := currentWizard(t, model)
-	// Should stay on StepMode and not advance.
-	if got, want := w.step, StepMode; got != want {
-		t.Fatalf("step = %q, want %q (DSN is stubbed)", got, want)
+	if got, want := w.step, StepDSN; got != want {
+		t.Fatalf("step = %q, want %q after selecting DSN mode", got, want)
 	}
-	// Notification should mention "not yet implemented".
-	if !containsString(model.state.Notification.Text, "not yet implemented") {
-		t.Fatalf("notification = %q, want to mention 'not yet implemented'", model.state.Notification.Text)
+	// wizardMode should be "dsn".
+	if got, want := w.wizardMode, "dsn"; got != want {
+		t.Fatalf("wizardMode = %q, want %q", got, want)
+	}
+}
+
+// TestWizardDSNValidParsesOnEnter verifies that a valid DSN parses on Enter
+// and advances to StepSaveLocation with the parsed connection stored.
+func TestWizardDSNValidParsesOnEnter(t *testing.T) {
+	model := buildWizardModel(t, config.Connections{}, t.TempDir())
+	model = pressKey(model, "ctrl+n") // select DSN
+	model = pressKey(model, "enter")  // → StepDSN
+
+	dsn := "postgres://alice:secret@db.example.com/mydb"
+	model = typeText(model, dsn)
+	model = pressKey(model, "enter") // parse + advance
+
+	w := currentWizard(t, model)
+	if got, want := w.step, StepSaveLocation; got != want {
+		t.Fatalf("step = %q, want %q after valid DSN", got, want)
+	}
+	if w.dsnError != "" {
+		t.Fatalf("dsnError = %q, want empty after valid DSN", w.dsnError)
+	}
+	// Parsed connection should be stored.
+	if got, want := w.dsnParsedConn.Type, "postgres"; got != want {
+		t.Fatalf("dsnParsedConn.Type = %q, want %q", got, want)
+	}
+	if got, want := w.dsnParsedConn.Host, "db.example.com"; got != want {
+		t.Fatalf("dsnParsedConn.Host = %q, want %q", got, want)
+	}
+	if got, want := w.dsnParsedConn.Database, "mydb"; got != want {
+		t.Fatalf("dsnParsedConn.Database = %q, want %q", got, want)
+	}
+	// Derived name should be pre-filled: "<db>@<host>".
+	if got, want := w.dsnName, "mydb@db.example.com"; got != want {
+		t.Fatalf("dsnName = %q, want %q (derived default)", got, want)
+	}
+}
+
+// TestWizardDSNInvalidShowsErrorStaysOnStep verifies that an invalid DSN
+// shows an inline error and stays on StepDSN.
+func TestWizardDSNInvalidShowsErrorStaysOnStep(t *testing.T) {
+	model := buildWizardModel(t, config.Connections{}, t.TempDir())
+	model = pressKey(model, "ctrl+n") // select DSN
+	model = pressKey(model, "enter")  // → StepDSN
+
+	model = typeText(model, "not-a-connection-string")
+	model = pressKey(model, "enter") // attempt parse
+
+	w := currentWizard(t, model)
+	if got, want := w.step, StepDSN; got != want {
+		t.Fatalf("step = %q, want %q (should stay on StepDSN after invalid DSN)", got, want)
+	}
+	if w.dsnError == "" {
+		t.Fatal("dsnError should be set after invalid DSN")
+	}
+}
+
+// TestWizardDSNNoErrorWhileTyping verifies that typing into the DSN field
+// does NOT produce a live validation error — only Enter triggers parsing.
+func TestWizardDSNNoErrorWhileTyping(t *testing.T) {
+	model := buildWizardModel(t, config.Connections{}, t.TempDir())
+	model = pressKey(model, "ctrl+n") // select DSN
+	model = pressKey(model, "enter")  // → StepDSN
+
+	// First enter an invalid DSN to set an error...
+	model = typeText(model, "bad")
+	model = pressKey(model, "enter") // sets dsnError
+
+	w := currentWizard(t, model)
+	if w.dsnError == "" {
+		t.Fatal("expected dsnError to be set after invalid DSN enter")
+	}
+
+	// ...then type a character — error should clear immediately, not re-validate.
+	model = typeText(model, "x")
+	w = currentWizard(t, model)
+	if w.dsnError != "" {
+		t.Fatalf("dsnError = %q after typing, want empty (no live validation)", w.dsnError)
+	}
+}
+
+// TestDerivedNameFromConnection is a table-driven test for the derivedNameFromConnection helper.
+func TestDerivedNameFromConnection(t *testing.T) {
+	cases := []struct {
+		name string
+		conn config.Connection
+		want string
+	}{
+		{
+			name: "postgres db@host",
+			conn: config.Connection{Type: "postgres", Host: "localhost", Database: "appdb"},
+			want: "appdb@localhost",
+		},
+		{
+			name: "mysql db@host",
+			conn: config.Connection{Type: "mysql", Host: "db.example.com", Database: "shop"},
+			want: "shop@db.example.com",
+		},
+		{
+			name: "sqlite basename strip ext",
+			conn: config.Connection{Type: "sqlite", Database: "/var/db/app.sqlite"},
+			want: "app",
+		},
+		{
+			name: "sqlite :memory:",
+			conn: config.Connection{Type: "sqlite", Database: ":memory:"},
+			want: "memory",
+		},
+		{
+			name: "sqlite no extension",
+			conn: config.Connection{Type: "sqlite", Database: "/data/mydb"},
+			want: "mydb",
+		},
+		{
+			name: "sqlite nested path with extension",
+			conn: config.Connection{Type: "sqlite", Database: "/path/to/test.db"},
+			want: "test",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := derivedNameFromConnection(tc.conn)
+			if got != tc.want {
+				t.Fatalf("derivedNameFromConnection(%+v) = %q, want %q", tc.conn, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestWizardDSNNameCollisionRefused verifies that submitting a colliding name
+// in DSN mode shows an inline error and stays on StepSaveLocation.
+func TestWizardDSNNameCollisionRefused(t *testing.T) {
+	connections := config.Connections{
+		Connection: map[string]config.Connection{
+			"existing": {Type: "sqlite", Database: ":memory:"},
+		},
+	}
+	model := buildWizardModel(t, connections, t.TempDir())
+	model = pressKey(model, "ctrl+n") // select DSN
+	model = pressKey(model, "enter")  // → StepDSN
+
+	model = typeText(model, "postgres://alice@db.example.com/mydb")
+	model = pressKey(model, "enter") // → StepSaveLocation (derived name: "mydb@db.example.com")
+
+	w := currentWizard(t, model)
+	if got, want := w.step, StepSaveLocation; got != want {
+		t.Fatalf("step = %q, want %q", got, want)
+	}
+
+	// Clear the pre-filled name and type the colliding name.
+	for range w.dsnName {
+		model = pressKey(model, "backspace")
+	}
+	model = typeText(model, "existing")
+	model = pressKey(model, "ctrl+n") // move to Project location (avoids real global write)
+	model = pressKey(model, "enter")  // attempt submit
+
+	w = currentWizard(t, model)
+	if got, want := w.step, StepSaveLocation; got != want {
+		t.Fatalf("step = %q, want %q (should stay on StepSaveLocation after collision)", got, want)
+	}
+	if !containsString(w.dsnNameError, "already exists") {
+		t.Fatalf("dsnNameError = %q, want to mention 'already exists'", w.dsnNameError)
+	}
+
+	// Editing to a unique name should allow submit.
+	model = pressKey(model, "backspace") // remove last char to make it unique
+	w = currentWizard(t, model)
+	if w.dsnNameError != "" {
+		t.Fatalf("dsnNameError = %q after edit, want empty (cleared on typing)", w.dsnNameError)
+	}
+}
+
+// TestWizardDSNEscBackPreservesDSNText verifies that Esc from StepSaveLocation
+// back to StepDSN preserves the previously entered DSN text.
+func TestWizardDSNEscBackPreservesDSNText(t *testing.T) {
+	model := buildWizardModel(t, config.Connections{}, t.TempDir())
+	model = pressKey(model, "ctrl+n") // select DSN
+	model = pressKey(model, "enter")  // → StepDSN
+
+	dsn := "postgres://alice@db.example.com/mydb"
+	model = typeText(model, dsn)
+	model = pressKey(model, "enter") // → StepSaveLocation
+
+	w := currentWizard(t, model)
+	if got, want := w.step, StepSaveLocation; got != want {
+		t.Fatalf("step = %q, want %q", got, want)
+	}
+
+	// Esc back to StepDSN.
+	model = pressKey(model, "esc")
+	w = currentWizard(t, model)
+	if got, want := w.step, StepDSN; got != want {
+		t.Fatalf("step = %q, want %q after Esc from StepSaveLocation", got, want)
+	}
+	if got, want := w.dsnText, dsn; got != want {
+		t.Fatalf("dsnText = %q, want %q (DSN text must be preserved on Esc-back)", got, want)
+	}
+}
+
+// TestWizardDSNEscFromStepDSNGoesToMode verifies that Esc on StepDSN returns
+// to StepMode (not StepSaveLocation or dismissing the wizard).
+func TestWizardDSNEscFromStepDSNGoesToMode(t *testing.T) {
+	model := buildWizardModel(t, config.Connections{}, t.TempDir())
+	model = pressKey(model, "ctrl+n") // select DSN
+	model = pressKey(model, "enter")  // → StepDSN
+
+	model = pressKey(model, "esc")
+	w := currentWizard(t, model)
+	if got, want := w.step, StepMode; got != want {
+		t.Fatalf("step = %q, want %q after Esc from StepDSN", got, want)
+	}
+	// Wizard should still be open.
+	if model.currentModal() == nil || model.currentModal().Name() != ModalNewConnectionWizard {
+		t.Fatal("wizard should still be open after Esc from StepDSN")
+	}
+}
+
+// TestWizardDSNSaveLocationShowsParsedSummary verifies that StepSaveLocation in
+// DSN mode renders the parsed connection details (password masked) in the body.
+func TestWizardDSNSaveLocationShowsParsedSummary(t *testing.T) {
+	model := buildWizardModel(t, config.Connections{}, t.TempDir())
+	model = pressKey(model, "ctrl+n") // select DSN
+	model = pressKey(model, "enter")  // → StepDSN
+
+	model = typeText(model, "postgres://alice:secret@db.example.com/mydb")
+	model = pressKey(model, "enter") // → StepSaveLocation
+
+	w := currentWizard(t, model)
+	if got, want := w.step, StepSaveLocation; got != want {
+		t.Fatalf("step = %q, want %q", got, want)
+	}
+
+	rendered := model.currentModal().Render(model.state.Interaction, 80)
+
+	// Must show parsed fields.
+	if !containsString(rendered, "postgres") {
+		t.Fatalf("Render() = %q, want to contain 'postgres'", rendered)
+	}
+	if !containsString(rendered, "db.example.com") {
+		t.Fatalf("Render() = %q, want to contain host 'db.example.com'", rendered)
+	}
+	if !containsString(rendered, "mydb") {
+		t.Fatalf("Render() = %q, want to contain database 'mydb'", rendered)
+	}
+	// Password must be masked.
+	if containsString(rendered, "secret") {
+		t.Fatalf("Render() contains plaintext password 'secret'; want masked")
+	}
+	if !containsString(rendered, "****") {
+		t.Fatalf("Render() = %q, want '****' as password mask", rendered)
+	}
+	// Name field is in the filter area, not the body — don't assert it here.
+}
+
+// TestNewConnectionWizardEndToEndDSN drives the full DSN wizard flow:
+//  1. Startup picker with no connections.
+//  2. Open wizard, select DSN mode.
+//  3. Enter a postgres DSN → StepSaveLocation; name is derived as "<db>@<host>".
+//  4. Navigate to Project location, submit.
+//  5. connections.toml written with a quoted TOML key (name contains @).
+//  6. Picker rebuilt with the new connection; success notification shown.
+func TestNewConnectionWizardEndToEndDSN(t *testing.T) {
+	cwd := t.TempDir()
+
+	cache := config.Connections{}
+	reloadCalled := false
+	connName := "testdb@pg.example.com" // derived name from DSN
+
+	model := newModelWithDependencies(Session{WorkingDir: cwd}, modelDependencies{
+		connectionsLoader: func() (config.Connections, error) { return cache, nil },
+		reloadConnections: func() error {
+			if cache.Connection == nil {
+				cache.Connection = make(map[string]config.Connection)
+			}
+			cache.Connection[connName] = config.Connection{
+				Type:     "postgres",
+				Host:     "pg.example.com",
+				Port:     5432,
+				Database: "testdb",
+				Username: "alice",
+			}
+			reloadCalled = true
+			return nil
+		},
+	})
+	next, _ := model.Update(pickerInitMsg{})
+	model = next.(Model)
+
+	// ---- Open wizard ----
+	next, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = next.(Model)
+	msgs := collectCommandMessagesForTest(t, cmd)
+	for _, m := range msgs {
+		next2, _ := model.Update(m)
+		model = next2.(Model)
+	}
+	if model.currentModal() == nil || model.currentModal().Name() != ModalNewConnectionWizard {
+		t.Fatalf("expected wizard modal, got %v", model.currentModal())
+	}
+
+	// ---- Select DSN mode ----
+	model = pressKey(model, "ctrl+n") // DSN is index 1
+	model = pressKey(model, "enter")  // → StepDSN
+
+	// ---- Enter valid postgres DSN ----
+	model = typeText(model, "postgres://alice@pg.example.com/testdb")
+	model = pressKey(model, "enter") // → StepSaveLocation
+
+	w := currentWizard(t, model)
+	if got, want := w.step, StepSaveLocation; got != want {
+		t.Fatalf("step = %q, want %q", got, want)
+	}
+	// Derived name should be "testdb@pg.example.com".
+	if got, want := w.dsnName, "testdb@pg.example.com"; got != want {
+		t.Fatalf("dsnName = %q, want %q", got, want)
+	}
+
+	// ---- Navigate to Project (index 1) and submit ----
+	model = pressKey(model, "ctrl+n") // Project location
+	next, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = next.(Model)
+	if cmd == nil {
+		t.Fatal("Enter on SaveLocation cmd = nil")
+	}
+
+	// ---- Drive async write ----
+	msgs = collectCommandMessagesForTest(t, cmd)
+	var writeCmd tea.Cmd
+	for _, m := range msgs {
+		if _, ok := m.(writeConnectionMsg); ok {
+			next2, c := model.Update(m)
+			model = next2.(Model)
+			writeCmd = c
+			break
+		}
+	}
+	if writeCmd == nil {
+		t.Fatal("no writeConnectionMsg found in cmd messages")
+	}
+
+	writeMsgs := collectCommandMessagesForTest(t, writeCmd)
+	for _, m := range writeMsgs {
+		if f, ok := m.(writeConnectionFailedMsg); ok {
+			t.Fatalf("write failed: %v (path: %q)", f.err, f.path)
+		}
+		next2, _ := model.Update(m)
+		model = next2.(Model)
+	}
+
+	// ---- Verify connections.toml ----
+	targetPath := filepath.Join(cwd, "connections.toml")
+	data, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error = %v", targetPath, err)
+	}
+	tomlContent := string(data)
+
+	// Name "testdb@pg.example.com" contains @ so it must be written as a quoted TOML key.
+	if !strings.Contains(tomlContent, `"testdb@pg.example.com"`) {
+		t.Fatalf("connections.toml = %q, want quoted TOML key for name with @", tomlContent)
+	}
+	if !strings.Contains(tomlContent, "postgres") {
+		t.Fatalf("connections.toml missing type 'postgres': %q", tomlContent)
+	}
+	if !strings.Contains(tomlContent, "pg.example.com") {
+		t.Fatalf("connections.toml missing host: %q", tomlContent)
+	}
+	if !strings.Contains(tomlContent, "testdb") {
+		t.Fatalf("connections.toml missing database: %q", tomlContent)
+	}
+
+	// ---- Reload and picker rebuild ----
+	if !reloadCalled {
+		t.Fatal("reloadConnections was not called after successful write")
+	}
+	if model.currentModal() == nil || model.currentModal().Name() != ModalConnectionPicker {
+		t.Fatalf("expected connectionPickerModal after wizard close, got %v", model.currentModal())
+	}
+	pm, ok := model.currentModal().(*connectionPickerModal)
+	if !ok {
+		t.Fatalf("currentModal() = %T, want *connectionPickerModal", model.currentModal())
+	}
+	found := false
+	for _, name := range pm.candidates {
+		if name == connName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("picker candidates = %v, want to include %q", pm.candidates, connName)
+	}
+
+	// ---- Success notification ----
+	if !containsString(model.state.Notification.Text, connName) {
+		t.Fatalf("notification = %q, want to mention %q", model.state.Notification.Text, connName)
 	}
 }
 

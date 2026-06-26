@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -21,6 +22,7 @@ const (
 	StepName         NewConnectionWizardStep = "name"
 	StepType         NewConnectionWizardStep = "type"
 	StepField        NewConnectionWizardStep = "field"
+	StepDSN          NewConnectionWizardStep = "dsn"
 	StepSaveLocation NewConnectionWizardStep = "save-location"
 )
 
@@ -100,14 +102,18 @@ var wizardFieldsByType = map[string][]newConnectionWizardField{
 // It owns all step state; it never mutates *Model directly and returns
 // ModalResult for every action.  Mirrors slashWizardModal's conventions.
 //
-// Step flow (this slice — sqlite + step-by-step only):
+// Step flows:
 //
-//	StepMode → StepName → StepType → StepField → StepSaveLocation
+//	Step-by-step: StepMode → StepName → StepType → StepField → StepSaveLocation
+//	DSN:          StepMode → StepDSN → StepSaveLocation
 //
 // Esc navigates backward; in filter steps a non-empty filter is cleared first.
 // On StepSaveLocation submit the wizard returns modalResultForward{writeConnectionMsg}.
 type newConnectionWizardModal struct {
 	step NewConnectionWizardStep
+
+	// wizardMode distinguishes "step-by-step" from "dsn".
+	wizardMode string
 
 	// StepMode — filterable two-option list
 	modeFilter   string
@@ -131,6 +137,20 @@ type newConnectionWizardModal struct {
 	fieldValues map[string]string
 	fieldValue  string
 	fieldError  string
+
+	// StepDSN — text-input for the raw connection string.
+	// dsnText is preserved when the user Esc-backs from StepSaveLocation.
+	// dsnError is the inline parse error; cleared on next typing.
+	dsnText  string
+	dsnError string
+
+	// dsnParsedConn holds the config.Connection produced by ParseConnectionString
+	// on a successful StepDSN confirmation.
+	dsnParsedConn config.Connection
+
+	// StepSaveLocation in DSN mode — editable name field.
+	dsnName      string
+	dsnNameError string
 
 	// StepSaveLocation — fixed two-option list (no filter)
 	selectedLoc int // 0 = Global, 1 = Project
@@ -169,7 +189,14 @@ func (w *newConnectionWizardModal) FilterText() string {
 			return strings.Repeat("•", len(w.fieldValue)) + "█"
 		}
 		return w.fieldValue + "█"
-	default: // StepSaveLocation has no filter
+	case StepDSN:
+		return w.dsnText + "█"
+	case StepSaveLocation:
+		if w.wizardMode == "dsn" {
+			return w.dsnName + "█"
+		}
+		return ""
+	default:
 		return ""
 	}
 }
@@ -184,6 +211,13 @@ func (w *newConnectionWizardModal) FilterLabel() string {
 			return fields[w.fieldIndex].label + ":"
 		}
 		return "Value:"
+	case StepDSN:
+		return "DSN:"
+	case StepSaveLocation:
+		if w.wizardMode == "dsn" {
+			return "Name:"
+		}
+		return "Filter:"
 	default:
 		return "Filter:"
 	}
@@ -203,6 +237,8 @@ func (w *newConnectionWizardModal) Title() string {
 			return fields[w.fieldIndex].label
 		}
 		return "Field"
+	case StepDSN:
+		return "Connection String"
 	case StepSaveLocation:
 		return "Save Location"
 	default:
@@ -251,7 +287,12 @@ func (w *newConnectionWizardModal) StatusBarHints(_ InteractionState) []string {
 		return []string{"enter select", escHint, "ctrl+p up", "ctrl+n down"}
 	case StepField:
 		return []string{"enter confirm", "esc back", "backspace delete"}
+	case StepDSN:
+		return []string{"enter parse", "esc back", "backspace delete"}
 	case StepSaveLocation:
+		if w.wizardMode == "dsn" {
+			return []string{"enter save", "esc back", "backspace delete", "ctrl+p up", "ctrl+n down"}
+		}
 		return []string{"enter save", "esc back", "ctrl+p up", "ctrl+n down"}
 	default:
 		return []string{"esc close"}
@@ -280,6 +321,8 @@ func (w *newConnectionWizardModal) HandleKey(msg tea.KeyPressMsg, _ ModalContext
 		return w.handleTypeKey(msg, keys)
 	case StepField:
 		return w.handleFieldKey(msg)
+	case StepDSN:
+		return w.handleDSNKey(msg)
 	case StepSaveLocation:
 		return w.handleSaveLocationKey(msg, keys)
 	default:
@@ -325,13 +368,13 @@ func (w *newConnectionWizardModal) confirmModeSelection(filtered []newConnection
 	sel := wrapSelection(w.selectedMode, len(filtered))
 	mode := filtered[sel]
 	if mode.key == "dsn" {
-		// TODO(#19): implement DSN mode — stubs the option as a visible-but-inert choice
-		return modalResultReady{
-			status: "DSN mode is not yet implemented. See issue #19.",
-			level:  NotificationInfo,
-		}
+		w.wizardMode = "dsn"
+		w.step = StepDSN
+		w.dsnError = ""
+		return modalResultNone{}
 	}
 	// step-by-step: advance to name step
+	w.wizardMode = "step-by-step"
 	w.step = StepName
 	w.name = ""
 	w.nameError = ""
@@ -474,7 +517,50 @@ func (w *newConnectionWizardModal) confirmField() ModalResult {
 	return modalResultNone{}
 }
 
+// handleDSNKey handles key events on the StepDSN screen.
+// Typing appends to dsnText; Enter parses and validates the DSN on submit.
+// No live validation — errors only appear after Enter.
+func (w *newConnectionWizardModal) handleDSNKey(msg tea.KeyPressMsg) ModalResult {
+	switch {
+	case msg.String() == "enter":
+		return w.confirmDSN()
+	case msg.String() == "backspace" || msg.String() == "ctrl+h" || msg.String() == "delete":
+		w.dsnText = trimLastRune(w.dsnText)
+		w.dsnError = ""
+	case msg.String() == "space":
+		w.dsnText += " "
+		w.dsnError = ""
+	case len(msg.Text) > 0 && !msg.Mod.Contains(tea.ModAlt) && !msg.Mod.Contains(tea.ModCtrl):
+		w.dsnText += msg.Text
+		w.dsnError = ""
+	}
+	return modalResultNone{}
+}
+
+// confirmDSN parses the entered DSN with ParseConnectionString.
+// On success it stores the parsed connection and advances to StepSaveLocation
+// with a pre-filled name. On failure it shows an inline error and stays.
+func (w *newConnectionWizardModal) confirmDSN() ModalResult {
+	resolved, ok, err := config.ParseConnectionString(w.dsnText)
+	if err != nil {
+		w.dsnError = err.Error()
+		return modalResultNone{}
+	}
+	if !ok {
+		w.dsnError = "Not a valid connection string. Expected format: postgres://user:pass@host/db"
+		return modalResultNone{}
+	}
+	w.dsnParsedConn = resolved.Connection
+	w.dsnName = derivedNameFromConnection(resolved.Connection)
+	w.dsnNameError = ""
+	w.step = StepSaveLocation
+	return modalResultNone{}
+}
+
 func (w *newConnectionWizardModal) handleSaveLocationKey(msg tea.KeyPressMsg, keys commandModeKeyMap) ModalResult {
+	if w.wizardMode == "dsn" {
+		return w.handleSaveLocationKeyDSN(msg, keys)
+	}
 	switch {
 	case key.Matches(msg, keys.PrevSuggestion), msg.String() == "up":
 		w.selectedLoc = wrapSelection(w.selectedLoc-1, 2)
@@ -486,14 +572,50 @@ func (w *newConnectionWizardModal) handleSaveLocationKey(msg tea.KeyPressMsg, ke
 	return modalResultNone{}
 }
 
+// handleSaveLocationKeyDSN handles keys for StepSaveLocation in DSN mode.
+// Typing edits the name; ctrl+p/ctrl+n navigate the save location; Enter submits.
+func (w *newConnectionWizardModal) handleSaveLocationKeyDSN(msg tea.KeyPressMsg, keys commandModeKeyMap) ModalResult {
+	switch {
+	case key.Matches(msg, keys.PrevSuggestion), msg.String() == "up":
+		w.selectedLoc = wrapSelection(w.selectedLoc-1, 2)
+	case key.Matches(msg, keys.NextSuggestion), msg.String() == "down":
+		w.selectedLoc = wrapSelection(w.selectedLoc+1, 2)
+	case msg.String() == "enter":
+		return w.submitSaveLocation()
+	case msg.String() == "backspace" || msg.String() == "ctrl+h" || msg.String() == "delete":
+		w.dsnName = trimLastRune(w.dsnName)
+		w.dsnNameError = ""
+	case msg.String() == "space":
+		w.dsnName += " "
+		w.dsnNameError = ""
+	case len(msg.Text) > 0 && !msg.Mod.Contains(tea.ModAlt) && !msg.Mod.Contains(tea.ModCtrl):
+		w.dsnName += msg.Text
+		w.dsnNameError = ""
+	}
+	return modalResultNone{}
+}
+
 func (w *newConnectionWizardModal) submitSaveLocation() ModalResult {
 	loc := "global"
 	if w.selectedLoc == 1 {
 		loc = "project"
 	}
-	conn := w.buildConnection()
 	paths := w.locPaths
-	name := strings.TrimSpace(w.name)
+
+	var name string
+	var conn config.Connection
+	if w.wizardMode == "dsn" {
+		if errMsg := w.validateDSNName(); errMsg != "" {
+			w.dsnNameError = errMsg
+			return modalResultNone{}
+		}
+		name = strings.TrimSpace(w.dsnName)
+		conn = w.dsnParsedConn
+	} else {
+		name = strings.TrimSpace(w.name)
+		conn = w.buildConnection()
+	}
+
 	return modalResultForward{cmd: func() tea.Msg {
 		return writeConnectionMsg{
 			name:     name,
@@ -543,7 +665,18 @@ func (w *newConnectionWizardModal) handleEsc() ModalResult {
 		w.step = StepType
 		w.fieldError = ""
 		return modalResultNone{}
+	case StepDSN:
+		// Go back to StepMode; dsnText is preserved so the user can return and tweak.
+		w.step = StepMode
+		w.dsnError = ""
+		return modalResultNone{}
 	case StepSaveLocation:
+		if w.wizardMode == "dsn" {
+			// Go back to StepDSN; dsnText is still intact.
+			w.step = StepDSN
+			w.dsnNameError = ""
+			return modalResultNone{}
+		}
 		// Go back to StepField if the selected type has fields, else to StepType.
 		if len(w.fieldsForSelectedType()) > 0 {
 			w.step = StepField
@@ -568,7 +701,12 @@ func (w *newConnectionWizardModal) Render(_ InteractionState, innerWidth int) st
 		return w.renderTypeStep(innerWidth)
 	case StepField:
 		return w.renderFieldStep()
+	case StepDSN:
+		return w.renderDSNStep()
 	case StepSaveLocation:
+		if w.wizardMode == "dsn" {
+			return w.renderSaveLocationStepDSN(innerWidth)
+		}
 		return w.renderSaveLocationStep(innerWidth)
 	default:
 		return ""
@@ -671,6 +809,14 @@ func (w *newConnectionWizardModal) renderFieldStep() string {
 	return tui.AppTheme.PanelMuted.Render("Enter a value.")
 }
 
+// renderDSNStep renders the StepDSN body: hint text or inline parse error.
+func (w *newConnectionWizardModal) renderDSNStep() string {
+	if w.dsnError != "" {
+		return tui.AppTheme.ErrorNotice.Render(w.dsnError)
+	}
+	return tui.AppTheme.PanelMuted.Render("Enter a connection string, e.g. postgres://user:pass@host/db")
+}
+
 func (w *newConnectionWizardModal) renderSaveLocationStep(innerWidth int) string {
 	availWidth := innerWidth
 	if availWidth < 20 {
@@ -697,6 +843,61 @@ func (w *newConnectionWizardModal) renderSaveLocationStep(innerWidth int) string
 		}
 		if w.fieldValues["ssh_host"] != "" {
 			lines = append(lines, tui.AppTheme.PanelMuted.Render("  ssh_host: "+w.fieldValues["ssh_host"]))
+		}
+	}
+	lines = append(lines, "")
+	lines = append(lines, tui.AppTheme.PanelText.Render("Save to:"))
+
+	// Location options.
+	locationLabels := []string{
+		"Global   " + w.locPaths.Global,
+		"Project  " + w.locPaths.Local,
+	}
+	for i, label := range locationLabels {
+		if i == w.selectedLoc {
+			plain := label
+			if pad := availWidth - ansi.StringWidth(plain); pad > 0 {
+				plain += strings.Repeat(" ", pad)
+			}
+			lines = append(lines, tui.AppTheme.PanelSelected.Render(plain))
+		} else {
+			lines = append(lines, tui.AppTheme.PanelText.Render(label))
+		}
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// renderSaveLocationStepDSN renders the StepSaveLocation body in DSN mode.
+// It shows the parsed connection summary (password masked) and location options.
+// The editable name is shown in the filter input area above the body.
+func (w *newConnectionWizardModal) renderSaveLocationStepDSN(innerWidth int) string {
+	availWidth := innerWidth
+	if availWidth < 20 {
+		availWidth = 20
+	}
+
+	var lines []string
+
+	// Inline name-collision error (shown before the summary).
+	if w.dsnNameError != "" {
+		lines = append(lines, tui.AppTheme.ErrorNotice.Render(w.dsnNameError))
+	}
+
+	// Parsed connection summary.
+	conn := w.dsnParsedConn
+	lines = append(lines, tui.AppTheme.PanelText.Render("Connection:"))
+	lines = append(lines, tui.AppTheme.PanelMuted.Render("  type:     "+conn.Type))
+	switch conn.Type {
+	case "sqlite":
+		lines = append(lines, tui.AppTheme.PanelMuted.Render("  database: "+conn.Database))
+	default: // postgres, mysql
+		lines = append(lines, tui.AppTheme.PanelMuted.Render("  host:     "+conn.Host))
+		lines = append(lines, tui.AppTheme.PanelMuted.Render("  port:     "+strconv.Itoa(conn.Port)))
+		lines = append(lines, tui.AppTheme.PanelMuted.Render("  database: "+conn.Database))
+		lines = append(lines, tui.AppTheme.PanelMuted.Render("  username: "+conn.Username))
+		if conn.Password != "" {
+			lines = append(lines, tui.AppTheme.PanelMuted.Render("  password: ****"))
 		}
 	}
 	lines = append(lines, "")
@@ -814,6 +1015,9 @@ func (w *newConnectionWizardModal) HandleMouseWheel(_ ModalContext, msg tea.Mous
 // in renderSaveLocationStep before the "Save to:" section and location options.
 // Used by HandleMouse to map click offsets to the correct location row.
 func (w *newConnectionWizardModal) saveLocationSummaryLineCount() int {
+	if w.wizardMode == "dsn" {
+		return w.saveLocationSummaryLineCountDSN()
+	}
 	typeName := w.selectedTypeName()
 	switch typeName {
 	case "sqlite":
@@ -831,6 +1035,28 @@ func (w *newConnectionWizardModal) saveLocationSummaryLineCount() int {
 		}
 		return count
 	}
+}
+
+// saveLocationSummaryLineCountDSN returns the summary line count for DSN mode.
+func (w *newConnectionWizardModal) saveLocationSummaryLineCountDSN() int {
+	count := 0
+	if w.dsnNameError != "" {
+		count++ // inline error line
+	}
+	count++ // "Connection:"
+	count++ // "  type: ..."
+	switch w.dsnParsedConn.Type {
+	case "sqlite":
+		count++ // "  database: ..."
+	default: // postgres, mysql
+		count += 4 // host, port, database, username
+		if w.dsnParsedConn.Password != "" {
+			count++ // "  password: ****"
+		}
+	}
+	count++ // blank line
+	count++ // "Save to:"
+	return count
 }
 
 func (w *newConnectionWizardModal) filteredModes() []newConnectionWizardMode {
@@ -892,6 +1118,20 @@ func (w *newConnectionWizardModal) validateName() string {
 	return ""
 }
 
+// validateDSNName returns an error message if the DSN-mode name is invalid, or "" if valid.
+func (w *newConnectionWizardModal) validateDSNName() string {
+	name := strings.TrimSpace(w.dsnName)
+	if name == "" {
+		return "Name must not be empty."
+	}
+	if w.connections.Connection != nil {
+		if _, exists := w.connections.Connection[name]; exists {
+			return fmt.Sprintf("A connection named %q already exists.", name)
+		}
+	}
+	return ""
+}
+
 // buildConnection assembles the config.Connection from the wizard state.
 func (w *newConnectionWizardModal) buildConnection() config.Connection {
 	typeName := w.selectedTypeName()
@@ -923,6 +1163,32 @@ func (w *newConnectionWizardModal) buildConnection() config.Connection {
 		return conn
 	default:
 		return config.Connection{Type: typeName}
+	}
+}
+
+// derivedNameFromConnection returns a type-aware default connection name
+// derived from the parsed connection:
+//   - postgres/mysql: "<database>@<host>"
+//   - sqlite: basename of the path with extension stripped; ":memory:" → "memory"
+func derivedNameFromConnection(conn config.Connection) string {
+	switch conn.Type {
+	case "postgres", "mysql":
+		return conn.Database + "@" + conn.Host
+	case "sqlite":
+		db := conn.Database
+		if db == ":memory:" {
+			return "memory"
+		}
+		base := filepath.Base(db)
+		if ext := filepath.Ext(base); ext != "" {
+			base = base[:len(base)-len(ext)]
+		}
+		return base
+	default:
+		if conn.Database != "" {
+			return conn.Database
+		}
+		return conn.Type
 	}
 }
 
