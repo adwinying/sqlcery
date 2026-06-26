@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -35,10 +36,13 @@ type newConnectionWizardType struct {
 }
 
 type newConnectionWizardField struct {
-	key      string
-	label    string
-	hint     string
-	required bool
+	key          string
+	label        string
+	hint         string
+	required     bool
+	defaultValue string // pre-fill text shown when entering this field (e.g. "5432" for port)
+	masked       bool   // true for Password — renders as • in the filter input
+	isPort       bool   // true for Port — validates with strconv.Atoi + config.ValidatePort
 }
 
 // wizardModes lists the connection creation modes in display order.
@@ -63,8 +67,8 @@ var wizardTypes = []newConnectionWizardType{
 }
 
 // wizardFieldsByType maps a database type key to the ordered list of fields
-// the wizard collects for that type.  PostgreSQL and MySQL entries are added
-// by issue #18; only sqlite is implemented in this slice.
+// the wizard collects for that type.  The field machinery is data-driven:
+// sqlite = [Database]; postgres/mysql = Host → Port → Database → Username → Password → SSHHost.
 var wizardFieldsByType = map[string][]newConnectionWizardField{
 	"sqlite": {
 		{
@@ -74,7 +78,22 @@ var wizardFieldsByType = map[string][]newConnectionWizardField{
 			required: true,
 		},
 	},
-	// "postgres" and "mysql" field lists added by #18
+	"postgres": {
+		{key: "host", label: "Host", hint: "Database server hostname or IP address", required: true},
+		{key: "port", label: "Port", hint: "Database server port", required: true, defaultValue: "5432", isPort: true},
+		{key: "database", label: "Database", hint: "Database name", required: true},
+		{key: "username", label: "Username", hint: "Database username", required: true},
+		{key: "password", label: "Password", hint: "Database password (leave empty to skip)", required: false, masked: true},
+		{key: "ssh_host", label: "SSH Host", hint: "SSH tunnel host (leave empty to skip)", required: false},
+	},
+	"mysql": {
+		{key: "host", label: "Host", hint: "Database server hostname or IP address", required: true},
+		{key: "port", label: "Port", hint: "Database server port", required: true, defaultValue: "3306", isPort: true},
+		{key: "database", label: "Database", hint: "Database name", required: true},
+		{key: "username", label: "Username", hint: "Database username", required: true},
+		{key: "password", label: "Password", hint: "Database password (leave empty to skip)", required: false, masked: true},
+		{key: "ssh_host", label: "SSH Host", hint: "SSH tunnel host (leave empty to skip)", required: false},
+	},
 }
 
 // newConnectionWizardModal implements Modal for the New Connection Wizard.
@@ -104,10 +123,14 @@ type newConnectionWizardModal struct {
 	selectedType int
 	vpType       int
 
-	// StepField — text-input (filter box repurposed)
-	// For #18: extend to fieldIndex int + fieldValues map[string]string.
-	fieldValue string
-	fieldError string
+	// StepField — text-input (filter box repurposed); one field per screen.
+	// fieldIndex is the position within the type's wizardFieldsByType slice.
+	// fieldValues holds committed raw (unmasked) values keyed by field.key.
+	// fieldValue holds the in-progress value for the current field.
+	fieldIndex  int
+	fieldValues map[string]string
+	fieldValue  string
+	fieldError  string
 
 	// StepSaveLocation — fixed two-option list (no filter)
 	selectedLoc int // 0 = Global, 1 = Project
@@ -141,6 +164,10 @@ func (w *newConnectionWizardModal) FilterText() string {
 	case StepType:
 		return w.typeFilter + "█"
 	case StepField:
+		fields := w.fieldsForSelectedType()
+		if w.fieldIndex < len(fields) && fields[w.fieldIndex].masked {
+			return strings.Repeat("•", len(w.fieldValue)) + "█"
+		}
 		return w.fieldValue + "█"
 	default: // StepSaveLocation has no filter
 		return ""
@@ -153,8 +180,8 @@ func (w *newConnectionWizardModal) FilterLabel() string {
 		return "Name:"
 	case StepField:
 		fields := w.fieldsForSelectedType()
-		if len(fields) > 0 {
-			return fields[0].label + ":"
+		if w.fieldIndex < len(fields) {
+			return fields[w.fieldIndex].label + ":"
 		}
 		return "Value:"
 	default:
@@ -172,8 +199,8 @@ func (w *newConnectionWizardModal) Title() string {
 		return "Database Type"
 	case StepField:
 		fields := w.fieldsForSelectedType()
-		if len(fields) > 0 {
-			return fields[0].label + " Path"
+		if w.fieldIndex < len(fields) {
+			return fields[w.fieldIndex].label
 		}
 		return "Field"
 	case StepSaveLocation:
@@ -381,7 +408,9 @@ func (w *newConnectionWizardModal) confirmTypeSelection(filtered []newConnection
 		w.step = StepSaveLocation
 	} else {
 		w.step = StepField
-		w.fieldValue = ""
+		w.fieldIndex = 0
+		w.fieldValues = make(map[string]string)
+		w.fieldValue = fields[0].defaultValue
 		w.fieldError = ""
 	}
 	return modalResultNone{}
@@ -406,11 +435,42 @@ func (w *newConnectionWizardModal) handleFieldKey(msg tea.KeyPressMsg) ModalResu
 
 func (w *newConnectionWizardModal) confirmField() ModalResult {
 	fields := w.fieldsForSelectedType()
-	if len(fields) > 0 && fields[0].required && strings.TrimSpace(w.fieldValue) == "" {
-		w.fieldError = fields[0].label + " must not be empty."
+	if w.fieldIndex >= len(fields) {
+		w.step = StepSaveLocation
 		return modalResultNone{}
 	}
-	w.step = StepSaveLocation
+	field := fields[w.fieldIndex]
+
+	// Validate the current field value.
+	if field.isPort {
+		portStr := strings.TrimSpace(w.fieldValue)
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			w.fieldError = field.label + " must be a valid number."
+			return modalResultNone{}
+		}
+		if err := config.ValidatePort(port); err != nil {
+			w.fieldError = field.label + ": " + err.Error() + "."
+			return modalResultNone{}
+		}
+		w.fieldValue = portStr // store normalised
+	} else if field.required && strings.TrimSpace(w.fieldValue) == "" {
+		w.fieldError = field.label + " must not be empty."
+		return modalResultNone{}
+	}
+
+	// Commit the value, then advance.
+	if w.fieldValues == nil {
+		w.fieldValues = make(map[string]string)
+	}
+	w.fieldValues[field.key] = w.fieldValue
+	w.fieldIndex++
+	if w.fieldIndex >= len(fields) {
+		w.step = StepSaveLocation
+	} else {
+		w.fieldValue = fields[w.fieldIndex].defaultValue
+		w.fieldError = ""
+	}
 	return modalResultNone{}
 }
 
@@ -469,6 +529,17 @@ func (w *newConnectionWizardModal) handleEsc() ModalResult {
 		w.step = StepName
 		return modalResultNone{}
 	case StepField:
+		if w.fieldIndex > 0 {
+			// Go back to the previous field, restoring its committed value.
+			w.fieldIndex--
+			fields := w.fieldsForSelectedType()
+			if w.fieldIndex < len(fields) {
+				w.fieldValue = w.fieldValues[fields[w.fieldIndex].key]
+			}
+			w.fieldError = ""
+			return modalResultNone{}
+		}
+		// At the first field — go back to StepType.
 		w.step = StepType
 		w.fieldError = ""
 		return modalResultNone{}
@@ -594,8 +665,8 @@ func (w *newConnectionWizardModal) renderFieldStep() string {
 		return tui.AppTheme.ErrorNotice.Render(w.fieldError)
 	}
 	fields := w.fieldsForSelectedType()
-	if len(fields) > 0 {
-		return tui.AppTheme.PanelMuted.Render(fields[0].hint)
+	if w.fieldIndex < len(fields) {
+		return tui.AppTheme.PanelMuted.Render(fields[w.fieldIndex].hint)
 	}
 	return tui.AppTheme.PanelMuted.Render("Enter a value.")
 }
@@ -613,9 +684,20 @@ func (w *newConnectionWizardModal) renderSaveLocationStep(innerWidth int) string
 	lines = append(lines, tui.AppTheme.PanelText.Render("Connection:"))
 	lines = append(lines, tui.AppTheme.PanelMuted.Render("  name:     "+strings.TrimSpace(w.name)))
 	lines = append(lines, tui.AppTheme.PanelMuted.Render("  type:     "+typeName))
-	fields := w.fieldsForSelectedType()
-	if len(fields) > 0 {
-		lines = append(lines, tui.AppTheme.PanelMuted.Render("  database: "+w.fieldValue))
+	switch typeName {
+	case "sqlite":
+		lines = append(lines, tui.AppTheme.PanelMuted.Render("  database: "+w.fieldValues["database"]))
+	default: // postgres, mysql
+		lines = append(lines, tui.AppTheme.PanelMuted.Render("  host:     "+w.fieldValues["host"]))
+		lines = append(lines, tui.AppTheme.PanelMuted.Render("  port:     "+w.fieldValues["port"]))
+		lines = append(lines, tui.AppTheme.PanelMuted.Render("  database: "+w.fieldValues["database"]))
+		lines = append(lines, tui.AppTheme.PanelMuted.Render("  username: "+w.fieldValues["username"]))
+		if w.fieldValues["password"] != "" {
+			lines = append(lines, tui.AppTheme.PanelMuted.Render("  password: ****"))
+		}
+		if w.fieldValues["ssh_host"] != "" {
+			lines = append(lines, tui.AppTheme.PanelMuted.Render("  ssh_host: "+w.fieldValues["ssh_host"]))
+		}
 	}
 	lines = append(lines, "")
 	lines = append(lines, tui.AppTheme.PanelText.Render("Save to:"))
@@ -679,11 +761,7 @@ func (w *newConnectionWizardModal) HandleMouse(_ tea.MouseClickMsg, ctx ModalCon
 		// The summary takes lines 0..N-1 before the location options.
 		// Location options are always the last 2 rendered lines; we map offset
 		// by the count of non-option lines rendered in renderSaveLocationStep.
-		// Summary: "Connection:", name, type, (optionally database), "", "Save to:" = 5 or 6 lines
-		summaryLines := 6 // "Connection:" + name + type + database + "" + "Save to:"
-		if len(w.fieldsForSelectedType()) == 0 {
-			summaryLines = 5 // no database line
-		}
+		summaryLines := w.saveLocationSummaryLineCount()
 		locIdx := ctx.MouseListOffset - summaryLines
 		if locIdx < 0 || locIdx > 1 {
 			return modalResultNone{}
@@ -731,6 +809,29 @@ func (w *newConnectionWizardModal) HandleMouseWheel(_ ModalContext, msg tea.Mous
 }
 
 // ---- Helpers ----
+
+// saveLocationSummaryLineCount returns the number of summary lines rendered
+// in renderSaveLocationStep before the "Save to:" section and location options.
+// Used by HandleMouse to map click offsets to the correct location row.
+func (w *newConnectionWizardModal) saveLocationSummaryLineCount() int {
+	typeName := w.selectedTypeName()
+	switch typeName {
+	case "sqlite":
+		// "Connection:", name, type, database, "", "Save to:" = 6 lines
+		return 6
+	default: // postgres, mysql
+		// "Connection:", name, type, host, port, database, username, "", "Save to:" = 9 lines
+		// plus one line each for optional password and ssh_host if non-empty.
+		count := 9
+		if w.fieldValues["password"] != "" {
+			count++
+		}
+		if w.fieldValues["ssh_host"] != "" {
+			count++
+		}
+		return count
+	}
+}
 
 func (w *newConnectionWizardModal) filteredModes() []newConnectionWizardMode {
 	trimmed := strings.TrimSpace(w.modeFilter)
@@ -794,14 +895,33 @@ func (w *newConnectionWizardModal) validateName() string {
 // buildConnection assembles the config.Connection from the wizard state.
 func (w *newConnectionWizardModal) buildConnection() config.Connection {
 	typeName := w.selectedTypeName()
+	fv := w.fieldValues
+	if fv == nil {
+		fv = map[string]string{}
+	}
 	switch typeName {
 	case "sqlite":
 		return config.Connection{
 			Type:     "sqlite",
-			Database: w.fieldValue,
+			Database: fv["database"],
 		}
+	case "postgres", "mysql":
+		port, _ := strconv.Atoi(fv["port"])
+		conn := config.Connection{
+			Type:     typeName,
+			Host:     fv["host"],
+			Port:     port,
+			Database: fv["database"],
+			Username: fv["username"],
+		}
+		if pw := fv["password"]; pw != "" {
+			conn.Password = pw
+		}
+		if ssh := fv["ssh_host"]; ssh != "" {
+			conn.SSHHost = ssh
+		}
+		return conn
 	default:
-		// postgres and mysql fields are added by #18; for now just store type.
 		return config.Connection{Type: typeName}
 	}
 }
