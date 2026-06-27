@@ -728,6 +728,7 @@ func (m Model) handleStatementExecuted(msg statementExecutedMsg) (tea.Model, tea
 	m.command.AppendReplEntry("> ", msg.Statement, "OK: "+formatReplStatementOutput(msg.Result, nil))
 	m.command.Clear()
 	m.state.SetReady(withHistoryWarning(describeStatementStatus(msg.Result), historyErr), historyNotificationLevel(NotificationSuccess, historyErr))
+	m.resultsPane.CancelVisualMode()
 	m.state.SetLatestResultContext(buildLatestResultContext(msg.Statement, m.resultOriginPane(), msg.Result))
 	return m, m.notificationClearCmdIfSet()
 }
@@ -771,6 +772,7 @@ func (m Model) handleSlashCommandExecuted(msg slashCommandExecutedMsg) (tea.Mode
 	}
 
 	if msg.Result.Statement != nil {
+		m.resultsPane.CancelVisualMode()
 		m.state.SetLatestResultContext(buildLatestResultContext(msg.Command.RawInput, m.resultOriginPane(), msg.Result.Statement))
 	} else if !msg.Result.PreserveResult && !msg.Result.ShouldReplace {
 		m.state.SetLatestResultContext(nil)
@@ -1227,6 +1229,20 @@ func (m *Model) handleResultsPaneSelectionKey(msg tea.KeyPressMsg) bool {
 	}
 	m.resultsPane.pendingAction = resultsPanePendingActionNone
 
+	// In visual mode, space confirms the range (additive, no toggle).
+	if m.resultsPane.visualMode {
+		newMarked, start, end, handled := m.resultsPane.ConfirmVisualSelection(m.state.Interaction)
+		if !handled {
+			m.state.SetPendingIntent(IntentNone, "results-pane-select", "Results Pane has no rows to select.", NotificationInfo)
+			return true
+		}
+		m.state.SetMarkedRows(newMarked)
+		m.state.SetPendingIntent(IntentNone, "results-pane-select",
+			fmt.Sprintf("Marked rows %d–%d (%d total).", start+1, end+1, len(newMarked)),
+			NotificationSuccess)
+		return true
+	}
+
 	row, newMarked, selected, handled := m.resultsPane.ToggleSelectedRow(m.state.Interaction)
 	if !handled {
 		m.state.SetPendingIntent(IntentNone, "results-pane-select", "Results Pane has no rows to select.", NotificationInfo)
@@ -1259,6 +1275,14 @@ func (m *Model) handleResultsPaneComposeKey(msg tea.KeyPressMsg) bool {
 		return false
 	}
 
+	// In visual mode, Esc cancels before the text-character guard.
+	if m.resultsPane.visualMode && msg.String() == "esc" {
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
+		m.resultsPane.CancelVisualMode()
+		m.state.SetPendingIntent(IntentNone, "results-pane-select", "Visual selection cancelled.", NotificationInfo)
+		return true
+	}
+
 	if len(msg.Text) != 1 || msg.Mod.Contains(tea.ModAlt) {
 		m.resultsPane.pendingAction = resultsPanePendingActionNone
 		return false
@@ -1279,7 +1303,27 @@ func (m *Model) handleResultsPaneComposeKey(msg tea.KeyPressMsg) bool {
 	case 'G':
 		m.resultsPane.pendingAction = resultsPanePendingActionNone
 		return m.jumpResultsPaneBottom()
+	case 'V':
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
+		if m.resultsPane.visualMode {
+			m.resultsPane.CancelVisualMode()
+			m.state.SetPendingIntent(IntentNone, "results-pane-select", "Visual selection cancelled.", NotificationInfo)
+			return true
+		}
+		latest := m.state.Interaction.LatestResult
+		if latest == nil || latest.PreservedResult == nil || len(latest.PreservedResult.Rows) == 0 {
+			m.state.SetPendingIntent(IntentNone, "results-pane-select", "Results Pane has no rows to select.", NotificationInfo)
+			return true
+		}
+		m.resultsPane.EnterVisualMode()
+		m.state.SetPendingIntent(IntentNone, "results-pane-select", "Visual mode — navigate to extend, space to confirm, esc to cancel.", NotificationInfo)
+		return true
 	case 'y':
+		if m.resultsPane.visualMode {
+			m.resultsPane.pendingAction = resultsPanePendingActionNone
+			m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Confirm visual selection with space first.", NotificationInfo)
+			return true
+		}
 		if m.resultsPane.pendingAction != resultsPanePendingActionComposeInsert {
 			m.resultsPane.pendingAction = resultsPanePendingActionComposeInsert
 			m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Press y again to load INSERT for the selected row into command mode.", NotificationInfo)
@@ -1288,6 +1332,11 @@ func (m *Model) handleResultsPaneComposeKey(msg tea.KeyPressMsg) bool {
 		m.resultsPane.pendingAction = resultsPanePendingActionNone
 		return m.composeResultsPaneInsert()
 	case 'c':
+		if m.resultsPane.visualMode {
+			m.resultsPane.pendingAction = resultsPanePendingActionNone
+			m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Confirm visual selection with space first.", NotificationInfo)
+			return true
+		}
 		if m.resultsPane.pendingAction != resultsPanePendingActionComposeUpdate {
 			m.resultsPane.pendingAction = resultsPanePendingActionComposeUpdate
 			return true
@@ -1295,6 +1344,11 @@ func (m *Model) handleResultsPaneComposeKey(msg tea.KeyPressMsg) bool {
 		m.resultsPane.pendingAction = resultsPanePendingActionNone
 		return m.composeResultsPaneUpdate()
 	case 'd':
+		if m.resultsPane.visualMode {
+			m.resultsPane.pendingAction = resultsPanePendingActionNone
+			m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Confirm visual selection with space first.", NotificationInfo)
+			return true
+		}
 		if m.resultsPane.pendingAction != resultsPanePendingActionComposeDelete {
 			m.resultsPane.pendingAction = resultsPanePendingActionComposeDelete
 			m.state.SetPendingIntent(IntentNone, "results-pane-compose", "Press d again to load DELETE for the selected row into command mode.", NotificationInfo)

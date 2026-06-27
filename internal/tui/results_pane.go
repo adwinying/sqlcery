@@ -27,6 +27,7 @@ type ResultsPaneViewContext struct {
 	SelectionActive bool
 	ColScrollOffset int
 	ViewportStart   int
+	VisualRange     *[2]int // nil when not in visual mode; [start, end] absolute row indices (inclusive)
 }
 
 type ResultsPaneColumn struct {
@@ -54,6 +55,7 @@ type ResultsPaneRenderState struct {
 	SelectedRows    map[int]struct{}
 	ColScrollOffset int
 	ViewportStart   int
+	VisualRange     *[2]int // nil when not in visual mode; [start, end] absolute row indices (inclusive)
 }
 
 type ResultsPanePreparedPageKey struct {
@@ -141,13 +143,18 @@ func RenderPreparedResultsPanePage(prepared *ResultsPanePreparedPage, width, hei
 		values := append([]string(nil), prepared.Rows[rowIndex][colOffset:]...)
 		isActiveRow := state.Active.Active && state.Active.Row == absoluteRowIndex
 		isMarked := resultsPaneRowSelectedSet(state.SelectedRows, absoluteRowIndex)
+		isInVisualRange := state.VisualRange != nil && absoluteRowIndex >= state.VisualRange[0] && absoluteRowIndex <= state.VisualRange[1]
 		line := renderResultsPaneInlineResultLine(values, widths)
-		if isActiveRow && width > 0 {
+		if (isActiveRow || isInVisualRange) && width > 0 {
 			if pad := width - ansi.StringWidth(line); pad > 0 {
 				line = line + strings.Repeat(" ", pad)
 			}
 		}
 		switch {
+		case isInVisualRange && isActiveRow:
+			line = AppTheme.ResultsVisualRangeActiveRow.Render(line)
+		case isInVisualRange:
+			line = AppTheme.ResultsVisualRangeRow.Render(line)
 		case isMarked && isActiveRow:
 			line = AppTheme.ResultsMarkedActiveRow.Render(line)
 		case isMarked:

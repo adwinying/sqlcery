@@ -31,9 +31,11 @@ type tuiTheme struct {
 	ResultsPaneEmpty         lipgloss.Style
 	ResultsPaneEmptyLogo     lipgloss.Style
 	ResultsPaneEmptySubtitle lipgloss.Style
-	ResultsActiveRow         lipgloss.Style
-	ResultsMarkedRow         lipgloss.Style
-	ResultsMarkedActiveRow   lipgloss.Style
+	ResultsActiveRow            lipgloss.Style
+	ResultsMarkedRow            lipgloss.Style
+	ResultsMarkedActiveRow      lipgloss.Style
+	ResultsVisualRangeRow       lipgloss.Style
+	ResultsVisualRangeActiveRow lipgloss.Style
 	KeywordStyle             lipgloss.Style
 	StringStyle              lipgloss.Style
 	NumberStyle              lipgloss.Style
@@ -85,9 +87,11 @@ func newTUITheme() tuiTheme {
 		ResultsPaneEmpty:         lipgloss.NewStyle().Foreground(muted),
 		ResultsPaneEmptyLogo:     lipgloss.NewStyle().Bold(true),
 		ResultsPaneEmptySubtitle: lipgloss.NewStyle().Foreground(accentSoft),
-		ResultsActiveRow:         lipgloss.NewStyle().Foreground(selectedForeground).Background(selectedBackground),
-		ResultsMarkedRow:         lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
-		ResultsMarkedActiveRow:   lipgloss.NewStyle().Foreground(accentWarm).Background(selectedBackground).Bold(true),
+		ResultsActiveRow:            lipgloss.NewStyle().Foreground(selectedForeground).Background(selectedBackground),
+		ResultsMarkedRow:            lipgloss.NewStyle().Foreground(accentWarm).Bold(true),
+		ResultsMarkedActiveRow:      lipgloss.NewStyle().Foreground(accentWarm).Background(selectedBackground).Bold(true),
+		ResultsVisualRangeRow:       lipgloss.NewStyle().Foreground(accentSoft).Bold(true),
+		ResultsVisualRangeActiveRow: lipgloss.NewStyle().Foreground(accentSoft).Background(selectedBackground).Bold(true),
 		KeywordStyle:             lipgloss.NewStyle().Foreground(accent).Bold(true),
 		StringStyle:              lipgloss.NewStyle().Foreground(success),
 		NumberStyle:              lipgloss.NewStyle().Foreground(accentSoft),

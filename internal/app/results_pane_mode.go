@@ -55,6 +55,8 @@ type resultsPaneModeModel struct {
 	colScrollOffset int
 	viewportStart   int
 	selectionActive bool
+	visualMode      bool
+	visualAnchor    int
 	pendingAction   resultsPanePendingAction
 	cachedPage      *tui.ResultsPanePreparedPage
 	hintIdx         int
@@ -134,6 +136,12 @@ func (m *resultsPaneModeModel) buildViewContext(interaction InteractionState) tu
 		statement = interaction.LatestResult.Statement
 	}
 
+	var visualRange *[2]int
+	if m.visualMode {
+		r := [2]int{min(m.visualAnchor, m.selectedRow), max(m.visualAnchor, m.selectedRow)}
+		visualRange = &r
+	}
+
 	return tui.ResultsPaneViewContext{
 		Result:          result,
 		Page:            interaction.ResultsPanePage,
@@ -147,6 +155,7 @@ func (m *resultsPaneModeModel) buildViewContext(interaction InteractionState) tu
 		SelectionActive: m.selectionActive,
 		ColScrollOffset: m.colScrollOffset,
 		ViewportStart:   m.viewportStart,
+		VisualRange:     visualRange,
 	}
 }
 
@@ -161,6 +170,7 @@ func (m *resultsPaneModeModel) View(ctx tui.ResultsPaneViewContext) string {
 		SelectedRows:    tui.ResultsPaneSelectedRowSet(ctx.MarkedRows),
 		ColScrollOffset: ctx.ColScrollOffset,
 		ViewportStart:   ctx.ViewportStart,
+		VisualRange:     ctx.VisualRange,
 	})
 	if body == "" {
 		body = tui.AppTheme.ResultsPaneEmpty.Render("(no visible rows)")
@@ -169,7 +179,10 @@ func (m *resultsPaneModeModel) View(ctx tui.ResultsPaneViewContext) string {
 }
 
 func (m resultsPaneModeModel) StatusBarHints(interaction InteractionState) []string {
-	parts := []string{"arrows/hjkl navigate", "space toggle row", "u clear marks", "ctrl+c quit"}
+	if m.visualMode {
+		return []string{"arrows/hjkl navigate", "space confirm", "esc cancel", "ctrl+c quit"}
+	}
+	parts := []string{"arrows/hjkl navigate", "space toggle row", "V visual select", "u clear marks", "ctrl+c quit"}
 	parts = append(parts, "ctrl+e export", "ctrl+u scroll up", "ctrl+d scroll down", "gg top", "G bottom", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+t keybindings")
 	return parts
 }
@@ -181,6 +194,7 @@ func (m *resultsPaneModeModel) syncSelection(interaction InteractionState) {
 		m.selectedColumn = 0
 		m.viewportStart = 0
 		m.selectionActive = false
+		m.visualMode = false
 		return
 	}
 
@@ -191,6 +205,7 @@ func (m *resultsPaneModeModel) syncSelection(interaction InteractionState) {
 		m.colScrollOffset = 0
 		m.viewportStart = 0
 		m.selectionActive = false
+		m.visualMode = false
 		return
 	}
 
@@ -278,6 +293,52 @@ func (m *resultsPaneModeModel) ToggleSelectedRow(interaction InteractionState) (
 	newMarked := toggleSelectedRowIndices(interaction.MarkedRows, m.selectedRow)
 	m.selectionActive = true
 	return m.selectedRow, newMarked, rowIndexSelected(newMarked, m.selectedRow), true
+}
+
+// EnterVisualMode anchors the visual selection at the current row cursor.
+func (m *resultsPaneModeModel) EnterVisualMode() {
+	m.visualMode = true
+	m.visualAnchor = m.selectedRow
+	m.selectionActive = true
+}
+
+// CancelVisualMode exits visual mode without modifying Marked Rows.
+func (m *resultsPaneModeModel) CancelVisualMode() {
+	m.visualMode = false
+}
+
+// ConfirmVisualSelection marks every row in the visual range, merges with
+// existing Marked Rows (always additive), exits visual mode, and returns the
+// updated mark list, the range start/end (absolute indices), and whether the
+// operation was handled.
+func (m *resultsPaneModeModel) ConfirmVisualSelection(interaction InteractionState) ([]int, int, int, bool) {
+	if !m.visualMode {
+		return nil, 0, 0, false
+	}
+	if interaction.LatestResult == nil || interaction.LatestResult.PreservedResult == nil {
+		m.visualMode = false
+		return nil, 0, 0, false
+	}
+
+	start := min(m.visualAnchor, m.selectedRow)
+	end := max(m.visualAnchor, m.selectedRow)
+	newMarked := mergeVisualRange(interaction.MarkedRows, start, end)
+	m.visualMode = false
+	return newMarked, start, end, true
+}
+
+func mergeVisualRange(marked []int, start, end int) []int {
+	existing := make(map[int]struct{}, len(marked))
+	for _, r := range marked {
+		existing[r] = struct{}{}
+	}
+	result := append([]int(nil), marked...)
+	for i := start; i <= end; i++ {
+		if _, ok := existing[i]; !ok {
+			result = append(result, i)
+		}
+	}
+	return result
 }
 
 func renderResultsPaneTable(result *db.ResultSet, page, width, height int, state tui.ResultsPaneRenderState) string {

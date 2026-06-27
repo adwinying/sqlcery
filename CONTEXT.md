@@ -59,7 +59,16 @@ The dialect-aware SQL literal rendering of a single Result Set value, keyed off 
 The top pane of the TUI. Displays the Result Set from the most recently executed Query. Supports interactive navigation, row marking, SQL composition from rows, and export. Can be maximized (results-only Layout). Some row actions are queued as a Pending Action rather than executed immediately. Its content changes only when a Statement executes — Statement Expansion and other non-execution events leave it unchanged.
 
 ### Row Cursor
-The single highlighted row in the Results Pane that is currently active for navigation and single-row actions (SQL composition via `yy`/`cc`/`dd`, marking via `space`). Distinct from Marked Rows, which is a multi-row set. The Row Cursor is owned by the Results Pane and does not persist across Result Sets.
+The single highlighted row in the Results Pane that is currently active for navigation and single-row actions (SQL composition via `yy`/`cc`/`dd`, marking via `space`). Pressing `V` enters Visual Mode, anchoring the Row Cursor as the Visual Anchor. Distinct from Marked Rows, which is a multi-row set. The Row Cursor is owned by the Results Pane and does not persist across Result Sets.
+
+### Visual Mode
+A transient mode in the Results Pane entered by pressing `V`. While active, navigation gestures extend a Visual Selection from the Visual Anchor to the current Row Cursor position. Pressing `space` confirms the selection — adding every row in the Visual Selection to Marked Rows — and exits Visual Mode. Pressing `Esc` cancels without marking anything. All SQL composition keys (`yy`/`cc`/`dd`) are blocked while in Visual Mode. Visual Mode is not a persistent state; it is cleared when the Result Set changes.
+
+### Visual Anchor
+The Row Cursor position at the moment `V` is pressed. The fixed endpoint of the Visual Selection. Paired with the moving Row Cursor to define the selected range. Distinct from the Row Cursor (which continues to move during Visual Mode) and from Marked Rows (which are only updated on `space` confirmation).
+
+### Visual Selection
+The contiguous range of rows between the Visual Anchor and the current Row Cursor position, inclusive. Highlighted in the Results Pane while Visual Mode is active. Confirming the Visual Selection with `space` adds all rows in the range to Marked Rows (rows already marked are unaffected). The Visual Selection is page-agnostic — the anchor and cursor are global row indices, so the range spans pages naturally.
 
 ### Pending Action
 A deferred action stored on the Results Pane model and processed on the next update tick. Used when an action must be applied after the current key-handling pass completes. Current variants: **compose-insert**, **compose-update**, **compose-delete** (trigger Statement Expansion for the selected row), and **goto-top** (scroll the Results Pane to the first row).

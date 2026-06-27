@@ -782,6 +782,278 @@ func TestResultsPaneModeNavigateClampsAtPageBoundary(t *testing.T) {
 	}
 }
 
+func TestResultsPaneModeEnterVisualModeAnchorsAtCursor(t *testing.T) {
+	mode := newResultsPaneModeModel("")
+	mode.selectedRow = 3
+	mode.selectionActive = true
+
+	mode.EnterVisualMode()
+
+	if !mode.visualMode {
+		t.Fatal("visualMode = false, want true after EnterVisualMode")
+	}
+	if got, want := mode.visualAnchor, 3; got != want {
+		t.Fatalf("visualAnchor = %d, want %d", got, want)
+	}
+}
+
+func TestResultsPaneModeCancelVisualModeExitsWithoutMarking(t *testing.T) {
+	mode := newResultsPaneModeModel("")
+	mode.selectedRow = 2
+	mode.EnterVisualMode()
+
+	mode.CancelVisualMode()
+
+	if mode.visualMode {
+		t.Fatal("visualMode = true, want false after CancelVisualMode")
+	}
+}
+
+func TestResultsPaneModeConfirmVisualSelectionMarksRange(t *testing.T) {
+	mode := newResultsPaneModeModel("")
+	rows := makeTestRows(5)
+	interaction := InteractionState{
+		LatestResult: &LatestResultContext{
+			PreservedResult: &db.ResultSet{
+				Columns: []db.ResultColumn{{Name: "id"}},
+				Rows:    rows,
+			},
+		},
+	}
+
+	mode.selectedRow = 1
+	mode.EnterVisualMode()
+	mode.selectedRow = 3
+
+	newMarked, start, end, handled := mode.ConfirmVisualSelection(interaction)
+
+	if !handled {
+		t.Fatal("ConfirmVisualSelection() handled = false, want true")
+	}
+	if mode.visualMode {
+		t.Fatal("visualMode = true after confirm, want false")
+	}
+	if got, want := start, 1; got != want {
+		t.Fatalf("start = %d, want %d", got, want)
+	}
+	if got, want := end, 3; got != want {
+		t.Fatalf("end = %d, want %d", got, want)
+	}
+	wantMarked := []int{1, 2, 3}
+	if len(newMarked) != len(wantMarked) {
+		t.Fatalf("newMarked = %v, want %v", newMarked, wantMarked)
+	}
+	for i, v := range wantMarked {
+		if newMarked[i] != v {
+			t.Fatalf("newMarked[%d] = %d, want %d", i, newMarked[i], v)
+		}
+	}
+}
+
+func TestResultsPaneModeConfirmVisualSelectionAnchorBelowCursor(t *testing.T) {
+	mode := newResultsPaneModeModel("")
+	rows := makeTestRows(5)
+	interaction := InteractionState{
+		LatestResult: &LatestResultContext{
+			PreservedResult: &db.ResultSet{
+				Columns: []db.ResultColumn{{Name: "id"}},
+				Rows:    rows,
+			},
+		},
+	}
+
+	mode.selectedRow = 4
+	mode.EnterVisualMode() // anchor = 4
+	mode.selectedRow = 1   // cursor moved up
+
+	newMarked, start, end, handled := mode.ConfirmVisualSelection(interaction)
+
+	if !handled {
+		t.Fatal("ConfirmVisualSelection() handled = false, want true")
+	}
+	if got, want := start, 1; got != want {
+		t.Fatalf("start = %d, want %d (anchor below cursor, range should be normalised)", got, want)
+	}
+	if got, want := end, 4; got != want {
+		t.Fatalf("end = %d, want %d", got, want)
+	}
+	if got, want := len(newMarked), 4; got != want {
+		t.Fatalf("len(newMarked) = %d, want %d", got, want)
+	}
+}
+
+func TestResultsPaneModeConfirmVisualSelectionMergesWithExisting(t *testing.T) {
+	mode := newResultsPaneModeModel("")
+	rows := makeTestRows(6)
+	interaction := InteractionState{
+		MarkedRows: []int{0, 4}, // rows 0 and 4 already marked
+		LatestResult: &LatestResultContext{
+			PreservedResult: &db.ResultSet{
+				Columns: []db.ResultColumn{{Name: "id"}},
+				Rows:    rows,
+			},
+		},
+	}
+
+	mode.selectedRow = 1
+	mode.EnterVisualMode()
+	mode.selectedRow = 3
+
+	newMarked, _, _, _ := mode.ConfirmVisualSelection(interaction)
+
+	// Existing marks 0 and 4 preserved; range 1-3 added.
+	if got, want := len(newMarked), 5; got != want {
+		t.Fatalf("len(newMarked) = %d, want %d (0,1,2,3,4)", got, want)
+	}
+}
+
+func TestResultsPaneModeConfirmVisualSelectionSkipsAlreadyMarked(t *testing.T) {
+	mode := newResultsPaneModeModel("")
+	rows := makeTestRows(4)
+	interaction := InteractionState{
+		MarkedRows: []int{1, 2}, // rows already in the range
+		LatestResult: &LatestResultContext{
+			PreservedResult: &db.ResultSet{
+				Columns: []db.ResultColumn{{Name: "id"}},
+				Rows:    rows,
+			},
+		},
+	}
+
+	mode.selectedRow = 1
+	mode.EnterVisualMode()
+	mode.selectedRow = 3
+
+	newMarked, _, _, _ := mode.ConfirmVisualSelection(interaction)
+
+	// 1,2 already marked; 3 added — total 3, no duplicates.
+	if got, want := len(newMarked), 3; got != want {
+		t.Fatalf("len(newMarked) = %d, want %d (no duplicates)", got, want)
+	}
+}
+
+func TestResultsPaneModeVisualRangeInViewContext(t *testing.T) {
+	mode := newResultsPaneModeModel("")
+	mode.SetSize(80, 8)
+	rows := makeTestRows(5)
+	interaction := InteractionState{
+		LatestResult: &LatestResultContext{
+			PreservedResult: &db.ResultSet{
+				Columns: []db.ResultColumn{{Name: "id"}},
+				Rows:    rows,
+			},
+		},
+	}
+
+	mode.selectedRow = 1
+	mode.selectionActive = true
+	mode.EnterVisualMode()
+	mode.selectedRow = 3
+
+	ctx := mode.buildViewContext(interaction)
+
+	if ctx.VisualRange == nil {
+		t.Fatal("VisualRange = nil, want non-nil in visual mode")
+	}
+	if got, want := ctx.VisualRange[0], 1; got != want {
+		t.Fatalf("VisualRange[0] = %d, want %d", got, want)
+	}
+	if got, want := ctx.VisualRange[1], 3; got != want {
+		t.Fatalf("VisualRange[1] = %d, want %d", got, want)
+	}
+}
+
+func TestResultsPaneModeVisualRangeNilWhenNotInVisualMode(t *testing.T) {
+	mode := newResultsPaneModeModel("")
+	mode.SetSize(80, 8)
+	rows := makeTestRows(5)
+	interaction := InteractionState{
+		LatestResult: &LatestResultContext{
+			PreservedResult: &db.ResultSet{
+				Columns: []db.ResultColumn{{Name: "id"}},
+				Rows:    rows,
+			},
+		},
+	}
+
+	ctx := mode.buildViewContext(interaction)
+
+	if ctx.VisualRange != nil {
+		t.Fatalf("VisualRange = %v, want nil when not in visual mode", ctx.VisualRange)
+	}
+}
+
+func TestResultsPaneModeVisualModeClearedOnNilResult(t *testing.T) {
+	mode := newResultsPaneModeModel("")
+	mode.selectedRow = 2
+	mode.EnterVisualMode()
+
+	interaction := InteractionState{LatestResult: nil}
+	mode.buildViewContext(interaction) // triggers syncSelection
+
+	if mode.visualMode {
+		t.Fatal("visualMode = true after nil result, want false")
+	}
+}
+
+func TestMergeVisualRange(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		marked []int
+		start  int
+		end    int
+		want   []int
+	}{
+		{
+			name:  "empty existing, range 1-3",
+			start: 1, end: 3,
+			want: []int{1, 2, 3},
+		},
+		{
+			name:   "existing outside range preserved",
+			marked: []int{0, 5},
+			start:  2, end: 4,
+			want: []int{0, 5, 2, 3, 4},
+		},
+		{
+			name:   "overlap: already-marked rows not duplicated",
+			marked: []int{2, 3},
+			start:  1, end: 4,
+			want: []int{2, 3, 1, 4},
+		},
+		{
+			name:   "single row range",
+			marked: []int{},
+			start:  7, end: 7,
+			want: []int{7},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := mergeVisualRange(tc.marked, tc.start, tc.end)
+			if len(got) != len(tc.want) {
+				t.Fatalf("mergeVisualRange() = %v (len %d), want len %d", got, len(got), len(tc.want))
+			}
+			gotSet := make(map[int]struct{}, len(got))
+			for _, v := range got {
+				gotSet[v] = struct{}{}
+			}
+			for _, v := range tc.want {
+				if _, ok := gotSet[v]; !ok {
+					t.Fatalf("mergeVisualRange() = %v, want to contain %d", got, v)
+				}
+			}
+		})
+	}
+}
+
+func makeTestRows(n int) []db.ResultRow {
+	rows := make([]db.ResultRow, n)
+	for i := range rows {
+		rows[i] = db.ResultRow{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(i + 1)}}}
+	}
+	return rows
+}
+
 func BenchmarkResultsPaneModeViewLargePage(b *testing.B) {
 	mode := newResultsPaneModeModel("")
 	mode.SetSize(140, 24)
