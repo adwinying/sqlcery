@@ -131,8 +131,12 @@ func (m Model) handlePickerConnectFailed(msg pickerConnectFailedMsg) (Model, tea
 
 	errText := FormatTerminalError(msg.err)
 
-	// A bare Connection String arg has nothing to pick — print and quit.
-	if m.autoConnectTarget.Connection.Type != "" && len(candidates) == 0 {
+	// A bare Connection String arg (no Name, just a Raw DSN) has nothing to pick —
+	// print and quit. A named target stays eligible for the Picker even when the
+	// candidate list is momentarily empty.
+	isBareDSN := strings.TrimSpace(m.autoConnectTarget.Name) == "" &&
+		strings.TrimSpace(m.autoConnectTarget.Raw) != ""
+	if isBareDSN && len(candidates) == 0 {
 		m.state.App.Current = StateError
 		m.state.App.Error = errText
 		return m, tea.Quit

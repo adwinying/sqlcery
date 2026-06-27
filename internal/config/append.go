@@ -60,22 +60,32 @@ func tomlTableKey(name string) string {
 }
 
 // AppendConnection appends a [connection.<name>] TOML block to the file at path.
-// The parent directory is created with mode 0755 if absent.
-// Existing file content is preserved byte-for-byte; the new block lands at the end.
+// The parent directory is created with mode 0700 if absent (the file can hold
+// credentials, so it must not be world-readable). Existing file content is
+// preserved byte-for-byte and its mode is retained; a newly created file is
+// written 0600. The write is atomic: a temp file in the same directory is
+// fsynced and renamed into place, so a failed or interrupted save never
+// truncates the existing connections.toml.
 // String values are TOML-escaped; the port field is rendered bare and omitted when zero.
 // Lifecycle and Color fields are not emitted.
 func AppendConnection(path string, name string, conn Connection) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 
 	existing := ""
+	perm := os.FileMode(0o600)
 	data, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read %s: %w", path, err)
 	}
 	if err == nil {
 		existing = string(data)
+		// Preserve the existing file's permission bits on rewrite.
+		if info, statErr := os.Stat(path); statErr == nil {
+			perm = info.Mode().Perm()
+		}
 	}
 
 	var sb strings.Builder
@@ -109,5 +119,31 @@ func AppendConnection(path string, name string, conn Connection) error {
 		fmt.Fprintf(&sb, "password = \"%s\"\n", tomlEscapeValue(conn.Password))
 	}
 
-	return os.WriteFile(path, []byte(sb.String()), 0o644)
+	// Atomic write: write to a temp file in the same directory, fsync, then
+	// rename over the target so the existing file is never left truncated.
+	tmp, err := os.CreateTemp(dir, ".connections-*.toml")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op once the rename succeeds
+
+	if _, err := tmp.WriteString(sb.String()); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write temp file: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return fmt.Errorf("sync temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp file: %w", err)
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
+		return fmt.Errorf("chmod temp file: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("rename temp file: %w", err)
+	}
+	return nil
 }

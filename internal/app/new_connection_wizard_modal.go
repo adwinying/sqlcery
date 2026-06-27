@@ -685,6 +685,7 @@ func (w *newConnectionWizardModal) handleEsc() ModalResult {
 		w.dsnError = ""
 		return modalResultNone{}
 	case StepSaveLocation:
+		w.writeError = ""
 		if w.wizardMode == "dsn" {
 			// Go back to StepDSN; dsnText is still intact.
 			w.step = StepDSN
@@ -998,6 +999,7 @@ func (w *newConnectionWizardModal) HandleMouse(_ tea.MouseClickMsg, ctx ModalCon
 			return modalResultNone{}
 		}
 		w.selectedLoc = locIdx
+		w.writeError = ""
 		if ctx.MouseDoubleClick {
 			return w.submitSaveLocation()
 		}
@@ -1035,6 +1037,7 @@ func (w *newConnectionWizardModal) HandleMouseWheel(_ ModalContext, msg tea.Mous
 		w.vpType = lazyScroll(w.selectedType, w.vpType, tui.ModalSplitListRows)
 	case StepSaveLocation:
 		w.selectedLoc = min(max(w.selectedLoc+delta, 0), 1)
+		w.writeError = ""
 	}
 	return modalResultNone{}
 }
@@ -1227,14 +1230,32 @@ func derivedNameFromConnection(conn config.Connection) string {
 // handleOpenNewConnectionWizard pushes a new wizard onto the modal stack.
 // Called from Model.Update when openNewConnectionWizardMsg arrives.
 func (m *Model) handleOpenNewConnectionWizard() (Model, tea.Cmd) {
+	// Both lookups are prerequisites: the connections snapshot powers
+	// duplicate-name validation and the discovered paths power save-location
+	// selection. If either fails, abort opening rather than build a degraded
+	// wizard that silently disables those guarantees.
 	var connections config.Connections
 	if m.connectionsLoader != nil {
-		if c, err := m.connectionsLoader(); err == nil {
-			connections = c
+		c, err := m.connectionsLoader()
+		if err != nil {
+			return m.failOpenWizard(err)
 		}
+		connections = c
 	}
-	paths, _ := config.DiscoverConnectionPaths(m.session.WorkingDir)
+	paths, err := config.DiscoverConnectionPaths(m.session.WorkingDir)
+	if err != nil {
+		return m.failOpenWizard(err)
+	}
 	wizard := newConnectionWizardModalFor(connections, m.session.WorkingDir, paths)
 	m.pushModal(wizard)
 	return *m, nil
+}
+
+// failOpenWizard surfaces a wizard-open prerequisite failure in the Status Bar
+// and leaves the current modal stack untouched.
+func (m *Model) failOpenWizard(err error) (Model, tea.Cmd) {
+	prevCreatedAt := m.state.Notification.CreatedAt
+	m.state.SetPendingIntent(IntentNone, "new-connection",
+		fmt.Sprintf("Cannot open New Connection Wizard: %v", err), NotificationError)
+	return *m, m.newNotificationClearCmdIfChanged(prevCreatedAt)
 }

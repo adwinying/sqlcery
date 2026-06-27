@@ -640,6 +640,13 @@ func (m Model) handleSubmitIntent() (tea.Model, tea.Cmd) {
 			return m.openCommandWizard()
 		}
 		if parsedSlash.Name == "connect" {
+			// /connect is intercepted before normal dispatch, so enforce its
+			// zero-argument contract here too (e.g. reject "/connect extra").
+			if err := validateSlashCommandArgs(*parsedSlash, 0); err != nil {
+				m.state.SetRunningStatementContext(nil)
+				m.state.SetPendingIntent(IntentNone, "submit", err.Error(), NotificationError)
+				return m, m.notificationClearCmdIfSet()
+			}
 			return m.openConnectionPickerModal()
 		}
 		return m, m.startExecution(parsedSlash.DisplayName, fmt.Sprintf("Dispatching %s.", parsedSlash.DisplayName), NotificationInfo, executeSlashCommandCmd(slashCommandContext{
@@ -2158,9 +2165,16 @@ func (m Model) handleWriteConnectionSuccess(msg writeConnectionSuccessMsg) (Mode
 	// Pop the wizard modal.
 	m.closeModal()
 
-	// Refresh the connections loader cache.
+	// Refresh the connections loader cache. If the reload fails, the picker would
+	// rebuild from stale data while claiming success — surface the error instead.
 	if m.reloadConnections != nil {
-		_ = m.reloadConnections()
+		if err := m.reloadConnections(); err != nil {
+			prevCreatedAt := m.state.Notification.CreatedAt
+			m.state.SetPendingIntent(IntentNone, "write-connection",
+				fmt.Sprintf("Saved %q, but failed to reload connections: %v", msg.name, err),
+				NotificationError)
+			return m, m.newNotificationClearCmdIfChanged(prevCreatedAt)
+		}
 	}
 
 	// Rebuild the picker beneath (if it is still the current modal).

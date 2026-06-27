@@ -639,8 +639,7 @@ func TestPickerFrecencyRecordedExactlyOnce(t *testing.T) {
 	model = next.(Model)
 	successMsg := cmd()
 
-	next, _ = model.Update(successMsg)
-	model = next.(Model)
+	_, _ = model.Update(successMsg)
 
 	if got, want := len(fs.opens), 1; got != want {
 		t.Fatalf("frecency RecordOpen called %d times, want exactly 1", got)

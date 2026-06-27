@@ -204,7 +204,11 @@ func TestConnectionPickerModalEscCancelsWithoutConnecting(t *testing.T) {
 func TestMidRunSwapSuccessNewSessionOldAdapterClosed(t *testing.T) {
 	alphaAdapter := openTestAdapter(t)
 	betaAdapter := openTestAdapter(t)
-	defer betaAdapter.Close()
+	defer func() {
+		if err := betaAdapter.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	}()
 
 	connections := config.Connections{
 		Connection: map[string]config.Connection{
@@ -311,7 +315,11 @@ func TestMidRunSwapSuccessNewSessionOldAdapterClosed(t *testing.T) {
 
 func TestMidRunSwapFailureOldSessionUntouched(t *testing.T) {
 	alphaAdapter := openTestAdapter(t)
-	defer alphaAdapter.Close()
+	defer func() {
+		if err := alphaAdapter.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	}()
 
 	connections := config.Connections{
 		Connection: map[string]config.Connection{
@@ -380,7 +388,11 @@ func TestMidRunSwapTransactional_OldAdapterInSuccessMsg(t *testing.T) {
 	// NOT closed on the failure path.
 	alphaAdapter := openTestAdapter(t)
 	betaAdapter := openTestAdapter(t)
-	defer betaAdapter.Close()
+	defer func() {
+		if err := betaAdapter.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	}()
 
 	connections := config.Connections{
 		Connection: map[string]config.Connection{

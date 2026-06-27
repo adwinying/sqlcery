@@ -478,6 +478,13 @@ func (m *Model) returnToPickerOrReady(startup bool, status string, level Notific
 func (m Model) handleMidRunConnectingKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c":
+		// Cancel the in-flight open before quitting so a late-completing adapter
+		// is not leaked (never swapped in, never closed).
+		if m.cancelConnect != nil {
+			m.cancelConnect()
+			m.cancelConnect = nil
+		}
+		m.pendingConnectAbort = false
 		return m, tea.Quit
 	case "esc":
 		if m.pendingConnectAbort {

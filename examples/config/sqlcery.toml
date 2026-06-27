@@ -10,8 +10,9 @@
 #   with the wheel. Enabling this disables capture so your terminal's native
 #   click-drag text selection keeps working.
 #
-# To set a default database, use the Connection Picker (run sqlcery with no
-# arguments) or pass a named connection or connection string as a CLI argument.
+# To choose a database at startup, run sqlcery with no arguments to open the
+# Connection Picker, or pass a named connection or connection string as a CLI
+# argument.
 
 # Opt out of mouse support to preserve native terminal text selection:
 # mouse_disabled = true

@@ -43,13 +43,13 @@ func run(args []string, getwd func() (string, error)) error {
 	return runWithDependencies(args, getwd, runDependencies{
 		open: db.Open,
 		start: func(ctx context.Context, cwd string, autoConnectTarget config.ResolvedConnection, opts app.RunOptions) error {
-			frecencyPath, err := frecency.DefaultPath()
-			if err != nil {
-				return fmt.Errorf("resolve frecency path: %w", err)
-			}
-			frecencyStore, err := frecency.Load(frecencyPath, nil)
-			if err != nil {
-				return fmt.Errorf("load frecency store: %w", err)
+			// Frecency only affects Picker ordering, so a bad path/file must not
+			// block launch — degrade to a nil (no-op) store instead.
+			var frecencyStore app.FrecencyStore
+			if frecencyPath, err := frecency.DefaultPath(); err == nil {
+				if store, err := frecency.Load(frecencyPath, nil); err == nil {
+					frecencyStore = store
+				}
 			}
 
 			connections, err := config.LoadConnections[config.Connections](cwd)

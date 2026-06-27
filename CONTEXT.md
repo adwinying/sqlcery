@@ -94,7 +94,7 @@ The severity classification of a Notification. One of:
 Distinct from the running indicator, which occupies the Notification slot during Statement execution but carries no Notification Level.
 
 ### Modal
-An overlay dialog rendered on top of both panes. Does not replace pane focus permanently. Current modals: History Search, Slash Command Wizard, Keybindings, Export Wizard, Connection Picker (the same Modal at startup and mid-run; at startup the panes behind it are simply empty).
+An overlay dialog rendered on top of both panes. Does not replace pane focus permanently. Current modals: History Search, Slash Command Wizard, Keybindings, Export Wizard, Connection Picker (the same Modal at startup and mid-run; at startup the panes behind it are simply empty), New Connection Wizard, and Confirm (a yes/no confirmation, e.g. discarding the New Connection Wizard).
 
 ### Slash Command Wizard
 A guided multi-step Modal for selecting and executing a Slash Command. Opened via `/commands` or by pressing Enter on a Slash Command row in the Keybindings Modal. Distinct from typing a Slash Command directly into the Command Pane.
