@@ -28,6 +28,7 @@ const (
 	ModalConnectionPicker    AppModal = "connection-picker"
 	ModalNewConnectionWizard AppModal = "new-connection-wizard"
 	ModalConfirm             AppModal = "confirm"
+	ModalConnecting          AppModal = "connecting"
 )
 
 type AppLayout string

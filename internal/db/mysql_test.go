@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"net"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -82,7 +82,7 @@ func TestOpenMySQLAdapterUsesDriverConnector(t *testing.T) {
 		openSSHTunnel = originalOpenSSHTunnel
 	})
 
-	openSSHTunnel = func(context.Context, string) (*sshTunnel, error) {
+	openSSHTunnel = func(context.Context, string, string, int) (*sshTunnel, error) {
 		return nil, errors.New("ssh tunnel should not be opened")
 	}
 
@@ -155,18 +155,21 @@ func TestOpenMySQLAdapterUsesSSHTunnelWhenConfigured(t *testing.T) {
 		openSSHTunnel = originalOpenSSHTunnel
 	})
 
-	tunnelDialCalled := false
+	const tunnelLocalPort = 54322
 	tunnelClosed := false
-	openSSHTunnel = func(_ context.Context, sshHost string) (*sshTunnel, error) {
+	openSSHTunnel = func(_ context.Context, sshHost string, dbHost string, dbPort int) (*sshTunnel, error) {
 		if got, want := sshHost, "bastion"; got != want {
 			t.Fatalf("sshHost = %q, want %q", got, want)
 		}
+		if got, want := dbHost, "db.internal"; got != want {
+			t.Fatalf("dbHost = %q, want %q", got, want)
+		}
+		if got, want := dbPort, 3306; got != want {
+			t.Fatalf("dbPort = %d, want %d", got, want)
+		}
 
 		return &sshTunnel{
-			dialContext: func(context.Context, string, string) (net.Conn, error) {
-				tunnelDialCalled = true
-				return nil, nil
-			},
+			localPort: tunnelLocalPort,
 			close: func() error {
 				tunnelClosed = true
 				return nil
@@ -175,12 +178,8 @@ func TestOpenMySQLAdapterUsesSSHTunnelWhenConfigured(t *testing.T) {
 	}
 
 	openMySQLDB = func(connConfig *mysqldriver.Config) (*sql.DB, error) {
-		if connConfig.DialFunc == nil {
-			t.Fatal("connConfig.DialFunc = nil, want tunnel dialer")
-		}
-
-		if _, err := connConfig.DialFunc(context.Background(), "tcp", "db.internal:3306"); err != nil {
-			t.Fatalf("connConfig.DialFunc() error = %v", err)
+		if got, want := connConfig.Addr, fmt.Sprintf("127.0.0.1:%d", tunnelLocalPort); got != want {
+			t.Fatalf("connConfig.Addr = %q, want %q", got, want)
 		}
 
 		db, err := sql.Open(driverName, "")
@@ -201,10 +200,6 @@ func TestOpenMySQLAdapterUsesSSHTunnelWhenConfigured(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
-	}
-
-	if !tunnelDialCalled {
-		t.Fatal("tunnel dialer was not used")
 	}
 
 	if err := adapter.Close(); err != nil {

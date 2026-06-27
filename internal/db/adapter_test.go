@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -619,7 +618,7 @@ func TestOpenPostgresAdapterUsesPGXStdlib(t *testing.T) {
 		return db
 	}
 
-	openSSHTunnel = func(context.Context, string) (*sshTunnel, error) {
+	openSSHTunnel = func(context.Context, string, string, int) (*sshTunnel, error) {
 		return nil, errors.New("ssh tunnel should not be opened")
 	}
 
@@ -667,18 +666,21 @@ func TestOpenPostgresAdapterUsesSSHTunnelWhenConfigured(t *testing.T) {
 		openSSHTunnel = originalOpenSSHTunnel
 	})
 
-	tunnelDialCalled := false
+	const tunnelLocalPort = 54321
 	tunnelClosed := false
-	openSSHTunnel = func(_ context.Context, sshHost string) (*sshTunnel, error) {
+	openSSHTunnel = func(_ context.Context, sshHost string, dbHost string, dbPort int) (*sshTunnel, error) {
 		if got, want := sshHost, "bastion"; got != want {
 			t.Fatalf("sshHost = %q, want %q", got, want)
 		}
+		if got, want := dbHost, "db.internal"; got != want {
+			t.Fatalf("dbHost = %q, want %q", got, want)
+		}
+		if got, want := dbPort, 5432; got != want {
+			t.Fatalf("dbPort = %d, want %d", got, want)
+		}
 
 		return &sshTunnel{
-			dialContext: func(context.Context, string, string) (net.Conn, error) {
-				tunnelDialCalled = true
-				return nil, nil
-			},
+			localPort: tunnelLocalPort,
 			close: func() error {
 				tunnelClosed = true
 				return nil
@@ -687,12 +689,11 @@ func TestOpenPostgresAdapterUsesSSHTunnelWhenConfigured(t *testing.T) {
 	}
 
 	openPostgresDB = func(connConfig pgx.ConnConfig) *sql.DB {
-		if connConfig.DialFunc == nil {
-			t.Fatal("connConfig.DialFunc = nil, want tunnel dialer")
+		if got, want := connConfig.Host, "127.0.0.1"; got != want {
+			t.Fatalf("connConfig.Host = %q, want %q", got, want)
 		}
-
-		if _, err := connConfig.DialFunc(context.Background(), "tcp", "db.internal:5432"); err != nil {
-			t.Fatalf("connConfig.DialFunc() error = %v", err)
+		if got, want := connConfig.Port, uint16(tunnelLocalPort); got != want {
+			t.Fatalf("connConfig.Port = %d, want %d", got, want)
 		}
 
 		db, err := sql.Open(driverName, "")
@@ -713,10 +714,6 @@ func TestOpenPostgresAdapterUsesSSHTunnelWhenConfigured(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
-	}
-
-	if !tunnelDialCalled {
-		t.Fatal("tunnel dialer was not used")
 	}
 
 	if err := adapter.Close(); err != nil {

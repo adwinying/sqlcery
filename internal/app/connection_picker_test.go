@@ -69,7 +69,7 @@ func TestPickerInitialStateIsSelectConnection(t *testing.T) {
 	}
 }
 
-func TestPickerAutoConnectTargetUsesStartupState(t *testing.T) {
+func TestPickerAutoConnectTargetUsesSelectConnectionState(t *testing.T) {
 	model := newModelWithDependencies(Session{}, modelDependencies{
 		open: func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
 			return nil, nil
@@ -80,12 +80,13 @@ func TestPickerAutoConnectTargetUsesStartupState(t *testing.T) {
 			Connection: config.Connection{Type: "sqlite", Database: ":memory:"},
 		},
 	})
-	if got, want := model.state.App.Current, StateStartup; got != want {
-		t.Fatalf("initial state = %q, want %q (auto-connect target should start in StateStartup)", got, want)
+	if got, want := model.state.App.Current, StateSelectConnection; got != want {
+		t.Fatalf("initial state = %q, want %q (auto-connect target should start in StateSelectConnection)", got, want)
 	}
-	// No Picker Modal is pushed when auto-connecting.
+	// No modal is pushed at construction; the Connecting Modal is pushed
+	// when Init() fires pickerConnectMsg → handlePickerConnect.
 	if model.currentModal() != nil {
-		t.Fatalf("currentModal() = %T, want nil for auto-connect", model.currentModal())
+		t.Fatalf("currentModal() = %T, want nil at construction", model.currentModal())
 	}
 }
 
@@ -470,7 +471,7 @@ func TestPickerAutoConnectRecordsFrecency(t *testing.T) {
 		},
 	})
 
-	if got, want := model.state.App.Current, StateStartup; got != want {
+	if got, want := model.state.App.Current, StateSelectConnection; got != want {
 		t.Fatalf("initial state = %q, want %q", got, want)
 	}
 

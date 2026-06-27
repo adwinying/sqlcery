@@ -87,7 +87,7 @@ func TestRunUsesProvidedHistorySession(t *testing.T) {
 		NewProgram: func(model tea.Model, _ ...tea.ProgramOption) Program {
 			return fakeProgram{run: func() (tea.Model, error) {
 				typed := model.(Model)
-				// The model starts in StateStartup (auto-connect target), drive Init.
+				// The model starts in StateSelectConnection (auto-connect target), drive Init.
 				cmd := typed.Init()
 				for _, msg := range collectCommandMessagesForTest(t, cmd) {
 					var nextModel tea.Model

@@ -28,12 +28,15 @@ func openPostgres(ctx context.Context, connection config.Connection, settings li
 
 	closeResources := func() error { return nil }
 	if connection.SSHHost != "" {
-		tunnel, err := openSSHTunnel(ctx, connection.SSHHost)
+		tunnelCtx, tunnelCancel := context.WithTimeout(ctx, settings.ConnectTimeout)
+		tunnel, err := openSSHTunnel(tunnelCtx, connection.SSHHost, connection.Host, connection.Port)
+		tunnelCancel()
 		if err != nil {
 			return nil, fmt.Errorf("configure ssh tunnel for postgres database %q on %s:%d: %w", connection.Database, connection.Host, connection.Port, err)
 		}
 
-		connConfig.DialFunc = tunnel.dialContext
+		connConfig.Host = "127.0.0.1"
+		connConfig.Port = uint16(tunnel.localPort)
 		closeResources = tunnel.close
 	}
 
