@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -128,13 +129,11 @@ func AppendConnection(path string, name string, conn Connection) error {
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) // no-op once the rename succeeds
 
-	if _, err := tmp.WriteString(sb.String()); err != nil {
-		tmp.Close()
-		return fmt.Errorf("write temp file: %w", err)
+	if _, writeErr := tmp.WriteString(sb.String()); writeErr != nil {
+		return fmt.Errorf("write temp file: %w", errors.Join(writeErr, tmp.Close()))
 	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return fmt.Errorf("sync temp file: %w", err)
+	if syncErr := tmp.Sync(); syncErr != nil {
+		return fmt.Errorf("sync temp file: %w", errors.Join(syncErr, tmp.Close()))
 	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp file: %w", err)
