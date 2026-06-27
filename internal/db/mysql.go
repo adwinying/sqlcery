@@ -28,12 +28,14 @@ func openMySQL(ctx context.Context, connection config.Connection, settings lifec
 
 	closeResources := func() error { return nil }
 	if connection.SSHHost != "" {
-		tunnel, err := openSSHTunnel(ctx, connection.SSHHost)
+		tunnelCtx, tunnelCancel := context.WithTimeout(ctx, settings.ConnectTimeout)
+		tunnel, err := openSSHTunnel(tunnelCtx, connection.SSHHost, connection.Host, connection.Port)
+		tunnelCancel()
 		if err != nil {
 			return nil, fmt.Errorf("configure ssh tunnel for mysql database %q on %s:%d: %w", connection.Database, connection.Host, connection.Port, err)
 		}
 
-		connConfig.DialFunc = tunnel.dialContext
+		connConfig.Addr = fmt.Sprintf("127.0.0.1:%d", tunnel.localPort)
 		closeResources = tunnel.close
 	}
 
