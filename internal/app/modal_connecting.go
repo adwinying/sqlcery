@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/adwinying/sqlcery/internal/tui"
 )
@@ -47,7 +48,7 @@ func (c *modalConnecting) Render(_ InteractionState, innerWidth int) string {
 	const cancelLabel = "[ Cancel ]"
 
 	body := "Connecting to " + c.displayName + "…"
-	bodyPad := (innerWidth - len(body)) / 2
+	bodyPad := (innerWidth - lipgloss.Width(body)) / 2
 	if bodyPad < 0 {
 		bodyPad = 0
 	}
