@@ -84,6 +84,9 @@ func (w *EditorWidget) AppendEntry(prompt, sql, output string) {
 // from the natural bottom position).
 func (w EditorWidget) ScrollOffset() int { return w.scrollOffset }
 
+// TranscriptLen returns the number of entries in the REPL transcript.
+func (w EditorWidget) TranscriptLen() int { return len(w.transcript) }
+
 // SelectedSuggestion returns the current suggestion selection index.
 func (w EditorWidget) SelectedSuggestion() int { return w.selectedSuggestion }
 

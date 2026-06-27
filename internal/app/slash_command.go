@@ -58,6 +58,7 @@ var defaultSlashCommandRegistry = newSlashCommandRegistry()
 func slashCommandSpecs() []slashCommandSpec {
 	return []slashCommandSpec{
 		{Name: "commands", Summary: "open the guided slash command wizard", Usage: "/commands", Handler: handleSlashCommands},
+		{Name: "connect", Summary: "open the connection picker to switch databases", Usage: "/connect", Handler: handleSlashConnect},
 		{Name: "tables", Summary: "list tables in the current database", Usage: "/tables", Handler: handleSlashTables},
 		{Name: "columns", Summary: "list columns for a table", Usage: "/columns <table>", Handler: handleSlashColumns, NeedsTarget: true},
 		{Name: "indices", Summary: "list indices for a table", Usage: "/indices <table>", Handler: handleSlashIndices, NeedsTarget: true},
@@ -249,6 +250,21 @@ func handleSlashCommands(_ context.Context, _ slashCommandContext, parsed slashC
 			Step:     SlashCommandWizardStepCommand,
 			Commands: commands,
 		},
+		PreserveResult: true,
+	}, nil
+}
+
+// handleSlashConnect opens the mid-run Connection Picker modal.
+// The actual modal push is handled in handleSubmitIntent (like /commands),
+// so this handler just signals the intent and returns a sentinel result.
+func handleSlashConnect(_ context.Context, _ slashCommandContext, parsed slashCommand) (slashCommandResult, error) {
+	if err := validateSlashCommandArgs(parsed, 0); err != nil {
+		return slashCommandResult{}, err
+	}
+	// Return a sentinel that handleSubmitIntent will intercept.
+	return slashCommandResult{
+		Action:         "connect",
+		Status:         "Opening connection picker...",
 		PreserveResult: true,
 	}, nil
 }
@@ -524,7 +540,8 @@ func buildSlashWizardCommands() []SlashCommandWizardCommand {
 	specs := slashCommandSpecs()
 	commands := make([]SlashCommandWizardCommand, 0, len(specs))
 	for _, spec := range specs {
-		if spec.Name == "commands" {
+		// Exclude meta-commands that open their own UIs.
+		if spec.Name == "commands" || spec.Name == "connect" {
 			continue
 		}
 		commands = append(commands, SlashCommandWizardCommand{
@@ -862,4 +879,3 @@ func replaceEditorCmd(result slashCommandResult) func(context.Context, time.Time
 		}
 	}
 }
-

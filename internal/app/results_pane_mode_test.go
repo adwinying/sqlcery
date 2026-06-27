@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/adwinying/sqlcery/internal/db"
 	"github.com/adwinying/sqlcery/internal/tui"
-	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -517,7 +517,7 @@ func TestPrepareResultsPanePageCJKColumnWidths(t *testing.T) {
 		Columns: []db.ResultColumn{{Name: "名前"}, {Name: "id"}},
 		Rows: []db.ResultRow{
 			{Values: []db.ResultValue{
-				{Kind: db.ValueKindString, Value: "中文"},   // display width 4
+				{Kind: db.ValueKindString, Value: "中文"}, // display width 4
 				{Kind: db.ValueKindInteger, Value: int64(1)},
 			}},
 			{Values: []db.ResultValue{

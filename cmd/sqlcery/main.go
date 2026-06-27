@@ -2,14 +2,13 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 
 	"github.com/adwinying/sqlcery/internal/app"
 	"github.com/adwinying/sqlcery/internal/config"
 	"github.com/adwinying/sqlcery/internal/db"
-	apphistory "github.com/adwinying/sqlcery/internal/history"
+	"github.com/adwinying/sqlcery/internal/frecency"
 )
 
 var (
@@ -43,22 +42,47 @@ func run(args []string, getwd func() (string, error)) error {
 	}
 	return runWithDependencies(args, getwd, runDependencies{
 		open: db.Open,
-		start: func(ctx context.Context, session app.Session) error {
-			history, err := apphistory.NewPersistentHistory(session.ConnectionName)
+		start: func(ctx context.Context, cwd string, autoConnectTarget config.ResolvedConnection, opts app.RunOptions) error {
+			// Frecency only affects Picker ordering, so a bad path/file must not
+			// block launch — degrade to a nil (no-op) store instead.
+			var frecencyStore app.FrecencyStore
+			if frecencyPath, err := frecency.DefaultPath(); err == nil {
+				if store, err := frecency.Load(frecencyPath, nil); err == nil {
+					frecencyStore = store
+				}
+			}
+
+			connections, err := config.LoadConnections[config.Connections](cwd)
 			if err != nil {
 				return err
 			}
-			return app.Run(ctx, session, app.RunOptions{History: history, Version: buildVersion()})
+
+			// Shared in-memory cache so ConnectionsLoader stays a cheap read
+			// (called once per visible row per render frame).
+			cache := connections.Value
+			opts.Version = buildVersion()
+			opts.FrecencyStore = frecencyStore
+			opts.ConnectionsLoader = func() (config.Connections, error) { return cache, nil }
+			opts.ReloadConnections = func() error {
+				r, err := config.LoadConnections[config.Connections](cwd)
+				if err == nil {
+					cache = r.Value
+				}
+				return err
+			}
+			opts.AutoConnectTarget = autoConnectTarget
+
+			return app.Run(ctx, opts)
 		},
 	})
 }
 
 type runDependencies struct {
 	open  func(context.Context, config.Connection) (*db.SQLAdapter, error)
-	start func(context.Context, app.Session) error
+	start func(context.Context, string, config.ResolvedConnection, app.RunOptions) error
 }
 
-func runWithDependencies(args []string, getwd func() (string, error), deps runDependencies) (err error) {
+func runWithDependencies(args []string, getwd func() (string, error), deps runDependencies) error {
 	cwd, err := getwd()
 	if err != nil {
 		return fmt.Errorf("resolve working directory: %w", err)
@@ -69,32 +93,15 @@ func runWithDependencies(args []string, getwd func() (string, error), deps runDe
 		return err
 	}
 
-	if resolved.Connection.Type == "" {
-		return nil
-	}
-
 	cfg, err := config.Load[config.Config](cwd)
 	if err != nil {
 		return err
 	}
 
-	adapter, err := deps.open(context.Background(), resolved.Connection)
-	if err != nil {
-		return errors.New(app.FormatTerminalError(err))
-	}
-	defer func() {
-		closeErr := adapter.Close()
-		if err == nil && closeErr != nil {
-			err = closeErr
-		}
-	}()
-
-	return deps.start(context.Background(), app.Session{
-		ConnectionName:  resolved.Name,
-		DatabaseType:    resolved.Connection.Type,
-		ConnectionColor: resolved.Connection.Color,
-		WorkingDir:      cwd,
-		Adapter:         adapter,
-		MouseDisabled:   cfg.Value.MouseDisabled,
+	return deps.start(context.Background(), cwd, resolved, app.RunOptions{
+		Open:              deps.open,
+		MouseDisabled:     cfg.Value.MouseDisabled,
+		WorkingDir:        cwd,
+		AutoConnectTarget: resolved,
 	})
 }

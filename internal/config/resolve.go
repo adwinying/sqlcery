@@ -97,12 +97,8 @@ func resolveConnectionTarget(cwd string, args []string) (string, error) {
 		return strings.TrimSpace(args[0]), nil
 	}
 
-	loaded, err := Load[Config](cwd)
-	if err != nil {
-		return "", err
-	}
-
-	return loaded.Value.Connection, nil
+	// Zero args: no auto-connect target — the Model will show the Connection Picker.
+	return "", nil
 }
 
 func looksLikeConnectionString(raw string) bool {

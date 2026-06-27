@@ -224,32 +224,22 @@ func TestParseConnectionString(t *testing.T) {
 	}
 }
 
-func TestResolveCLIConnectionUsesConfiguredDefault(t *testing.T) {
-	configHome := t.TempDir()
+func TestResolveCLIConnectionZeroArgsReturnsEmptyTarget(t *testing.T) {
 	workingDir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", configHome)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	globalDir := filepath.Join(configHome, DirName)
-	if err := os.MkdirAll(globalDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-
-	configPath := filepath.Join(globalDir, FileName)
-	if err := os.WriteFile(configPath, []byte("connection = \"sqlite:tmp/sqlcery.db\"\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(config) error = %v", err)
-	}
-
+	// Zero args: no auto-connect target — the Connection Picker will be shown.
 	resolved, err := ResolveCLIConnection(workingDir, nil)
 	if err != nil {
 		t.Fatalf("ResolveCLIConnection() error = %v", err)
 	}
 
-	if got, want := resolved.Connection.Type, "sqlite"; got != want {
-		t.Fatalf("resolved.Connection.Type = %q, want %q", got, want)
+	if got := resolved.Connection.Type; got != "" {
+		t.Fatalf("resolved.Connection.Type = %q, want empty (no auto-connect)", got)
 	}
 
-	if got, want := resolved.Connection.Database, "tmp/sqlcery.db"; got != want {
-		t.Fatalf("resolved.Connection.Database = %q, want %q", got, want)
+	if got := resolved.Name; got != "" {
+		t.Fatalf("resolved.Name = %q, want empty (no auto-connect)", got)
 	}
 }
 

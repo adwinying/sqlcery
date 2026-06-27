@@ -22,15 +22,15 @@ type ResultSet struct {
 }
 
 type ResultColumn struct {
-	Name         string
-	Position     int
+	Name             string
+	Position         int
 	DriverColumnType string
-	ScanType     string
-	Nullable     *bool
-	Length       *int64
-	DecimalSize  *DecimalSize
-	Schema       *Column
-	PrimaryKey   *PrimaryKey
+	ScanType         string
+	Nullable         *bool
+	Length           *int64
+	DecimalSize      *DecimalSize
+	Schema           *Column
+	PrimaryKey       *PrimaryKey
 }
 
 type DecimalSize struct {

@@ -59,4 +59,3 @@ func (e *UnknownConnectionError) Error() string {
 func (e *UnknownConnectionError) Unwrap() error {
 	return ErrUnknownConnection
 }
-

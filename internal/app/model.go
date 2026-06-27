@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/adwinying/sqlcery/internal/config"
 	"github.com/adwinying/sqlcery/internal/db"
 	"github.com/adwinying/sqlcery/internal/export"
 	apphistory "github.com/adwinying/sqlcery/internal/history"
@@ -38,14 +39,32 @@ type Model struct {
 	pendingQuit   bool
 	lastClickRow  int
 	lastClickTime time.Time
+
+	// Connection Picker state
+	pendingConnectAbort bool               // first Esc armed during a connect-in-flight (double-Esc to abort)
+	cancelConnect       context.CancelFunc // non-nil while a connect is in flight
+	open                func(context.Context, config.Connection) (*db.SQLAdapter, error)
+	closeAdapter        func(*db.SQLAdapter) error // defaults to (*db.SQLAdapter).Close; injectable for tests
+	newHistory          func(connectionName string) (*apphistory.History, error)
+	connectionsLoader   func() (config.Connections, error)
+	reloadConnections   func() error // re-reads disk and refreshes the connectionsLoader cache
+	frecencyStore       FrecencyStore
+	autoConnectTarget   config.ResolvedConnection // non-empty → skip Picker, connect on init
 }
 
 type autocompleteSchemaLoader func(context.Context, *db.SQLAdapter) (*AutocompleteSchemaContext, error)
 
 type modelDependencies struct {
-	loader  autocompleteSchemaLoader
-	history *apphistory.History
-	version string
+	loader            autocompleteSchemaLoader
+	history           *apphistory.History
+	version           string
+	open              func(context.Context, config.Connection) (*db.SQLAdapter, error)
+	closeAdapter      func(*db.SQLAdapter) error // defaults to (*db.SQLAdapter).Close; injectable for tests
+	newHistory        func(connectionName string) (*apphistory.History, error)
+	connectionsLoader func() (config.Connections, error)
+	reloadConnections func() error // re-reads disk and refreshes the connectionsLoader cache
+	frecencyStore     FrecencyStore
+	autoConnectTarget config.ResolvedConnection
 }
 
 // nopCmd is a non-nil tea.Cmd that produces no message. Use it when a key
@@ -101,6 +120,8 @@ type historyNavBoundaryMsg struct{}
 
 type toggleHelpIntentMsg struct{}
 
+type openConnectionPickerIntentMsg struct{}
+
 type toggleZoomIntentMsg struct{}
 
 type switchPaneIntentMsg struct{}
@@ -131,6 +152,30 @@ type slashCommandExecutedMsg struct {
 
 type startupCompleteMsg struct{}
 
+// pickerInitMsg pushes the startup Connection Picker Modal on the first tick.
+type pickerInitMsg struct{}
+
+// pickerConnectMsg triggers an async open attempt for a chosen Connection.
+type pickerConnectMsg struct {
+	resolved config.ResolvedConnection
+}
+
+// pickerConnectSuccessMsg signals a successful open.
+type pickerConnectSuccessMsg struct {
+	adapter  *db.SQLAdapter
+	resolved config.ResolvedConnection
+}
+
+// pickerConnectFailedMsg signals a failed open (return to Picker with error).
+type pickerConnectFailedMsg struct {
+	err error
+}
+
+// pickerSchemaReadyMsg is sent after schema introspection finishes post-connect.
+type pickerSchemaReadyMsg struct {
+	schema *AutocompleteSchemaContext
+}
+
 type autocompleteSchemaLoadedMsg struct {
 	Schema *AutocompleteSchemaContext
 	Err    error
@@ -147,6 +192,37 @@ type appErrorMsg struct {
 }
 
 type openEditorIntentMsg struct{}
+
+// openNewConnectionWizardMsg pushes the New Connection Wizard modal.
+type openNewConnectionWizardMsg struct{}
+
+// writeConnectionMsg triggers an async write of a new connection config entry.
+type writeConnectionMsg struct {
+	name     string
+	conn     config.Connection
+	location string // "global" | "project"
+	paths    config.Paths
+}
+
+// writeConnectionSuccessMsg signals that the new connection was written successfully.
+type writeConnectionSuccessMsg struct {
+	name string
+}
+
+// writeConnectionFailedMsg signals that the write failed; the wizard stays open.
+type writeConnectionFailedMsg struct {
+	name string
+	path string
+	err  error
+}
+
+// confirmDiscardWizardMsg pushes the discard-confirm dialog on top of the wizard.
+// Emitted by the wizard's HandleKey (ctrl+c or Esc at StepMode) via modalResultForward.
+type confirmDiscardWizardMsg struct{}
+
+// abortWizardMsg pops the New Connection Wizard and returns to the picker beneath.
+// It is the onYes continuation stored in the modalConfirm pushed by the wizard.
+type abortWizardMsg struct{}
 
 type editorReadyMsg struct {
 	path string
@@ -174,14 +250,37 @@ func newModelWithDependencies(session Session, deps modelDependencies) Model {
 		sessionHistory = apphistory.NewHistory()
 	}
 
+	// Determine initial state: Picker when no adapter and no auto-connect target.
+	hasAutoConnect := deps.autoConnectTarget.Connection.Type != ""
+	hasAdapter := session.Adapter != nil
+
+	var initialState SharedAppState
+	if !hasAdapter && !hasAutoConnect {
+		initialState = newSelectConnectionState()
+	} else {
+		initialState = NewSharedAppState()
+	}
+
+	closeAdapter := deps.closeAdapter
+	if closeAdapter == nil {
+		closeAdapter = func(a *db.SQLAdapter) error { return a.Close() }
+	}
+
 	model := Model{
-		session:     session,
-		history:     sessionHistory,
-		command:     newCommandModeModel(),
-		resultsPane: newResultsPaneModeModel(deps.version),
-		state:       NewSharedAppState(),
-		loader:      loader,
-		splitRatio:  0.65,
+		session:           session,
+		history:           sessionHistory,
+		command:           newCommandModeModel(),
+		resultsPane:       newResultsPaneModeModel(deps.version),
+		state:             initialState,
+		loader:            loader,
+		splitRatio:        0.65,
+		open:              deps.open,
+		closeAdapter:      closeAdapter,
+		newHistory:        deps.newHistory,
+		connectionsLoader: deps.connectionsLoader,
+		reloadConnections: deps.reloadConnections,
+		frecencyStore:     deps.frecencyStore,
+		autoConnectTarget: deps.autoConnectTarget,
 	}
 	model.syncAutocompleteSchemaSnapshot()
 	model.syncHistorySnapshot()
@@ -190,7 +289,18 @@ func newModelWithDependencies(session Session, deps modelDependencies) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return func() tea.Msg { return startupCompleteMsg{} }
+	switch m.state.App.Current {
+	case StateSelectConnection:
+		// Push the startup Picker Modal on first tick (not in the constructor,
+		// so test models that fake StateReady without an Adapter stay modal-free).
+		return func() tea.Msg { return pickerInitMsg{} }
+	default:
+		// Normal startup path (has adapter or auto-connect target).
+		if m.autoConnectTarget.Connection.Type != "" {
+			return func() tea.Msg { return pickerConnectMsg{resolved: m.autoConnectTarget} }
+		}
+		return func() tea.Msg { return startupCompleteMsg{} }
+	}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -278,6 +388,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.handleToggleZoom()
 		m.syncPaneSizes()
 		return m, nil
+	case openConnectionPickerIntentMsg:
+		if m.state.Interaction.Running != nil {
+			m.state.SetPendingIntent(IntentNone, "switch-connection", "Cancel the running statement first.", NotificationInfo)
+			return m, m.notificationClearCmdIfSet()
+		}
+		return m.openConnectionPickerModal()
+	case pickerInitMsg:
+		return m.handlePickerInit()
+	case pickerConnectMsg:
+		return m.handlePickerConnect(msg)
+	case pickerConnectSuccessMsg:
+		return m.handlePickerConnectSuccess(msg)
+	case pickerConnectFailedMsg:
+		return m.handlePickerConnectFailed(msg)
+	case pickerSchemaReadyMsg:
+		m.schema = msg.schema
+		m.syncAutocompleteSchemaSnapshot()
+		return m, nil
+	case midRunConnectMsg:
+		return m.handleMidRunConnect(msg)
+	case midRunConnectSuccessMsg:
+		return m.handleMidRunConnectSuccess(msg)
+	case midRunConnectFailedMsg:
+		return m.handleMidRunConnectFailed(msg)
 	case startupCompleteMsg:
 		m.state.SetReady("", NotificationNone)
 		return m, tea.Batch(m.command.Init(), m.refreshAutocompleteSchemaCmd())
@@ -290,6 +424,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case reconnectStateMsg:
 		m.state.SetReconnect(msg.Status, &msg.Context)
 		return m, nil
+	case openNewConnectionWizardMsg:
+		return m.handleOpenNewConnectionWizard()
+	case confirmDiscardWizardMsg:
+		return m.handleConfirmDiscardWizard()
+	case abortWizardMsg:
+		return m.handleAbortWizard()
+	case writeConnectionMsg:
+		return m.handleWriteConnection(msg)
+	case writeConnectionSuccessMsg:
+		return m.handleWriteConnectionSuccess(msg)
+	case writeConnectionFailedMsg:
+		return m.handleWriteConnectionFailed(msg)
 	case openEditorIntentMsg:
 		return m, m.openInEditorCmd()
 	case editorReadyMsg:
@@ -358,12 +504,44 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKeyPressMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// Startup Connection Picker: route to the same Modal as mid-run. While a
+	// connect is in flight the Modal stays visible but non-interactive — only
+	// the double-Esc abort gesture is handled (mirroring mid-run).
+	if m.state.App.Current == StateSelectConnection {
+		// ctrl+c quits immediately only when no modal is open. When a modal is
+		// present, ctrl+c is routed to the modal's HandleKey so each modal can
+		// decide: the startup picker forwards tea.Quit; the wizard pushes a
+		// discard confirmation; the confirm modal simply dismisses itself.
+		if msg.String() == "ctrl+c" && m.currentModal() == nil {
+			return m, tea.Quit
+		}
+		if m.cancelConnect != nil {
+			return m.handleMidRunConnectingKeyPress(msg)
+		}
+		if modal := m.currentModal(); modal != nil {
+			result := modal.HandleKey(msg, ModalContext{
+				Interaction: m.state.Interaction.snapshot(),
+				Session:     m.session,
+				Dialect:     m.adapterDialect(),
+			})
+			return m, m.applyModalResult(result)
+		}
+		return m, nil
+	}
+
 	if m.state.App.Current != StateReady {
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
 		}
 		return m, nil
+	}
+
+	// If a mid-run connect is in flight, intercept keys for the double-Esc
+	// abort gesture (mirrors the startup connecting path). The modal stays
+	// visible but non-interactive until the connect resolves or is aborted.
+	if m.cancelConnect != nil {
+		return m.handleMidRunConnectingKeyPress(msg)
 	}
 
 	if modal := m.currentModal(); modal != nil {
@@ -460,6 +638,16 @@ func (m Model) handleSubmitIntent() (tea.Model, tea.Cmd) {
 		}
 		if parsedSlash.Name == "commands" {
 			return m.openCommandWizard()
+		}
+		if parsedSlash.Name == "connect" {
+			// /connect is intercepted before normal dispatch, so enforce its
+			// zero-argument contract here too (e.g. reject "/connect extra").
+			if err := validateSlashCommandArgs(*parsedSlash, 0); err != nil {
+				m.state.SetRunningStatementContext(nil)
+				m.state.SetPendingIntent(IntentNone, "submit", err.Error(), NotificationError)
+				return m, m.notificationClearCmdIfSet()
+			}
+			return m.openConnectionPickerModal()
 		}
 		return m, m.startExecution(parsedSlash.DisplayName, fmt.Sprintf("Dispatching %s.", parsedSlash.DisplayName), NotificationInfo, executeSlashCommandCmd(slashCommandContext{
 			Session: m.session,
@@ -573,6 +761,10 @@ func (m Model) View() tea.View {
 
 	var content string
 	switch m.state.App.Current {
+	case StateSelectConnection:
+		// The startup Connection Picker is the same Modal as mid-run, centered
+		// over the (empty) panes — so the two presentations look identical.
+		content = m.readyStateView(contentHeight)
 	case StateStartup:
 		content = strings.Join([]string{
 			tui.AppTheme.PanelTitle.Render("[ startup ]"),
@@ -721,7 +913,11 @@ func (m Model) readyStateView(totalHeight int) string {
 				suggestionsBox := tui.RenderTitledBox(title, modal.Render(interaction, innerWidth), counter, maxW, tui.ModalSplitListRows)
 				rendered = filterBox + "\n" + suggestionsBox
 			} else {
-				rendered = tui.RenderTitledBox(title, modal.Render(interaction, innerWidth), counter, maxW, tui.ModalFixedRows)
+				rows := tui.ModalFixedRows
+				if d, ok := modal.(interface{ DialogRows() int }); ok {
+					rows = d.DialogRows()
+				}
+				rendered = tui.RenderTitledBox(title, modal.Render(interaction, innerWidth), counter, maxW, rows)
 			}
 			base = tui.OverlayCenter(base, rendered, w, totalHeight)
 		}
@@ -752,15 +948,18 @@ func (m Model) statusBarView() string {
 
 	// Middle: keybind hints (priority-ordered; lower-priority hints drop at narrow widths)
 	var hintParts []string
-	if m.state.App.Current == StateReady {
-		if modal := m.currentModal(); modal != nil {
-			hintParts = modal.StatusBarHints(interaction)
-		} else if interaction.ActivePane == PaneResults && interaction.Layout != LayoutCommandOnly {
+	switch {
+	case m.currentModal() != nil && (m.state.App.Current == StateReady || m.state.App.Current == StateSelectConnection):
+		// The Connection Picker Modal supplies its own hints both mid-run
+		// (StateReady) and at startup (StateSelectConnection).
+		hintParts = m.currentModal().StatusBarHints(interaction)
+	case m.state.App.Current == StateReady:
+		if interaction.ActivePane == PaneResults && interaction.Layout != LayoutCommandOnly {
 			hintParts = m.resultsPane.StatusBarHints(interaction)
 		} else {
 			hintParts = m.command.StatusBarHints(interaction)
 		}
-	} else {
+	default:
 		hintParts = []string{"ctrl+c quit"}
 	}
 
@@ -884,6 +1083,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return func() tea.Msg { return openEditorIntentMsg{} }
 	case key.Matches(msg, keys.Help):
 		return func() tea.Msg { return toggleHelpIntentMsg{} }
+	case key.Matches(msg, keys.SwitchConnection):
+		return func() tea.Msg { return openConnectionPickerIntentMsg{} }
 	case key.Matches(msg, keys.SwitchMode):
 		return func() tea.Msg { return switchPaneIntentMsg{} }
 	case msg.String() == "ctrl+q":
@@ -1915,4 +2116,99 @@ func (m *Model) openInEditorCmd() tea.Cmd {
 		}
 		return editorReadyMsg{path: f.Name()}
 	}
+}
+
+// handleConfirmDiscardWizard pushes a generic confirm dialog on top of the wizard.
+// The wizard's state is preserved; if the user declines the confirm pops and the
+// wizard resumes exactly where it was left.
+func (m Model) handleConfirmDiscardWizard() (Model, tea.Cmd) {
+	m.pushModal(&modalConfirm{
+		prompt: "Discard new connection?",
+		onYes:  abortWizardMsg{},
+	})
+	return m, nil
+}
+
+// handleAbortWizard pops the New Connection Wizard and returns to the picker beneath.
+// Called after the user confirms the discard dialog.
+func (m Model) handleAbortWizard() (Model, tea.Cmd) {
+	m.closeModal()
+	return m, nil
+}
+
+// handleWriteConnection starts the async write of a new connection entry.
+// It runs config.AppendConnection in a goroutine and emits a success or failure msg.
+func (m Model) handleWriteConnection(msg writeConnectionMsg) (Model, tea.Cmd) {
+	var targetPath string
+	switch msg.location {
+	case "project":
+		targetPath = msg.paths.Local
+	default: // "global"
+		targetPath = msg.paths.Global
+	}
+
+	name := msg.name
+	conn := msg.conn
+	path := targetPath
+
+	return m, func() tea.Msg {
+		if err := config.AppendConnection(path, name, conn); err != nil {
+			return writeConnectionFailedMsg{name: name, path: path, err: err}
+		}
+		return writeConnectionSuccessMsg{name: name}
+	}
+}
+
+// handleWriteConnectionSuccess pops the wizard, refreshes the connections cache,
+// rebuilds the picker beneath, and auto-selects the new connection by name.
+func (m Model) handleWriteConnectionSuccess(msg writeConnectionSuccessMsg) (Model, tea.Cmd) {
+	// Pop the wizard modal.
+	m.closeModal()
+
+	// Refresh the connections loader cache. If the reload fails, the picker would
+	// rebuild from stale data while claiming success — surface the error instead.
+	if m.reloadConnections != nil {
+		if err := m.reloadConnections(); err != nil {
+			prevCreatedAt := m.state.Notification.CreatedAt
+			m.state.SetPendingIntent(IntentNone, "write-connection",
+				fmt.Sprintf("Saved %q, but failed to reload connections: %v", msg.name, err),
+				NotificationError)
+			return m, m.newNotificationClearCmdIfChanged(prevCreatedAt)
+		}
+	}
+
+	// Rebuild the picker beneath (if it is still the current modal).
+	if pm, ok := m.currentModal().(*connectionPickerModal); ok {
+		pm.filter = ""
+		pm.vpStart = 0
+		pm.candidates = loadPickerCandidates(m.connectionsLoader, m.frecencyStore)
+		// Auto-select the new connection by name (it has no frecency yet).
+		filtered := pickerFilteredCandidates(pm.candidates, "")
+		pm.selected = len(filtered) // default: "Create" row; overridden below if found
+		for i, name := range filtered {
+			if name == msg.name {
+				pm.selected = i
+				const maxRows = 16
+				pm.vpStart = lazyScroll(pm.selected, 0, maxRows)
+				break
+			}
+		}
+	}
+
+	m.state.SetReady(msg.name+" saved. Press enter to connect.", NotificationSuccess)
+	return m, m.notificationClearCmdIfSet()
+}
+
+// handleWriteConnectionFailed keeps the wizard open and surfaces the error inline
+// on StepSaveLocation. Mirrors the handleMidRunConnectFailed picker precedent:
+// reach into the live modal and set a field; the wizard is NOT popped.
+func (m Model) handleWriteConnectionFailed(msg writeConnectionFailedMsg) (Model, tea.Cmd) {
+	if wz, ok := m.currentModal().(*newConnectionWizardModal); ok {
+		wz.writeError = fmt.Sprintf("save failed: %s: %v", msg.path, msg.err)
+		return m, nil
+	}
+	// Fallback: wizard no longer on top (should not occur in normal flow).
+	prevCreatedAt := m.state.Notification.CreatedAt
+	m.state.SetPendingIntent(IntentNone, "write-connection", "Save failed: "+msg.err.Error(), NotificationError)
+	return m, m.newNotificationClearCmdIfChanged(prevCreatedAt)
 }

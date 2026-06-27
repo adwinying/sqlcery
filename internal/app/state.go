@@ -11,7 +11,7 @@ import (
 type Pane string
 
 const (
-	PaneCommand     Pane = "command"
+	PaneCommand Pane = "command"
 	PaneResults Pane = "results-pane"
 )
 
@@ -20,11 +20,14 @@ const (
 type AppModal string
 
 const (
-	ModalNone          AppModal = ""
-	ModalHistorySearch AppModal = "history-search"
-	ModalSlashWizard   AppModal = "slash-wizard"
-	ModalKeybindings   AppModal = "keybindings"
-	ModalExportWizard  AppModal = "export-wizard"
+	ModalNone                AppModal = ""
+	ModalHistorySearch       AppModal = "history-search"
+	ModalSlashWizard         AppModal = "slash-wizard"
+	ModalKeybindings         AppModal = "keybindings"
+	ModalExportWizard        AppModal = "export-wizard"
+	ModalConnectionPicker    AppModal = "connection-picker"
+	ModalNewConnectionWizard AppModal = "new-connection-wizard"
+	ModalConfirm             AppModal = "confirm"
 )
 
 type AppLayout string
@@ -32,25 +35,26 @@ type AppLayout string
 const (
 	LayoutSplit       AppLayout = "split"
 	LayoutCommandOnly AppLayout = "command-only"
-	LayoutResultsOnly  AppLayout = "results-pane-only"
+	LayoutResultsOnly AppLayout = "results-pane-only"
 )
 
 type AppState string
 
 const (
-	StateStartup   AppState = "startup"
-	StateReady     AppState = "ready"
-	StateReconnect AppState = "reconnect"
-	StateError     AppState = "error"
+	StateSelectConnection AppState = "select-connection"
+	StateStartup          AppState = "startup"
+	StateReady            AppState = "ready"
+	StateReconnect        AppState = "reconnect"
+	StateError            AppState = "error"
 )
 
 type PendingIntent string
 
 const (
-	IntentNone       PendingIntent = ""
-	IntentSubmit     PendingIntent = "submit"
-	IntentHistory    PendingIntent = "history"
-	IntentSwitchPane PendingIntent = "switch-pane"
+	IntentNone             PendingIntent = ""
+	IntentSubmit           PendingIntent = "submit"
+	IntentHistory          PendingIntent = "history"
+	IntentSwitchPane       PendingIntent = "switch-pane"
 	IntentClearCommandPane PendingIntent = "clear-command-pane"
 )
 
@@ -198,6 +202,21 @@ func NewSharedAppState() SharedAppState {
 			WindowFocused:   true,
 		},
 		Notification: Notification{Text: "Starting SQLcery.", Level: NotificationInfo, CreatedAt: time.Now()},
+	}
+}
+
+// newSelectConnectionState returns a SharedAppState seeded for the Picker.
+func newSelectConnectionState() SharedAppState {
+	return SharedAppState{
+		App: AppStateContext{
+			Current: StateSelectConnection,
+		},
+		Interaction: InteractionState{
+			Layout:          LayoutSplit,
+			ActivePane:      PaneCommand,
+			ResultsPanePage: 0,
+			WindowFocused:   true,
+		},
 	}
 }
 
@@ -384,7 +403,7 @@ func cloneAutocompleteSchemaContext(schema *AutocompleteSchemaContext) *Autocomp
 		entry := AutocompleteTableContext{
 			Namespace: table.Namespace,
 			Name:      table.Name,
-			Columns: append([]string(nil), table.Columns...),
+			Columns:   append([]string(nil), table.Columns...),
 		}
 		if table.ColumnTypes != nil {
 			entry.ColumnTypes = make(map[string]string, len(table.ColumnTypes))

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/adwinying/sqlcery/internal/db"
 	apphistory "github.com/adwinying/sqlcery/internal/history"
-	tea "charm.land/bubbletea/v2"
 )
 
 func TestParseSlashCommandParsesQuotedArgs(t *testing.T) {
