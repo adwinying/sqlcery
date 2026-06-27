@@ -56,7 +56,7 @@ SQLcery's normalised semantic type classification for a single cell value in a R
 The dialect-aware SQL literal rendering of a single Result Set value, keyed off its Value Kind (e.g. `NULL`, `TRUE`, a quote-escaped string, a canonical timestamp). Produced by the Dialect. Most kinds render identically across dialects; the bytes kind is the one that diverges (PostgreSQL `decode('…','hex')` vs `X'…'` elsewhere). Distinct from how a value is *displayed* in the Results Pane.
 
 ### Results Pane
-The top pane of the TUI. Displays the Result Set from the most recently executed Query. Supports interactive navigation, row marking, SQL composition from rows, and export. Can be maximized (results-only Layout). Some row actions are queued as a Pending Action rather than executed immediately.
+The top pane of the TUI. Displays the Result Set from the most recently executed Query. Supports interactive navigation, row marking, SQL composition from rows, and export. Can be maximized (results-only Layout). Some row actions are queued as a Pending Action rather than executed immediately. Its content changes only when a Statement executes — Statement Expansion and other non-execution events leave it unchanged.
 
 ### Row Cursor
 The single highlighted row in the Results Pane that is currently active for navigation and single-row actions (SQL composition via `yy`/`cc`/`dd`, marking via `space`). Distinct from Marked Rows, which is a multi-row set. The Row Cursor is owned by the Results Pane and does not persist across Result Sets.

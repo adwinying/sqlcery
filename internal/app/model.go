@@ -760,7 +760,6 @@ func (m Model) handleSlashCommandExecuted(msg slashCommandExecutedMsg) (tea.Mode
 	if msg.Result.ShouldReplace {
 		m.command.SetEditorValue(msg.Result.ReplaceEditor)
 		m.syncCurrentSQL()
-		m.state.SetLatestResultContext(nil)
 	} else {
 		m.command.AppendReplEntry("> ", msg.Command.RawInput, "OK: "+formatReplSlashOutput(msg))
 		m.command.Clear()

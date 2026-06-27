@@ -1362,6 +1362,29 @@ func TestModelUpdateModeSwitchPreservesLatestResultContext(t *testing.T) {
 	}
 }
 
+func TestModelUpdateSlashCommandReplacePreservesLatestResult(t *testing.T) {
+	model := NewModel(Session{})
+	model.state.SetReady("", NotificationNone)
+	model.state.SetLatestResultContext(&LatestResultContext{Statement: "select 1;"})
+
+	next, _ := model.Update(slashCommandExecutedMsg{
+		Command: slashCommand{DisplayName: "select"},
+		Result: slashCommandResult{
+			ShouldReplace: true,
+			ReplaceEditor: "SELECT id, name FROM users;",
+			Status:        "select expanded.",
+		},
+	})
+	model = next.(Model)
+
+	if model.state.Interaction.LatestResult == nil {
+		t.Fatal("LatestResult = nil after ShouldReplace slash command, want preserved")
+	}
+	if got, want := model.state.Interaction.LatestResult.Statement, "select 1;"; got != want {
+		t.Fatalf("LatestResult.Statement = %q, want %q", got, want)
+	}
+}
+
 func TestModelUpdateNewResultResetsResultsPanePage(t *testing.T) {
 	adapter := openTestAdapter(t)
 	defer func() {
