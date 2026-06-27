@@ -350,6 +350,64 @@ func (m Model) handleMidRunConnect(msg midRunConnectMsg) (Model, tea.Cmd) {
 	}
 }
 
+// resetPanesToInit restores the Command Pane and Results Pane models and all
+// per-Session InteractionState fields to their cold-boot state — the same
+// state a fresh launch would produce against the same terminal size. Used by
+// the mid-run connection-switch success path so that switching Connection
+// mid-run behaves like a clean Session restart: empty editor, no transcript,
+// no queued autocomplete/history nav, no lingering Result Set, row cursor
+// returned home, scroll offsets cleared, and any Pending Action (Statement
+// Expansion / goto-top) flushed.
+//
+// Scope: pane-swap (Q2/Q3) + stale InteractionState wipe (Q7) + Layout/Active
+// Pane reset to cold-boot defaults (Q6). Each pane's geometry and the Results
+// Pane version banner are preserved so the user's terminal size carries over;
+// the user's *view arrangement* (Layout / Active Pane) does not, by design — a
+// switch is a Session boundary, not a window-management event.
+//
+// The caller remains responsible for closing any open Modal, the success
+// Notification, and propagating the new layout into pane geometry via
+// syncPaneSizes() last — keeping those as explicit handler steps rather than
+// hidden behind this method.
+func (m Model) resetPanesToInit() Model {
+	prevCmdWidth := m.command.innerWidth
+	prevCmdHeight := m.command.innerHeight
+	prevResultsWidth := m.resultsPane.width
+	prevResultsHeight := m.resultsPane.height
+	prevResultsVersion := m.resultsPane.version
+
+	// Swap in fresh constructor-equivalent Pane models.
+	m.command = newCommandModeModel()
+	m.command.SetSize(prevCmdWidth, prevCmdHeight)
+
+	m.resultsPane = newResultsPaneModeModel(prevResultsVersion)
+	m.resultsPane.SetSize(prevResultsWidth, prevResultsHeight)
+
+	// Wipe per-Session InteractionState content.
+	m.state.SetLatestResultContext(nil)
+	m.state.SetMarkedRows(nil)
+	m.schema = nil
+	m.syncAutocompleteSchemaSnapshot()
+
+	// Clear the fields that can carry prior-Session content: last submitted
+	// SQL, pending intent + last action labels, and any queued pane-switch
+	// animation. SetPendingIntent with an empty status leaves the
+	// Notification slot untouched, so the caller's SetReady success message
+	// wins. CurrentSQL is re-mirrored from the freshly-empty editor below.
+	m.state.SetLastSubmittedSQL("")
+	m.state.SetPendingIntent(IntentNone, "", "", NotificationNone)
+	m.state.SetPendingPaneSwitch(nil)
+
+	// Reset Layout and Active Pane to their cold-boot defaults.
+	m.state.SetLayout(LayoutSplit)
+	m.state.SetActivePane(PaneCommand)
+
+	// Re-mirror CurrentSQL from the freshly-empty Command Pane editor.
+	m.syncCurrentSQL()
+
+	return m
+}
+
 // handleMidRunConnectSuccess swaps in the new Session, rebuilds state, records
 // frecency, then closes the OLD Adapter. The old one is closed ONLY HERE, never
 // in the failure path.
@@ -390,17 +448,19 @@ func (m Model) handleMidRunConnectSuccess(msg midRunConnectSuccessMsg) (Model, t
 	m.history = history
 	m.syncHistorySnapshot()
 
-	// Reset per-session UI: results, marked rows, schema.
-	m.state.SetLatestResultContext(nil)
-	m.state.SetMarkedRows(nil)
-	m.schema = nil
-	m.syncAutocompleteSchemaSnapshot()
+	// Reset per-session UI to its cold-boot state.
+	m = m.resetPanesToInit()
 
 	// Close the connection picker modal (if still open) and transition to Ready.
 	if m.currentModal() != nil && m.currentModal().Name() == ModalConnectionPicker {
 		m.closeModal()
 	}
 	m.state.SetReady("Connected to "+msg.resolved.Name+".", NotificationSuccess)
+	m.syncPaneSizes()
+
+	// Propagate the reset layout down into pane geometry last, so the new
+	// LayoutSplit produces correct pane dimensions before any render.
+	m.syncPaneSizes()
 
 	// Close the OLD adapter — only on success.
 	oldAdapter := msg.oldAdapter

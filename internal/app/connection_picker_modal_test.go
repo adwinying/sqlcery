@@ -11,6 +11,7 @@ import (
 	"github.com/adwinying/sqlcery/internal/config"
 	"github.com/adwinying/sqlcery/internal/db"
 	apphistory "github.com/adwinying/sqlcery/internal/history"
+	"github.com/adwinying/sqlcery/internal/tui"
 )
 
 // ---- Modal seam tests: HandleKey → ModalResult ----
@@ -461,6 +462,311 @@ func TestMidRunSwapFrecencyRecordedExactlyOnce(t *testing.T) {
 	}
 	if fs.opens[0] != "beta" {
 		t.Fatalf("frecency opens[0] = %q, want %q", fs.opens[0], "beta")
+	}
+}
+
+// ---- Mid-run switch reset (per-session UI) ----
+
+// TestMidRunSwitchResetsCommandPane asserts that a successful mid-run
+// connection switch leaves the Command Pane in its fresh-boot state: empty
+// editor, no autocomplete navigation/suppression, no history navigation, no
+// cached suggestions, no transcript entries, and the inner geometry preserved
+// from the terminal size established before the switch.
+func TestMidRunSwitchResetsCommandPane(t *testing.T) {
+	alphaAdapter := openTestAdapter(t)
+	betaAdapter := openTestAdapter(t)
+	defer func() {
+		if err := betaAdapter.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	}()
+
+	connections := config.Connections{
+		Connection: map[string]config.Connection{
+			"alpha": {Type: "sqlite", Database: ":memory:"},
+			"beta":  {Type: "sqlite", Database: ":memory:"},
+		},
+	}
+
+	model := newReadyModel(t, alphaAdapter, "alpha", connections)
+	model.newHistory = func(_ string) (*apphistory.History, error) { return apphistory.NewHistory(), nil }
+	model.open = func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
+		return betaAdapter, nil
+	}
+
+	// Establish real pane geometry before the switch.
+	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	model = next.(Model)
+	wantInnerWidth := model.command.innerWidth
+	wantInnerHeight := model.command.innerHeight
+
+	// Seed stale Command Pane state from connection alpha.
+	model.command.SetEditorValue("select stale; -- from alpha")
+	model.command.widget.AppendEntry("> ", "select stale;", "1 row.")
+	model.command.acNav = &acNavState{origValue: "x", origCursor: 1, frozenList: nil}
+	model.command.acSuppressed = &acSuppressedAt{value: "x", cursor: 1}
+	model.command.historyNavIndex = 0
+	model.command.historyNavDraft = "draft"
+	model.command.cachedSuggestions = []tui.AutocompleteSuggestion{{Label: "stale"}}
+
+	// Perform the mid-run swap to beta.
+	next, cmd := model.Update(midRunConnectMsg{name: "beta"})
+	model = next.(Model)
+	successMsg := cmd()
+	if _, ok := successMsg.(midRunConnectSuccessMsg); !ok {
+		t.Fatalf("cmd() = %T, want midRunConnectSuccessMsg", successMsg)
+	}
+	next, _ = model.Update(successMsg)
+	model = next.(Model)
+
+	// Assert Command Pane is indistinguishable from a fresh newCommandModeModel()
+	// (geometry re-applied from the parent model after the swap).
+	fresh := newCommandModeModel()
+	fresh.SetSize(wantInnerWidth, wantInnerHeight)
+
+	if got, want := model.command.Value(), fresh.Value(); got != want {
+		t.Fatalf("command.Value() = %q, want %q", got, want)
+	}
+	if got, want := model.command.historyNavIndex, fresh.historyNavIndex; got != want {
+		t.Fatalf("command.historyNavIndex = %v, want %v", got, want)
+	}
+	if got, want := model.command.historyNavDraft, fresh.historyNavDraft; got != want {
+		t.Fatalf("command.historyNavDraft = %q, want %q", got, want)
+	}
+	if got, want := model.command.acNav, fresh.acNav; got != want {
+		t.Fatalf("command.acNav = %v, want %v", got, want)
+	}
+	if got, want := model.command.acSuppressed, fresh.acSuppressed; got != want {
+		t.Fatalf("command.acSuppressed = %v, want %v", got, want)
+	}
+	if got, want := model.command.cachedSuggestions, fresh.cachedSuggestions; got != nil || want != nil {
+		t.Fatalf("command.cachedSuggestions = %v, want nil", got)
+	}
+	if got, want := model.command.widget.TranscriptLen(), fresh.widget.TranscriptLen(); got != want {
+		t.Fatalf("command.widget.TranscriptLen() = %d, want %d", got, want)
+	}
+	if got, want := model.command.widget.ScrollOffset(), fresh.widget.ScrollOffset(); got != want {
+		t.Fatalf("command.widget.ScrollOffset() = %d, want %d", got, want)
+	}
+	if got, want := model.command.innerWidth, fresh.innerWidth; got != want {
+		t.Fatalf("command.innerWidth = %d, want %d", got, want)
+	}
+	if got, want := model.command.innerHeight, fresh.innerHeight; got != want {
+		t.Fatalf("command.innerHeight = %d, want %d", got, want)
+	}
+}
+
+// TestMidRunSwitchResetsResultsPane asserts that a successful mid-run
+// connection swap leaves the Results Pane model indistinguishable from a fresh
+// newResultsPaneModeModel given the same terminal geometry: cursor reset to
+// the first row/column, scroll offsets cleared, selection-mode flag cleared,
+// any pending action (Statement Expansion / goto-top) cleared, and cached
+// prepared page dropped. Geometry (width/height) and the version banner are
+// preserved.
+func TestMidRunSwitchResetsResultsPane(t *testing.T) {
+	alphaAdapter := openTestAdapter(t)
+	betaAdapter := openTestAdapter(t)
+	defer func() {
+		if err := betaAdapter.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	}()
+
+	connections := config.Connections{
+		Connection: map[string]config.Connection{
+			"alpha": {Type: "sqlite", Database: ":memory:"},
+			"beta":  {Type: "sqlite", Database: ":memory:"},
+		},
+	}
+
+	model := newReadyModel(t, alphaAdapter, "alpha", connections)
+	model.newHistory = func(_ string) (*apphistory.History, error) { return apphistory.NewHistory(), nil }
+	model.open = func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
+		return betaAdapter, nil
+	}
+
+	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	model = next.(Model)
+	wantWidth := model.resultsPane.width
+	wantHeight := model.resultsPane.height
+
+	// Seed stale Results Pane state from connection alpha.
+	model.resultsPane.selectedRow = 12
+	model.resultsPane.selectedColumn = 3
+	model.resultsPane.colScrollOffset = 17
+	model.resultsPane.viewportStart = 50
+	model.resultsPane.selectionActive = true
+	model.resultsPane.pendingAction = resultsPanePendingActionComposeInsert
+	model.resultsPane.cachedPage = &tui.ResultsPanePreparedPage{}
+
+	// Perform the mid-run swap to beta.
+	next, cmd := model.Update(midRunConnectMsg{name: "beta"})
+	model = next.(Model)
+	successMsg := cmd()
+	if _, ok := successMsg.(midRunConnectSuccessMsg); !ok {
+		t.Fatalf("cmd() = %T, want midRunConnectSuccessMsg", successMsg)
+	}
+	next, _ = model.Update(successMsg)
+	model = next.(Model)
+
+	// Compare to a freshly-booted Results Pane re-sized the same way.
+	fresh := newResultsPaneModeModel("")
+	fresh.SetSize(wantWidth, wantHeight)
+
+	if got, want := model.resultsPane.selectedRow, fresh.selectedRow; got != want {
+		t.Fatalf("resultsPane.selectedRow = %d, want %d", got, want)
+	}
+	if got, want := model.resultsPane.selectedColumn, fresh.selectedColumn; got != want {
+		t.Fatalf("resultsPane.selectedColumn = %d, want %d", got, want)
+	}
+	if got, want := model.resultsPane.colScrollOffset, fresh.colScrollOffset; got != want {
+		t.Fatalf("resultsPane.colScrollOffset = %d, want %d", got, want)
+	}
+	if got, want := model.resultsPane.viewportStart, fresh.viewportStart; got != want {
+		t.Fatalf("resultsPane.viewportStart = %d, want %d", got, want)
+	}
+	if got, want := model.resultsPane.selectionActive, fresh.selectionActive; got != want {
+		t.Fatalf("resultsPane.selectionActive = %v, want %v", got, want)
+	}
+	if got, want := model.resultsPane.pendingAction, fresh.pendingAction; got != want {
+		t.Fatalf("resultsPane.pendingAction = %q, want %q", got, want)
+	}
+	if got, want := model.resultsPane.cachedPage, fresh.cachedPage; got != nil || want != nil {
+		t.Fatalf("resultsPane.cachedPage = %v, want nil", got)
+	}
+	if got, want := model.resultsPane.width, fresh.width; got != want {
+		t.Fatalf("resultsPane.width = %d, want %d", got, want)
+	}
+	if got, want := model.resultsPane.height, fresh.height; got != want {
+		t.Fatalf("resultsPane.height = %d, want %d", got, want)
+	}
+	if got, want := model.resultsPane.version, fresh.version; got != want {
+		t.Fatalf("resultsPane.version = %q, want %q", got, want)
+	}
+	if got, want := model.resultsPane.hintIdx, 0; got < want || got >= len(emptyStateHints) {
+		t.Fatalf("resultsPane.hintIdx = %d, want in [0, %d)", got, len(emptyStateHints))
+	}
+}
+
+// TestMidRunSwitchResetsLayoutAndActivePane asserts that a successful mid-run
+// connection swap returns Layout and Active Pane to their cold-boot defaults
+// (Split layout, Command Pane focused), irrespective of the layout the user
+// had chosen before opening the Picker.
+func TestMidRunSwitchResetsLayoutAndActivePane(t *testing.T) {
+	alphaAdapter := openTestAdapter(t)
+	betaAdapter := openTestAdapter(t)
+	defer func() {
+		if err := betaAdapter.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	}()
+
+	connections := config.Connections{
+		Connection: map[string]config.Connection{
+			"alpha": {Type: "sqlite", Database: ":memory:"},
+			"beta":  {Type: "sqlite", Database: ":memory:"},
+		},
+	}
+
+	model := newReadyModel(t, alphaAdapter, "alpha", connections)
+	model.newHistory = func(_ string) (*apphistory.History, error) { return apphistory.NewHistory(), nil }
+	model.open = func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
+		return betaAdapter, nil
+	}
+
+	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	model = next.(Model)
+
+	// Seed a non-default layout/active pane — user had maximized the Command
+	// Pane and was focused on the Results Pane.
+	model.state.SetLayout(LayoutCommandOnly)
+	model.state.SetActivePane(PaneResults)
+
+	// Perform the mid-run swap to beta.
+	next, cmd := model.Update(midRunConnectMsg{name: "beta"})
+	model = next.(Model)
+	successMsg := cmd()
+	if _, ok := successMsg.(midRunConnectSuccessMsg); !ok {
+		t.Fatalf("cmd() = %T, want midRunConnectSuccessMsg", successMsg)
+	}
+	next, _ = model.Update(successMsg)
+	model = next.(Model)
+
+	if got, want := model.state.Interaction.Layout, LayoutSplit; got != want {
+		t.Fatalf("Interaction.Layout = %q, want %q", got, want)
+	}
+	if got, want := model.state.Interaction.ActivePane, PaneCommand; got != want {
+		t.Fatalf("Interaction.ActivePane = %q, want %q", got, want)
+	}
+}
+
+// TestMidRunSwitchClearsStaleInteractionState asserts that the five
+// InteractionState fields that can carry stale prior-Session content
+// (CurrentSQL, LastSubmittedSQL, PendingIntent, LastAction, PendingPaneSwitch)
+// are reset to their zero values on a successful mid-run swap. CurrentSQL is
+// re-mirrored from the freshly-empty editor so it matches the post-reset
+// Command Pane.
+func TestMidRunSwitchClearsStaleInteractionState(t *testing.T) {
+	alphaAdapter := openTestAdapter(t)
+	betaAdapter := openTestAdapter(t)
+	defer func() {
+		if err := betaAdapter.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	}()
+
+	connections := config.Connections{
+		Connection: map[string]config.Connection{
+			"alpha": {Type: "sqlite", Database: ":memory:"},
+			"beta":  {Type: "sqlite", Database: ":memory:"},
+		},
+	}
+
+	model := newReadyModel(t, alphaAdapter, "alpha", connections)
+	model.newHistory = func(_ string) (*apphistory.History, error) { return apphistory.NewHistory(), nil }
+	model.open = func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
+		return betaAdapter, nil
+	}
+
+	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	model = next.(Model)
+
+	// Seed stale prior-Session state.
+	model.command.SetEditorValue("select stale; -- from alpha")
+	model.syncCurrentSQL()
+	model.state.SetLastSubmittedSQL("select prior; -- from alpha")
+	model.state.SetPendingIntent(IntentSubmit, "submit", "pending", NotificationInfo)
+	model.state.SetPendingPaneSwitch(&PaneSwitchContext{
+		FromLayout: LayoutSplit,
+		ToLayout:   LayoutResultsOnly,
+		FromPane:   PaneCommand,
+		ToPane:     PaneResults,
+	})
+
+	// Perform the mid-run swap to beta.
+	next, cmd := model.Update(midRunConnectMsg{name: "beta"})
+	model = next.(Model)
+	successMsg := cmd()
+	if _, ok := successMsg.(midRunConnectSuccessMsg); !ok {
+		t.Fatalf("cmd() = %T, want midRunConnectSuccessMsg", successMsg)
+	}
+	next, _ = model.Update(successMsg)
+	model = next.(Model)
+
+	if got, want := model.state.Interaction.CurrentSQL, ""; got != want {
+		t.Fatalf("Interaction.CurrentSQL = %q, want %q", got, want)
+	}
+	if got, want := model.state.Interaction.LastSubmittedSQL, ""; got != want {
+		t.Fatalf("Interaction.LastSubmittedSQL = %q, want %q", got, want)
+	}
+	if got, want := model.state.Interaction.PendingIntent, IntentNone; got != want {
+		t.Fatalf("Interaction.PendingIntent = %q, want %q", got, want)
+	}
+	if got, want := model.state.Interaction.LastAction, ""; got != want {
+		t.Fatalf("Interaction.LastAction = %q, want %q", got, want)
+	}
+	if got := model.state.Interaction.PendingPaneSwitch; got != nil {
+		t.Fatalf("Interaction.PendingPaneSwitch = %#v, want nil", got)
 	}
 }
 
