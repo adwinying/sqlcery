@@ -250,15 +250,18 @@ func newModelWithDependencies(session Session, deps modelDependencies) Model {
 		sessionHistory = apphistory.NewHistory()
 	}
 
-	// Determine initial state: Picker when no adapter and no auto-connect target.
-	hasAutoConnect := deps.autoConnectTarget.Connection.Type != ""
+	// Determine initial state. When no adapter is pre-wired (the common case),
+	// always start in StateSelectConnection so Init can route to either the
+	// Picker or the Connecting Modal. When an adapter is provided directly
+	// (tests, pre-wired sessions), start in StateStartup for the quick
+	// startupCompleteMsg → StateReady transition.
 	hasAdapter := session.Adapter != nil
 
 	var initialState SharedAppState
-	if !hasAdapter && !hasAutoConnect {
-		initialState = newSelectConnectionState()
-	} else {
+	if hasAdapter {
 		initialState = NewSharedAppState()
+	} else {
+		initialState = newSelectConnectionState()
 	}
 
 	closeAdapter := deps.closeAdapter
@@ -291,14 +294,16 @@ func newModelWithDependencies(session Session, deps modelDependencies) Model {
 func (m Model) Init() tea.Cmd {
 	switch m.state.App.Current {
 	case StateSelectConnection:
-		// Push the startup Picker Modal on first tick (not in the constructor,
-		// so test models that fake StateReady without an Adapter stay modal-free).
-		return func() tea.Msg { return pickerInitMsg{} }
-	default:
-		// Normal startup path (has adapter or auto-connect target).
+		// Auto-connect: push the Connecting Modal and fire the async open.
 		if m.autoConnectTarget.Connection.Type != "" {
 			return func() tea.Msg { return pickerConnectMsg{resolved: m.autoConnectTarget} }
 		}
+		// No auto-connect target: push the startup Picker Modal on first tick
+		// (not in the constructor, so test models that fake StateReady without
+		// an Adapter stay modal-free).
+		return func() tea.Msg { return pickerInitMsg{} }
+	default:
+		// Has a pre-wired adapter: transition to Ready.
 		return func() tea.Msg { return startupCompleteMsg{} }
 	}
 }
@@ -398,6 +403,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handlePickerInit()
 	case pickerConnectMsg:
 		return m.handlePickerConnect(msg)
+	case pickerConnectAbortMsg:
+		return m.handlePickerConnectAbort()
 	case pickerConnectSuccessMsg:
 		return m.handlePickerConnectSuccess(msg)
 	case pickerConnectFailedMsg:
@@ -516,6 +523,17 @@ func (m Model) handleKeyPressMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if m.cancelConnect != nil {
+			// Auto-connect in flight: route all keys to the Connecting Modal.
+			// Startup-Picker-initiated connects keep the Picker open and use
+			// handleMidRunConnectingKeyPress to lock the Picker from interaction.
+			if modal := m.currentModal(); modal != nil && modal.Name() == ModalConnecting {
+				result := modal.HandleKey(msg, ModalContext{
+					Interaction: m.state.Interaction.snapshot(),
+					Session:     m.session,
+					Dialect:     m.adapterDialect(),
+				})
+				return m, m.applyModalResult(result)
+			}
 			return m.handleMidRunConnectingKeyPress(msg)
 		}
 		if modal := m.currentModal(); modal != nil {

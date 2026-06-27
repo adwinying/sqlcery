@@ -94,7 +94,10 @@ The severity classification of a Notification. One of:
 Distinct from the running indicator, which occupies the Notification slot during Statement execution but carries no Notification Level.
 
 ### Modal
-An overlay dialog rendered on top of both panes. Does not replace pane focus permanently. Current modals: History Search, Slash Command Wizard, Keybindings, Export Wizard, Connection Picker (the same Modal at startup and mid-run; at startup the panes behind it are simply empty), New Connection Wizard, and Confirm (a yes/no confirmation, e.g. discarding the New Connection Wizard).
+An overlay dialog rendered on top of both panes. Does not replace pane focus permanently. Current modals: History Search, Slash Command Wizard, Keybindings, Export Wizard, Connection Picker (the same Modal at startup and mid-run; at startup the panes behind it are simply empty), New Connection Wizard, Confirm (a yes/no confirmation, e.g. discarding the New Connection Wizard), and Connecting (shown during the auto-connect path while the in-flight open is pending).
+
+### Connecting Modal
+The Modal shown during the auto-connect path (when SQLcery is launched with a connection argument) while the async open is in flight. Displays the target connection name, a spinner, and a single Cancel button. Pressing Cancel, Esc, or Enter cancels the in-flight open and quits the application. A failed open (non-user-aborted error) dismisses the modal and drops into the startup Connection Picker with the failure marked. Distinct from the mid-run connecting path, which keeps the Connection Picker Modal open and shows progress in the Status Bar.
 
 ### Slash Command Wizard
 A guided multi-step Modal for selecting and executing a Slash Command. Opened via `/commands` or by pressing Enter on a Slash Command row in the Keybindings Modal. Distinct from typing a Slash Command directly into the Command Pane.

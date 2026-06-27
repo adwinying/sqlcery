@@ -27,16 +27,32 @@ func (m Model) handlePickerInit() (Model, tea.Cmd) {
 	return m, nil
 }
 
+// pickerConnectAbortMsg is fired by modalConnecting when the user presses
+// Cancel / Esc / Enter. The handler cancels the in-flight open and quits.
+type pickerConnectAbortMsg struct{}
+
+// handlePickerConnectAbort cancels the in-flight open and quits the app.
+// Called when the user explicitly cancels via the Connecting Modal.
+func (m Model) handlePickerConnectAbort() (Model, tea.Cmd) {
+	if m.cancelConnect != nil {
+		m.cancelConnect()
+		m.cancelConnect = nil
+	}
+	m.pendingConnectAbort = false
+	if m.currentModal() != nil && m.currentModal().Name() == ModalConnecting {
+		m.closeModal()
+	}
+	return m, tea.Quit
+}
+
 // handlePickerConnect fires an async open attempt for the auto-connect path
-// (a CLI connection argument). It shows the full-screen StateStartup
-// "Connecting…" indicator — there is no Picker Modal to keep open here, because
-// the user bypassed the Picker by naming a target. Picker-initiated connects go
-// through handleMidRunConnect instead (which keeps the Modal open).
+// (a CLI connection argument). It pushes the Connecting Modal overlay and
+// keeps the app in StateSelectConnection while the open is in flight.
+// Picker-initiated connects go through handleMidRunConnect instead.
 func (m Model) handlePickerConnect(msg pickerConnectMsg) (Model, tea.Cmd) {
 	m.pendingConnectAbort = false
 
-	// Transition to StateStartup to show a connecting indicator.
-	m.state.SetStartup("Connecting to " + pickerConnectionDisplayName(msg.resolved) + "...")
+	m.pushModal(&modalConnecting{displayName: pickerConnectionDisplayName(msg.resolved)})
 
 	openFn := m.open
 	resolved := msg.resolved
@@ -91,6 +107,11 @@ func (m Model) handlePickerConnectSuccess(msg pickerConnectSuccessMsg) (Model, t
 	m.history = history
 	m.syncHistorySnapshot()
 
+	// Close the Connecting Modal (auto-connect path) if still open.
+	if m.currentModal() != nil && m.currentModal().Name() == ModalConnecting {
+		m.closeModal()
+	}
+
 	// Transition to Ready.
 	m.state.SetReady("", NotificationNone)
 
@@ -112,9 +133,11 @@ func (m Model) handlePickerConnectSuccess(msg pickerConnectSuccessMsg) (Model, t
 
 // handlePickerConnectFailed handles a failed auto-connect open. A bare
 // Connection String arg with no Picker candidates quits with the error (the
-// Picker would be useless). Otherwise — including a named-arg failure or a
-// double-Esc abort — it drops into the startup Connection Picker, marking the
-// failed Connection with ! and surfacing the detail in the Status Bar.
+// Picker would be useless). Otherwise — a named-arg failure — it drops into
+// the startup Connection Picker, marking the failed Connection with ! and
+// surfacing the detail in the Status Bar. User-aborted connects (context
+// cancelled) always quit because the user explicitly cancelled the only
+// pending connection.
 func (m Model) handlePickerConnectFailed(msg pickerConnectFailedMsg) (Model, tea.Cmd) {
 	if m.cancelConnect != nil {
 		m.cancelConnect()
@@ -122,11 +145,16 @@ func (m Model) handlePickerConnectFailed(msg pickerConnectFailedMsg) (Model, tea
 	}
 	m.pendingConnectAbort = false
 
+	// Close the Connecting Modal if still open before deciding where to go.
+	if m.currentModal() != nil && m.currentModal().Name() == ModalConnecting {
+		m.closeModal()
+	}
+
 	candidates := loadPickerCandidates(m.connectionsLoader, m.frecencyStore)
 
-	// Aborted via double-Esc during auto-connect: drop into the Picker silently.
+	// User cancelled (Cancel button / Esc): always quit.
 	if errors.Is(msg.err, context.Canceled) {
-		return m.dropIntoStartupPicker(candidates, "", "", NotificationNone)
+		return m, tea.Quit
 	}
 
 	errText := FormatTerminalError(msg.err)
