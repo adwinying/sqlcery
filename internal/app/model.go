@@ -84,6 +84,8 @@ type jumpResultsPaneBottomIntentMsg struct{}
 
 type cancelRunningIntentMsg struct{}
 
+type clearMarkedRowsIntentMsg struct{}
+
 type notificationClearMsg struct {
 	createdAt time.Time
 }
@@ -316,6 +318,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleSubmitIntent()
 	case cancelRunningIntentMsg:
 		return m.handleCancelRunningIntent()
+	case clearMarkedRowsIntentMsg:
+		m.clearResultsPaneMarkedRows()
+		return m, m.notificationClearCmdIfSet()
 	case statementExecutedMsg:
 		return m.handleStatementExecuted(msg)
 	case slashCommandExecutedMsg:
@@ -1238,6 +1243,16 @@ func (m *Model) handleResultsPaneSelectionKey(msg tea.KeyPressMsg) bool {
 	return true
 }
 
+func (m *Model) clearResultsPaneMarkedRows() {
+	count := len(m.state.Interaction.MarkedRows)
+	m.state.ClearMarkedRows()
+	if count == 0 {
+		m.state.SetPendingIntent(IntentNone, "results-pane-select", "No marked rows to clear.", NotificationInfo)
+		return
+	}
+	m.state.SetPendingIntent(IntentNone, "results-pane-select", fmt.Sprintf("Cleared %d marked row(s).", count), NotificationSuccess)
+}
+
 func (m *Model) handleResultsPaneComposeKey(msg tea.KeyPressMsg) bool {
 	if m.state.Interaction.ActivePane != PaneResults {
 		m.resultsPane.pendingAction = resultsPanePendingActionNone
@@ -1250,6 +1265,10 @@ func (m *Model) handleResultsPaneComposeKey(msg tea.KeyPressMsg) bool {
 	}
 
 	switch []rune(msg.Text)[0] {
+	case 'u':
+		m.resultsPane.pendingAction = resultsPanePendingActionNone
+		m.clearResultsPaneMarkedRows()
+		return true
 	case 'g':
 		if m.resultsPane.pendingAction != resultsPanePendingActionGotoTop {
 			m.resultsPane.pendingAction = resultsPanePendingActionGotoTop

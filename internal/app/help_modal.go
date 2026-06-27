@@ -338,6 +338,7 @@ func buildHelpRows(pane Pane, modal AppModal) []helpRow {
 				{keyText: "gg", desc: "jump to top of page", actionKey: "gg"},
 				{keyText: "G", desc: "jump to bottom of page", actionKey: "G"},
 				{keyText: "space", desc: "toggle selected row"},
+				{keyText: "u", desc: "clear all marked rows", actionKey: "u"},
 				{keyText: "yy", desc: "load INSERT into command pane", actionKey: "yy"},
 				{keyText: "cc", desc: "load UPDATE into command pane", actionKey: "cc"},
 				{keyText: "dd", desc: "load DELETE into command pane", actionKey: "dd"},
@@ -404,6 +405,8 @@ func keyToMsgFn(actionKey string) func() tea.Msg {
 		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneCommand} }
 	case "ctrl+3":
 		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
+	case "u":
+		return func() tea.Msg { return clearMarkedRowsIntentMsg{} }
 	case "gg":
 		return func() tea.Msg { return jumpResultsPaneTopIntentMsg{} }
 	case "G":
