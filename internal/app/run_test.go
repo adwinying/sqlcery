@@ -1876,34 +1876,6 @@ func TestModelUpdateLayoutSwitchesToResultsPaneOnlyAndClosesHistorySearch(t *tes
 	}
 }
 
-func TestModelUpdateLayoutSwitchesToCommandOnlyFromSplitResultsPaneFocus(t *testing.T) {
-	model := NewModel(Session{})
-	model.state.SetReady("", NotificationNone)
-	model.state.SetLayout(LayoutSplit)
-	model.state.SetActivePane(PaneResults)
-	model.state.SetLatestResultContext(&LatestResultContext{
-		Statement: "select 1",
-		PreservedResult: &db.ResultSet{
-			Columns: []db.ResultColumn{{Name: "value"}},
-			Rows:    []db.ResultRow{{Values: []db.ResultValue{{Kind: db.ValueKindInteger, Value: int64(1)}}}},
-		},
-	})
-
-	next, cmd := model.Update(tea.KeyPressMsg{Code: '3', Mod: tea.ModAlt})
-	if cmd == nil {
-		t.Fatal("Update(ctrl+3) cmd = nil, want layout intent command")
-	}
-	next, _ = next.(Model).Update(cmd())
-	model = next.(Model)
-
-	if got, want := model.state.Interaction.Layout, LayoutCommandOnly; got != want {
-		t.Fatalf("state.Interaction.Layout = %q, want %q", got, want)
-	}
-	if got, want := model.state.Interaction.ActivePane, PaneCommand; got != want {
-		t.Fatalf("state.Interaction.ActivePane = %q, want %q", got, want)
-	}
-}
-
 func TestModelUpdateCtrlXUsesSplitFocusWhenAlreadyInSplitLayout(t *testing.T) {
 	model := NewModel(Session{})
 	model.state.SetReady("", NotificationNone)

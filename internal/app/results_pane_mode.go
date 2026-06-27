@@ -183,7 +183,7 @@ func (m resultsPaneModeModel) StatusBarHints(interaction InteractionState) []str
 		return []string{"arrows/hjkl navigate", "space confirm", "esc cancel", "ctrl+c quit"}
 	}
 	parts := []string{"arrows/hjkl navigate", "space toggle row", "V visual select", "u clear marks", "ctrl+c quit"}
-	parts = append(parts, "ctrl+e export", "ctrl+u scroll up", "ctrl+d scroll down", "gg top", "G bottom", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+3 command-only", "ctrl+t keybindings")
+	parts = append(parts, "ctrl+e export", "ctrl+u scroll up", "ctrl+d scroll down", "gg top", "G bottom", "ctrl+p prev page", "ctrl+n next page", "ctrl+x focus", "ctrl+1 results", "ctrl+2 command", "ctrl+t keybindings")
 	return parts
 }
 

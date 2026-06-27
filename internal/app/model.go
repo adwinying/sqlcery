@@ -1087,8 +1087,6 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return func() tea.Msg { return submitIntentMsg{} }
 		}
 		return nil
-	case key.Matches(msg, keys.LayoutCommandOnly):
-		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
 	case key.Matches(msg, keys.Submit):
 		return func() tea.Msg { return submitIntentMsg{} }
 	case key.Matches(msg, keys.NextSuggestion):
@@ -1124,8 +1122,6 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneResults} }
 	case msg.String() == "ctrl+w":
 		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneCommand} }
-	case msg.String() == "ctrl+3", msg.String() == "alt+3":
-		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
 	case msg.String() == "ctrl+z":
 		return func() tea.Msg { return toggleZoomIntentMsg{} }
 	default:

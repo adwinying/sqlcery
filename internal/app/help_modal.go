@@ -91,8 +91,6 @@ func (h *helpModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) ModalResult
 		return h.updateFilter(h.filter + msg.Text)
 
 	// Layout/zoom keys pass through so the user can rearrange panes while the modal is open.
-	case key.Matches(msg, keys.LayoutCommandOnly), msg.String() == "ctrl+3", msg.String() == "alt+3":
-		return modalResultForward{cmd: func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }}
 	case msg.String() == "ctrl+q":
 		return modalResultForward{cmd: func() tea.Msg { return focusPaneIntentMsg{Pane: PaneResults} }}
 	case msg.String() == "ctrl+w":
@@ -352,7 +350,6 @@ func buildHelpRows(pane Pane, modal AppModal) []helpRow {
 				{keyText: "ctrl+z", desc: "zoom / unzoom", actionKey: "ctrl+z"},
 				{keyText: "ctrl+1", desc: "focus results pane", actionKey: "ctrl+1"},
 				{keyText: "ctrl+2", desc: "focus command pane", actionKey: "ctrl+2"},
-				{keyText: "ctrl+3", desc: "command-only layout", actionKey: "ctrl+3"},
 			}
 		default: // PaneCommand
 			contextRows = []helpRow{
@@ -367,7 +364,6 @@ func buildHelpRows(pane Pane, modal AppModal) []helpRow {
 				{keyText: "ctrl+z", desc: "zoom / unzoom", actionKey: "ctrl+z"},
 				{keyText: "ctrl+1", desc: "focus results pane", actionKey: "ctrl+1"},
 				{keyText: "ctrl+2", desc: "focus command pane", actionKey: "ctrl+2"},
-				{keyText: "ctrl+3", desc: "command-only layout", actionKey: "ctrl+3"},
 			}
 			for _, spec := range defaultSlashCommandRegistry.All() {
 				s := spec
@@ -404,8 +400,6 @@ func keyToMsgFn(actionKey string) func() tea.Msg {
 		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneResults} }
 	case "ctrl+2":
 		return func() tea.Msg { return focusPaneIntentMsg{Pane: PaneCommand} }
-	case "ctrl+3":
-		return func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }
 	case "u":
 		return func() tea.Msg { return clearMarkedRowsIntentMsg{} }
 	case "gg":

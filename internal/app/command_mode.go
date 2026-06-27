@@ -61,7 +61,6 @@ type commandModeKeyMap struct {
 	History              key.Binding
 	RestoreHistory       key.Binding
 	SwitchMode           key.Binding
-	LayoutCommandOnly    key.Binding
 	AcceptSuggestion     key.Binding
 	NextSuggestion       key.Binding
 	PrevSuggestion       key.Binding
@@ -79,7 +78,6 @@ func defaultCommandModeKeys() commandModeKeyMap {
 		History:              key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "history")),
 		RestoreHistory:       key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "restore")),
 		SwitchMode:           key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "focus")),
-		LayoutCommandOnly:    key.NewBinding(key.WithKeys("ctrl+3"), key.WithHelp("ctrl+3", "command")),
 		AcceptSuggestion:     key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab/enter", "accept")),
 		NextSuggestion:       key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "next suggestion")),
 		PrevSuggestion:       key.NewBinding(key.WithKeys("ctrl+p"), key.WithHelp("ctrl+p", "prev suggestion")),

@@ -85,8 +85,6 @@ func (h *historySearchModal) HandleKey(msg tea.KeyPressMsg, ctx ModalContext) Mo
 	case len(msg.Text) > 0 && !msg.Mod.Contains(tea.ModAlt):
 		return h.updateFilter(ctx, h.filter+msg.Text)
 	// Layout keys pass through so the user can rearrange panes while searching.
-	case key.Matches(msg, keys.LayoutCommandOnly), msg.String() == "ctrl+3", msg.String() == "alt+3":
-		return modalResultForward{cmd: func() tea.Msg { return switchLayoutIntentMsg{Layout: LayoutCommandOnly} }}
 	case msg.String() == "ctrl+q":
 		return modalResultForward{cmd: func() tea.Msg { return focusPaneIntentMsg{Pane: PaneResults} }}
 	case msg.String() == "ctrl+w":
