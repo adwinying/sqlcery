@@ -2,6 +2,7 @@ package app
 
 import (
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
@@ -10,10 +11,22 @@ import (
 )
 
 // modalConnecting is the overlay shown while the auto-connect open is in
-// flight. It displays the target connection name and a single Cancel button.
-// Pressing Cancel, Esc, or Enter cancels the in-flight open and quits.
+// flight. It displays the target connection name, an animated spinner, and a
+// single Cancel button. Pressing Cancel, Esc, or Enter cancels the in-flight
+// open and quits.
 type modalConnecting struct {
-	displayName string
+	displayName  string
+	SpinnerFrame int
+}
+
+// connectingTickMsg is the heartbeat that advances the Connecting modal's
+// spinner animation.
+type connectingTickMsg struct{}
+
+func connectingTickCmd() tea.Cmd {
+	return tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg {
+		return connectingTickMsg{}
+	})
 }
 
 func (c *modalConnecting) Name() AppModal { return ModalConnecting }
@@ -47,7 +60,8 @@ func (c *modalConnecting) HandleMouseWheel(_ ModalContext, _ tea.MouseWheelMsg) 
 func (c *modalConnecting) Render(_ InteractionState, innerWidth int) string {
 	const cancelLabel = "[ Cancel ]"
 
-	body := "Connecting to " + c.displayName + "…"
+	frame := runningSpinnerFrames[clampRunningSpinnerFrame(c.SpinnerFrame)]
+	body := frame + " Connecting to " + c.displayName + "…"
 	bodyPad := (innerWidth - lipgloss.Width(body)) / 2
 	if bodyPad < 0 {
 		bodyPad = 0

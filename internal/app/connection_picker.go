@@ -60,13 +60,16 @@ func (m Model) handlePickerConnect(msg pickerConnectMsg) (Model, tea.Cmd) {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancelConnect = cancel
 
-	return m, func() tea.Msg {
-		adapter, err := openFn(ctx, resolved.Connection)
-		if err != nil {
-			return pickerConnectFailedMsg{err: err}
-		}
-		return pickerConnectSuccessMsg{adapter: adapter, resolved: resolved}
-	}
+	return m, tea.Batch(
+		func() tea.Msg {
+			adapter, err := openFn(ctx, resolved.Connection)
+			if err != nil {
+				return pickerConnectFailedMsg{err: err}
+			}
+			return pickerConnectSuccessMsg{adapter: adapter, resolved: resolved}
+		},
+		connectingTickCmd(),
+	)
 }
 
 // handlePickerConnectSuccess wires the session, history, schema, and frecency.

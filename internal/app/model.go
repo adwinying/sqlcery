@@ -480,6 +480,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state.Notification = Notification{}
 		}
 		return m, nil
+	case connectingTickMsg:
+		if modal := m.currentModal(); modal != nil && modal.Name() == ModalConnecting {
+			c := modal.(*modalConnecting)
+			updated := *c
+			updated.SpinnerFrame = clampRunningSpinnerFrame(c.SpinnerFrame + 1)
+			m.modals[len(m.modals)-1] = &updated
+			return m, connectingTickCmd()
+		}
+		return m, nil
 	case runningTickMsg:
 		updated, cmd := m.exec.tick(m.state.Interaction.Running, msg)
 		m.state.SetRunningStatementContext(updated)

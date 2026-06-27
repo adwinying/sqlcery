@@ -486,8 +486,8 @@ func TestPickerAutoConnectRecordsFrecency(t *testing.T) {
 
 	next, cmd := model.Update(connectMsg)
 	model = next.(Model)
-	// cmd is the async open.
-	successMsg := cmd()
+	// cmd is a batch of [open goroutine, connectingTickCmd].
+	successMsg := firstCommandMessageForTest[pickerConnectSuccessMsg](t, cmd)
 
 	next, _ = model.Update(successMsg)
 	model = next.(Model)
