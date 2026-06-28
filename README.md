@@ -2,13 +2,15 @@
 
 SQLcery (pronounced "sequel-cery") is a TUI SQL client that minimizes keystrokes for database operations — through SQL Assistance (autocomplete, statement expansion) and an interactive Results Pane for navigating and acting on query results.
 
-## Elevator Pitch
+![SQLcery querying a SQLite database in the terminal](docs/assets/sqlcery-demo.gif)
+
+## Features
 
 ### Connections as config
 
-Named connections live in `connections.toml`, which you can version-control and share with your team. PostgreSQL and MySQL connections support SSH tunneling through a jump host — resolved against `~/.ssh/config`.
+Named connections live in `connections.toml`, with global and project-local overrides. PostgreSQL and MySQL connections support SSH tunneling through a jump host — resolved against `~/.ssh/config`.
 
-### Act on query results directly.
+### Act on query results directly
 
 Select a row in the Results Pane and press `yy`, `cc`, or `dd` to load a ready-to-edit INSERT, UPDATE, or DELETE into the editor — values pre-filled, no retyping.
 
@@ -36,6 +38,24 @@ If you have go installed, you can install the latest release with:
 go install github.com/adwinying/sqlcery/cmd/sqlcery@latest
 ```
 
+## Quick Start
+
+Launch without an argument to choose or create a named connection:
+
+```sh
+sqlcery
+```
+
+You can also open a named connection or connect directly with a DSN:
+
+```sh
+sqlcery local
+sqlcery sqlite:tmp/sqlcery.db
+sqlcery postgres://app:secret@127.0.0.1:5432/warehouse
+```
+
+Type a SQL statement ending in `;` and press `Enter`. Press `Ctrl-t` to open the interactive keybinding and command launcher.
+
 ## Features
 
 ### Multi-Database Support
@@ -57,6 +77,8 @@ SQLcery loads two layered TOML files for app settings and two more for named con
 
 Sample files with all options are at `examples/config/sqlcery.toml` and `examples/config/connections.toml`.
 
+`sqlcery.toml` contains non-sensitive application settings and is safe to commit. `connections.toml` can contain database credentials: do not commit it, and add a project-local `./connections.toml` to `.gitignore`.
+
 `sqlcery.toml` currently supports one setting:
 
 ```toml
@@ -72,8 +94,6 @@ SQLite:
 ```toml
 [connection.local]
 type = "sqlite"
-
-[connection.local.sqlite]
 database = "tmp/sqlcery.db"
 ```
 
@@ -82,8 +102,6 @@ PostgreSQL and MySQL (`password` is optional):
 ```toml
 [connection.analytics]
 type = "postgres"
-
-[connection.analytics.postgres]
 host = "127.0.0.1"
 port = 5432
 database = "warehouse"
@@ -92,8 +110,6 @@ password = "secret"
 
 [connection.reporting]
 type = "mysql"
-
-[connection.reporting.mysql]
 host = "127.0.0.1"
 port = 3306
 database = "reporting"
@@ -101,12 +117,38 @@ username = "root"
 password = "secret"
 ```
 
-You can also connect directly via a connection string:
+You can also connect directly via a DSN connection string:
 
 - `postgres://...` and `postgresql://...`
 - `mysql://...`
 - `sqlite:tmp/sqlcery.db`
 - `sqlite:///:memory:`
+
+#### Optional Connection Settings
+
+Set `color` to highlight a connection in the picker and status bar. It accepts named colors such as `blue` or `bright-red`, ANSI 256 color numbers such as `196`, and hex values such as `#00cc44`.
+
+Connection and pool lifecycle values live in a nested `[connection.<name>.lifecycle]` table. Durations use Go duration syntax:
+
+```toml
+[connection.analytics]
+type = "postgres"
+host = "127.0.0.1"
+port = 5432
+database = "warehouse"
+username = "app"
+color = "cyan"
+
+[connection.analytics.lifecycle]
+connect_timeout = "7s"
+health_check_timeout = "1500ms"
+max_open_conns = 12
+max_idle_conns = 6
+conn_max_lifetime = "45m"
+conn_max_idle_time = "10m"
+```
+
+All lifecycle fields are optional. See [`examples/config/connections.toml`](examples/config/connections.toml) for complete SQLite, PostgreSQL, and MySQL examples.
 
 #### SSH Tunnels
 
@@ -116,8 +158,6 @@ PostgreSQL and MySQL connections support SSH tunneling via `ssh_host`:
 [connection.analytics]
 type = "postgres"
 ssh_host = "bastion"
-
-[connection.analytics.postgres]
 host = "db.internal"
 port = 5432
 database = "warehouse"
@@ -272,8 +312,14 @@ SQLcery uses a layered Go design: `cmd/sqlcery` stays thin, application flow liv
 | `internal/tui` | Presentation-only widgets, isolated from application state |
 | `testdata` | Shared test assets and fixtures |
 
-## Usage
+## Development
+
+The project uses [mise](https://mise.jdx.dev/) to pin tools and run development commands:
 
 ```sh
-$ sqlcery [connection name]
+mise install
+mise run fmt
+mise run test
+mise run lint
+mise run release-snapshot
 ```

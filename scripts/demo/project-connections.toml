@@ -1,0 +1,4 @@
+[connection.local-shop]
+type = "sqlite"
+database = "shop.db"
+color = "cyan"

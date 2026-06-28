@@ -1,0 +1,4 @@
+[connection.warehouse]
+type = "sqlite"
+database = "warehouse.db"
+color = "magenta"

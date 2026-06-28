@@ -1,6 +1,8 @@
 [tools]
 go = "1.26.4"
 "npm:figlet" = "latest"
+"github:asciinema/asciinema" = "latest"
+"github:asciinema/agg" = "latest"
 
 [hooks]
 enter = """
@@ -67,6 +69,25 @@ depends = ["check-go-version"]
 description = "Publish a GitHub release"
 run = "go run github.com/goreleaser/goreleaser/v2@v2.15.2 release --clean --config .goreleaser.yaml --release-notes-tmpl .github/release-notes.md.tmpl"
 depends = ["check-go-version"]
+
+[tasks.render-demo]
+description = "Render the README demo GIF from its asciinema recording"
+sources = ["docs/assets/sqlcery-demo.cast"]
+outputs = ["docs/assets/sqlcery-demo.gif"]
+run = "agg --theme github-dark --font-size 15 --line-height 1.25 --fps-cap 20 --idle-time-limit 0.8 --last-frame-duration 3 --cols 110 --rows 34 docs/assets/sqlcery-demo.cast docs/assets/sqlcery-demo.gif"
+
+[tasks.record-demo]
+description = "Record the README feature tour"
+sources = ["README.md", "cmd/**/*.go", "internal/**/*.go", "scripts/record-demo.sh", "scripts/demo/*"]
+outputs = ["docs/assets/sqlcery-demo.cast"]
+run = "./scripts/record-demo.sh"
+
+[tasks.demo]
+description = "Record and render the README feature tour"
+run = '''
+mise run record-demo
+mise run render-demo
+'''
 
 [settings]
 experimental = true
