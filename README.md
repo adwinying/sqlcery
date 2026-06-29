@@ -198,8 +198,8 @@ Use `Ctrl-e` to open the current buffer in `$EDITOR` for multi-line editing, the
 #### Slash Commands
 
 - `/commands` — opens the guided slash-command wizard.
-- `/tables` — lists tables immediately.
-- `/columns <table>` — lists columns for a table immediately.
+- `/tables` — expands a query that lists tables into the editor.
+- `/columns <table>` — expands a query that lists columns into the editor.
 - `/select <table>` — expands a `SELECT` template into the editor.
 - `/insert <table>` — expands an `INSERT` template into the editor.
 - `/update <table>` — expands an `UPDATE` template into the editor.

@@ -44,7 +44,7 @@ A complete SQL expression submitted to the database. Must end with a semicolon. 
 A Statement that returns rows — SELECT, EXPLAIN, SHOW, etc. A subtype of Statement.
 
 ### Slash Command
-A `/`-prefixed meta-command (e.g. `/tables`, `/select users`) interpreted by SQLcery itself and never sent to the database. May execute immediately (e.g. `/tables`) or expand a SQL template into the Command Pane for the user to review and submit.
+A `/`-prefixed meta-command (e.g. `/tables`, `/select users`) interpreted by SQLcery itself and never sent to the database. Either opens application UI or expands a SQL template into the Command Pane for the user to review and submit.
 
 ### Result Set
 The tabular data (columns + rows) returned by a Query. Each cell carries a Value Kind. Displayed in the Results Pane.
