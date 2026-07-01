@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	appaudit "github.com/adwinying/sqlcery/internal/audit"
 	"github.com/adwinying/sqlcery/internal/db"
 	"github.com/adwinying/sqlcery/internal/tui"
 )
@@ -93,21 +94,24 @@ type ReconnectContext struct {
 }
 
 type InteractionState struct {
-	CurrentSQL         string
-	LastSubmittedSQL   string
-	PendingIntent      PendingIntent
-	LastAction         string
-	Running            *RunningStatementContext
-	Layout             AppLayout
-	ActivePane         Pane
-	ActiveModal        AppModal
-	ResultsPanePage    int
-	WindowFocused      bool
-	MarkedRows         []int
-	History            []HistoryEntryContext
-	AutocompleteSchema *AutocompleteSchemaContext
-	LatestResult       *LatestResultContext
-	PendingPaneSwitch  *PaneSwitchContext
+	CurrentSQL             string
+	LastSubmittedSQL       string
+	PendingIntent          PendingIntent
+	LastAction             string
+	Running                *RunningStatementContext
+	Layout                 AppLayout
+	ActivePane             Pane
+	ActiveModal            AppModal
+	ResultsPanePage        int
+	WindowFocused          bool
+	MarkedRows             []int
+	History                []HistoryEntryContext
+	AutocompleteSchema     *AutocompleteSchemaContext
+	LatestResult           *LatestResultContext
+	PendingPaneSwitch      *PaneSwitchContext
+	PendingAuditCompletion *appaudit.CompletedEvent
+	AuditFailure           string
+	AuditRetrying          bool
 }
 
 type RunningStatementContext struct {
@@ -353,6 +357,10 @@ func (q InteractionState) snapshot() InteractionState {
 	clone.AutocompleteSchema = cloneAutocompleteSchemaContext(q.AutocompleteSchema)
 	clone.LatestResult = cloneLatestResultContext(q.LatestResult)
 	clone.PendingPaneSwitch = clonePaneSwitchContext(q.PendingPaneSwitch)
+	if q.PendingAuditCompletion != nil {
+		pending := *q.PendingAuditCompletion
+		clone.PendingAuditCompletion = &pending
+	}
 	clone.MarkedRows = append([]int(nil), q.MarkedRows...)
 	return clone
 }

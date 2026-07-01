@@ -4,10 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
+	tea "charm.land/bubbletea/v2"
 	appaudit "github.com/adwinying/sqlcery/internal/audit"
 	"github.com/adwinying/sqlcery/internal/config"
 )
@@ -15,6 +19,23 @@ import (
 type fakeAudit struct {
 	appendSubmitted func(appaudit.SubmittedEvent) error
 	appendCompleted func(appaudit.CompletedEvent) error
+}
+
+type failFirstCompletionFileAudit struct {
+	log             *appaudit.FileLog
+	completionCalls int
+}
+
+func (a *failFirstCompletionFileAudit) AppendSubmitted(event appaudit.SubmittedEvent) error {
+	return a.log.AppendSubmitted(event)
+}
+
+func (a *failFirstCompletionFileAudit) AppendCompleted(event appaudit.CompletedEvent) error {
+	a.completionCalls++
+	if a.completionCalls == 1 {
+		return errors.New("injected completion failure")
+	}
+	return a.log.AppendCompleted(event)
 }
 
 func (f fakeAudit) AppendSubmitted(event appaudit.SubmittedEvent) error {
@@ -68,6 +89,9 @@ func TestAuditSubmissionFailurePreventsAdapterExecution(t *testing.T) {
 	}
 	if got := model.state.Notification.Text; !strings.Contains(got, wantErr.Error()) {
 		t.Fatalf("notification = %q, want Audit error", got)
+	}
+	if model.state.Interaction.PendingAuditCompletion != nil {
+		t.Fatalf("pending completion = %#v, want submission failure to remain an editor retry", model.state.Interaction.PendingAuditCompletion)
 	}
 }
 
@@ -154,6 +178,273 @@ func TestAuditCompletionFailureIsVisibleAndHistoryRemainsIndependent(t *testing.
 	}
 	if latest, ok := model.history.Latest(); !ok || latest != statement {
 		t.Fatalf("History latest = %q, %v; want independently retained Statement", latest, ok)
+	}
+}
+
+func TestAuditCompletionFailureRetainsExactEventAndPersistentFeedback(t *testing.T) {
+	adapter := openTestAdapter(t)
+	t.Cleanup(func() { _ = adapter.Close() })
+	wantErr := errors.New("completion fsync failed")
+	var failedEvent appaudit.CompletedEvent
+	model := newModelWithDependencies(Session{Adapter: adapter}, modelDependencies{
+		audit: fakeAudit{appendCompleted: func(event appaudit.CompletedEvent) error {
+			failedEvent = event
+			return wantErr
+		}},
+		newExecutionIdentity: func() string { return "failed-completion" },
+	})
+	model.state.SetReady("", NotificationNone)
+	model.command.editor.SetValue("select 1;")
+	model.syncCurrentSQL()
+
+	next, cmd := model.Update(submitIntentMsg{})
+	model = next.(Model)
+	next, clearCmd := model.Update(firstCommandMessageForTest[statementExecutedMsg](t, cmd))
+	model = next.(Model)
+
+	if model.state.Interaction.PendingAuditCompletion == nil {
+		t.Fatal("pending Audit completion = nil, want failed correlated event retained")
+	}
+	if got := *model.state.Interaction.PendingAuditCompletion; got != failedEvent {
+		t.Fatalf("pending Audit completion = %#v, want exact failed event %#v", got, failedEvent)
+	}
+	if got := model.statusBarView(); !strings.Contains(got, wantErr.Error()) {
+		t.Fatalf("status bar = %q, want persistent Audit error", got)
+	}
+	for _, msg := range collectCommandMessagesForTest(t, clearCmd) {
+		if clear, ok := msg.(notificationClearMsg); ok {
+			next, _ = model.Update(clear)
+			model = next.(Model)
+		}
+	}
+	if got := model.statusBarView(); !strings.Contains(got, wantErr.Error()) {
+		t.Fatalf("status bar after Notification clear = %q, want persistent Audit error", got)
+	}
+}
+
+func TestPendingAuditCompletionRetriesBeforeNextStatementExecution(t *testing.T) {
+	adapter := openTestAdapter(t)
+	t.Cleanup(func() { _ = adapter.Close() })
+	if _, err := adapter.ExecContext(context.Background(), `create table widgets (id integer)`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+
+	completionCalls := 0
+	submittedCalls := 0
+	identityCalls := 0
+	var failedEvent, retriedEvent appaudit.CompletedEvent
+	model := newModelWithDependencies(Session{Adapter: adapter}, modelDependencies{
+		audit: fakeAudit{
+			appendSubmitted: func(appaudit.SubmittedEvent) error {
+				submittedCalls++
+				return nil
+			},
+			appendCompleted: func(event appaudit.CompletedEvent) error {
+				completionCalls++
+				if completionCalls == 1 {
+					failedEvent = event
+					return errors.New("completion unavailable")
+				}
+				if completionCalls == 2 {
+					retriedEvent = event
+				}
+				return nil
+			},
+		},
+		newExecutionIdentity: func() string {
+			identityCalls++
+			return fmt.Sprintf("execution-%d", identityCalls)
+		},
+	})
+	model.state.SetReady("", NotificationNone)
+	model.command.editor.SetValue("insert into widgets values (1);")
+	model.syncCurrentSQL()
+	next, cmd := model.Update(submitIntentMsg{})
+	model = next.(Model)
+	next, _ = model.Update(firstCommandMessageForTest[statementExecutedMsg](t, cmd))
+	model = next.(Model)
+
+	model.command.editor.SetValue("insert into widgets values (2);")
+	model.syncCurrentSQL()
+	next, retryCmd := model.Update(submitIntentMsg{})
+	model = next.(Model)
+	if submittedCalls != 1 || identityCalls != 1 {
+		t.Fatalf("before retry: submitted calls = %d, identity calls = %d; want 1, 1", submittedCalls, identityCalls)
+	}
+	if completionCalls != 1 {
+		t.Fatalf("completion calls during Update = %d, want retry filesystem work deferred", completionCalls)
+	}
+	_, duplicateRetryCmd := model.Update(submitIntentMsg{})
+	if duplicateRetryCmd != nil {
+		t.Fatal("second Enter while retry is in flight returned a command, want one pending completion slot")
+	}
+	var count int
+	if err := adapter.QueryRowContext(context.Background(), "select count(*) from widgets").Scan(&count); err != nil {
+		t.Fatalf("count rows before retry: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("row count before retry = %d, want no new Adapter execution", count)
+	}
+
+	retried := firstCommandMessageForTest[auditCompletionRetriedMsg](t, retryCmd)
+	next, executeCmd := model.Update(retried)
+	model = next.(Model)
+	if retriedEvent != failedEvent {
+		t.Fatalf("retried completion = %#v, want exact failed event %#v", retriedEvent, failedEvent)
+	}
+	if identityCalls != 2 {
+		t.Fatalf("identity calls after successful retry = %d, want next execution created", identityCalls)
+	}
+	_ = firstCommandMessageForTest[statementExecutedMsg](t, executeCmd)
+	if submittedCalls != 2 {
+		t.Fatalf("submitted calls after retry = %d, want requested Statement submitted", submittedCalls)
+	}
+	if err := adapter.QueryRowContext(context.Background(), "select count(*) from widgets").Scan(&count); err != nil {
+		t.Fatalf("count rows after retry: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("row count after retry = %d, want requested Statement executed", count)
+	}
+}
+
+func TestFailedAuditCompletionRetryKeepsSameEventAndBlocksExecution(t *testing.T) {
+	adapter := openTestAdapter(t)
+	t.Cleanup(func() { _ = adapter.Close() })
+	completionCalls := 0
+	submittedCalls := 0
+	identityCalls := 0
+	var failedEvent appaudit.CompletedEvent
+	model := newModelWithDependencies(Session{Adapter: adapter}, modelDependencies{
+		audit: fakeAudit{
+			appendSubmitted: func(appaudit.SubmittedEvent) error {
+				submittedCalls++
+				return nil
+			},
+			appendCompleted: func(event appaudit.CompletedEvent) error {
+				completionCalls++
+				if completionCalls == 1 {
+					failedEvent = event
+					return errors.New("first failure")
+				}
+				return errors.New("retry still unavailable")
+			},
+		},
+		newExecutionIdentity: func() string {
+			identityCalls++
+			return fmt.Sprintf("execution-%d", identityCalls)
+		},
+	})
+	model.state.SetReady("", NotificationNone)
+	model.command.editor.SetValue("select 1;")
+	model.syncCurrentSQL()
+	next, cmd := model.Update(submitIntentMsg{})
+	model = next.(Model)
+	next, _ = model.Update(firstCommandMessageForTest[statementExecutedMsg](t, cmd))
+	model = next.(Model)
+
+	model.command.editor.SetValue("select 2;")
+	model.syncCurrentSQL()
+	next, retryCmd := model.Update(submitIntentMsg{})
+	model = next.(Model)
+	next, executeCmd := model.Update(firstCommandMessageForTest[auditCompletionRetriedMsg](t, retryCmd))
+	model = next.(Model)
+
+	if executeCmd != nil {
+		t.Fatal("failed retry returned execution command, want execution blocked")
+	}
+	if model.state.Interaction.PendingAuditCompletion == nil || *model.state.Interaction.PendingAuditCompletion != failedEvent {
+		t.Fatalf("pending completion = %#v, want same event %#v", model.state.Interaction.PendingAuditCompletion, failedEvent)
+	}
+	if submittedCalls != 1 || identityCalls != 1 {
+		t.Fatalf("after failed retry: submitted calls = %d, identity calls = %d; want 1, 1", submittedCalls, identityCalls)
+	}
+	if got := model.statusBarView(); !strings.Contains(got, "retry still unavailable") {
+		t.Fatalf("status bar = %q, want updated persistent retry error", got)
+	}
+}
+
+func TestPendingAuditCompletionAllowsQuitWithoutFabricatingOutcome(t *testing.T) {
+	completionCalls := 0
+	model := newModelWithDependencies(Session{}, modelDependencies{
+		audit: fakeAudit{appendCompleted: func(appaudit.CompletedEvent) error {
+			completionCalls++
+			return errors.New("completion unavailable")
+		}},
+	})
+	model.state.SetReady("", NotificationNone)
+	pending := appaudit.CompletedEvent{Event: "completed", ExecutionIdentity: "unmatched", Outcome: appaudit.OutcomeSuccess}
+	model.state.Interaction.PendingAuditCompletion = &pending
+	model.state.Interaction.AuditFailure = "Audit completion was not persisted"
+
+	next, cmd := model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	model = next.(Model)
+	if cmd == nil {
+		t.Fatal("first ctrl+c command = nil, want normal quit confirmation timer")
+	}
+	next, cmd = model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	model = next.(Model)
+	if quitMsg := cmd(); quitMsg != (tea.QuitMsg{}) {
+		t.Fatalf("second ctrl+c message = %T, want tea.QuitMsg", quitMsg)
+	}
+	if completionCalls != 0 {
+		t.Fatalf("completion calls while quitting = %d, want no fabricated completion", completionCalls)
+	}
+	if model.state.Interaction.PendingAuditCompletion == nil || *model.state.Interaction.PendingAuditCompletion != pending {
+		t.Fatalf("pending completion after quit = %#v, want unmatched event retained until process exits", model.state.Interaction.PendingAuditCompletion)
+	}
+}
+
+func TestAuditRecoveryLeavesValidUnmatchedSubmissionThenWritesOneCompletion(t *testing.T) {
+	adapter := openTestAdapter(t)
+	t.Cleanup(func() { _ = adapter.Close() })
+	path := filepath.Join(t.TempDir(), "audit.log")
+	auditLog := &failFirstCompletionFileAudit{log: appaudit.NewFileLog(path)}
+	model := newModelWithDependencies(Session{Adapter: adapter}, modelDependencies{
+		audit:                auditLog,
+		newExecutionIdentity: func() string { return "artifact-execution" },
+	})
+	model.state.SetReady("", NotificationNone)
+	model.command.editor.SetValue("select 1;")
+	model.syncCurrentSQL()
+
+	next, cmd := model.Update(submitIntentMsg{})
+	model = next.(Model)
+	next, _ = model.Update(firstCommandMessageForTest[statementExecutedMsg](t, cmd))
+	model = next.(Model)
+
+	readEvents := func() []map[string]any {
+		t.Helper()
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("ReadFile() error = %v", err)
+		}
+		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+		events := make([]map[string]any, 0, len(lines))
+		for _, line := range lines {
+			var event map[string]any
+			if err := json.Unmarshal([]byte(line), &event); err != nil {
+				t.Fatalf("Audit line %q is invalid JSON: %v", line, err)
+			}
+			events = append(events, event)
+		}
+		return events
+	}
+
+	events := readEvents()
+	if len(events) != 1 || events[0]["event"] != "submitted" {
+		t.Fatalf("events after failed completion = %#v, want one valid unmatched submission", events)
+	}
+
+	next, retryCmd := model.Update(submitIntentMsg{})
+	model = next.(Model)
+	next, _ = model.Update(firstCommandMessageForTest[auditCompletionRetriedMsg](t, retryCmd))
+	model = next.(Model)
+	events = readEvents()
+	if len(events) != 2 || events[1]["event"] != "completed" {
+		t.Fatalf("events after retry = %#v, want one submitted and one completed event", events)
+	}
+	if events[0]["execution_identity"] != events[1]["execution_identity"] {
+		t.Fatalf("artifact identities = %#v and %#v, want correlated events", events[0], events[1])
 	}
 }
 

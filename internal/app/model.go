@@ -149,12 +149,18 @@ type focusPaneIntentMsg struct {
 type clearInputIntentMsg struct{}
 
 type statementExecutedMsg struct {
-	Statement      string
-	Result         *db.StatementResult
-	ResultSummary  string
-	Err            error
-	AuditErr       error
-	AdapterInvoked bool
+	Statement       string
+	Result          *db.StatementResult
+	ResultSummary   string
+	Err             error
+	AuditErr        error
+	AuditCompletion *appaudit.CompletedEvent
+	AdapterInvoked  bool
+}
+
+type auditCompletionRetriedMsg struct {
+	Statement string
+	Err       error
 }
 
 type slashCommandExecutedMsg struct {
@@ -350,6 +356,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.notificationClearCmdIfSet()
 	case statementExecutedMsg:
 		return m.handleStatementExecuted(msg)
+	case auditCompletionRetriedMsg:
+		m.state.Interaction.AuditRetrying = false
+		if msg.Err != nil {
+			m.state.Interaction.AuditFailure = fmt.Sprintf("Audit completion retry failed: %v", msg.Err)
+			return m, nil
+		}
+		m.state.Interaction.PendingAuditCompletion = nil
+		m.state.Interaction.AuditFailure = ""
+		m.command.SetEditorValue(msg.Statement)
+		m.syncCurrentSQL()
+		return m.handleSubmitIntent()
 	case slashCommandExecutedMsg:
 		return m.handleSlashCommandExecuted(msg)
 	case toggleHelpIntentMsg:
@@ -672,6 +689,15 @@ func (m Model) handleSubmitIntent() (tea.Model, tea.Cmd) {
 		m.state.SetPendingIntent(IntentSubmit, "submit", fmt.Sprintf("%s is still running. Press esc to cancel; timeout after %s.", runningLabel(running), formatExecutionTimeout(defaultInteractiveExecutionTimeout)), NotificationInfo)
 		return m, m.notificationClearCmdIfSet()
 	}
+	if pending := m.state.Interaction.PendingAuditCompletion; pending != nil {
+		if m.state.Interaction.AuditRetrying {
+			return m, nil
+		}
+		m.syncCurrentSQL()
+		completion := *pending
+		m.state.Interaction.AuditRetrying = true
+		return m, retryAuditCompletionCmd(m.audit, completion, m.state.Interaction.CurrentSQL)
+	}
 
 	m.syncCurrentSQL()
 	submittedSQL := m.state.Interaction.CurrentSQL
@@ -747,6 +773,11 @@ func (m Model) handleStatementExecuted(msg statementExecutedMsg) (tea.Model, tea
 		return m, m.notificationClearCmdIfSet()
 	}
 	historyErr := m.appendHistory(msg.Statement)
+	if msg.AuditErr != nil && msg.AuditCompletion != nil {
+		completion := *msg.AuditCompletion
+		m.state.Interaction.PendingAuditCompletion = &completion
+		m.state.Interaction.AuditFailure = fmt.Sprintf("Audit completion was not persisted: %v", msg.AuditErr)
+	}
 	m.state.Interaction.PendingIntent = IntentNone
 	m.state.Interaction.LastAction = "submit"
 	m.state.SetPendingPaneSwitch(nil)
@@ -997,6 +1028,8 @@ func (m Model) statusBarView() string {
 	var notification string
 	if running := interaction.Running; running != nil {
 		notification = formatRunningIndicator(running)
+	} else if interaction.PendingAuditCompletion != nil {
+		notification = tui.AppTheme.NotificationError.Render(interaction.AuditFailure)
 	} else if n := m.state.Notification; n.Text != "" {
 		switch n.Level {
 		case NotificationSuccess:
@@ -1801,8 +1834,14 @@ func executeStatementCmd(session Session, auditLog appaudit.Appender, now func()
 			}
 			completion := newAuditCompletedEvent(executionIdentity, now().UTC(), result, err)
 			auditErr := auditLog.AppendCompleted(completion)
-			return statementExecutedMsg{Statement: statement, Result: result, ResultSummary: summarizeStatementResult(result, err), Err: err, AuditErr: auditErr, AdapterInvoked: true}
+			return statementExecutedMsg{Statement: statement, Result: result, ResultSummary: summarizeStatementResult(result, err), Err: err, AuditErr: auditErr, AuditCompletion: &completion, AdapterInvoked: true}
 		}
+	}
+}
+
+func retryAuditCompletionCmd(auditLog appaudit.Appender, completion appaudit.CompletedEvent, statement string) tea.Cmd {
+	return func() tea.Msg {
+		return auditCompletionRetriedMsg{Statement: statement, Err: auditLog.AppendCompleted(completion)}
 	}
 }
 
