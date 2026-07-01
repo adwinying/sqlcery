@@ -14,6 +14,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	appaudit "github.com/adwinying/sqlcery/internal/audit"
 	"github.com/adwinying/sqlcery/internal/config"
 	"github.com/adwinying/sqlcery/internal/db"
 	"github.com/adwinying/sqlcery/internal/export"
@@ -62,6 +63,32 @@ func TestRunStartsProgram(t *testing.T) {
 	}
 }
 
+func TestRunInjectsAuditClockAndExecutionIdentity(t *testing.T) {
+	wantAudit := &fakeAudit{}
+	wantTime := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC)
+	err := Run(context.Background(), RunOptions{
+		Audit:                wantAudit,
+		Clock:                func() time.Time { return wantTime },
+		NewExecutionIdentity: func() string { return "exec-from-boundary" },
+		NewProgram: func(model tea.Model, _ ...tea.ProgramOption) Program {
+			typed := model.(Model)
+			if typed.audit != appaudit.Appender(wantAudit) {
+				t.Fatal("Run() did not inject Audit")
+			}
+			if got := typed.now(); !got.Equal(wantTime) {
+				t.Fatalf("clock = %v, want %v", got, wantTime)
+			}
+			if got := typed.newExecutionIdentity(); got != "exec-from-boundary" {
+				t.Fatalf("execution identity = %q", got)
+			}
+			return fakeProgram{run: func() (tea.Model, error) { return model, nil }}
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+}
+
 func TestRunUsesProvidedHistorySession(t *testing.T) {
 	adapter := openTestAdapter(t)
 	defer func() {
@@ -85,6 +112,7 @@ func TestRunUsesProvidedHistorySession(t *testing.T) {
 		NewHistory: func(_ config.ConnectionIdentity) (*apphistory.History, error) {
 			return apphistory.NewFileBackedHistory(historyPath), nil
 		},
+		Audit: appaudit.Discard{},
 		NewProgram: func(model tea.Model, _ ...tea.ProgramOption) Program {
 			return fakeProgram{run: func() (tea.Model, error) {
 				typed := model.(Model)
@@ -525,7 +553,9 @@ func TestModelUpdateQTypesWhenEditorFocused(t *testing.T) {
 }
 
 func TestModelUpdateSubmitSetsPendingIntent(t *testing.T) {
-	model := NewModel(Session{})
+	adapter := openTestAdapter(t)
+	t.Cleanup(func() { _ = adapter.Close() })
+	model := NewModel(Session{Adapter: adapter})
 	model.state.SetReady("", NotificationNone)
 	next, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model = next.(Model)

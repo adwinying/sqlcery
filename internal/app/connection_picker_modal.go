@@ -417,6 +417,7 @@ func (m Model) handleMidRunConnectSuccess(msg midRunConnectSuccessMsg) (Model, t
 	m.session = Session{
 		ConnectionName:     msg.resolved.Name,
 		ConnectionIdentity: msg.resolved.Identity,
+		ConnectionOrigin:   msg.resolved.Connection.Origin,
 		DatabaseType:       msg.resolved.Connection.Type,
 		ConnectionColor:    msg.resolved.Connection.Color,
 		WorkingDir:         m.session.WorkingDir,

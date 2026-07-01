@@ -2,9 +2,12 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	appaudit "github.com/adwinying/sqlcery/internal/audit"
 	"github.com/adwinying/sqlcery/internal/config"
 	"github.com/adwinying/sqlcery/internal/db"
 	apphistory "github.com/adwinying/sqlcery/internal/history"
@@ -15,6 +18,7 @@ import (
 type Session struct {
 	ConnectionName     string
 	ConnectionIdentity config.ConnectionIdentity
+	ConnectionOrigin   string
 	DatabaseType       string
 	ConnectionColor    string
 	WorkingDir         string
@@ -42,6 +46,12 @@ type RunOptions struct {
 	// NewHistory builds a persistent History for the given opaque Connection Identity.
 	// Defaults to apphistory.NewPersistentHistory when nil.
 	NewHistory func(config.ConnectionIdentity) (*apphistory.History, error)
+	// Audit is the mandatory global Audit Log. Defaults to the persistent
+	// $XDG_DATA_HOME/sqlcery/audit.log when nil.
+	Audit appaudit.Appender
+	// Clock and NewExecutionIdentity are injectable sources for execution tests.
+	Clock                func() time.Time
+	NewExecutionIdentity func() string
 	// ConnectionsLoader returns the current named Connections for the Picker.
 	// Defaults to an empty Connections when nil.
 	ConnectionsLoader func() (config.Connections, error)
@@ -86,6 +96,13 @@ func Run(ctx context.Context, options RunOptions) error {
 			return apphistory.NewPersistentHistory(string(identity))
 		}
 	}
+	if options.Audit == nil {
+		persistentAudit, err := appaudit.NewPersistentLog()
+		if err != nil {
+			return fmt.Errorf("configure Audit Log: %w", err)
+		}
+		options.Audit = persistentAudit
+	}
 
 	programOptions := make([]tea.ProgramOption, 0, len(options.ProgramOptions)+1)
 	programOptions = append(programOptions, tea.WithContext(ctx))
@@ -95,13 +112,16 @@ func Run(ctx context.Context, options RunOptions) error {
 		WorkingDir:    options.WorkingDir,
 		MouseDisabled: options.MouseDisabled,
 	}, modelDependencies{
-		version:           options.Version,
-		open:              options.Open,
-		newHistory:        options.NewHistory,
-		connectionsLoader: options.ConnectionsLoader,
-		reloadConnections: options.ReloadConnections,
-		frecencyStore:     options.FrecencyStore,
-		autoConnectTarget: options.AutoConnectTarget,
+		version:              options.Version,
+		open:                 options.Open,
+		newHistory:           options.NewHistory,
+		audit:                options.Audit,
+		now:                  options.Clock,
+		newExecutionIdentity: options.NewExecutionIdentity,
+		connectionsLoader:    options.ConnectionsLoader,
+		reloadConnections:    options.ReloadConnections,
+		frecencyStore:        options.FrecencyStore,
+		autoConnectTarget:    options.AutoConnectTarget,
 	})
 	_, err := newProgram(model, programOptions...).Run()
 	return err

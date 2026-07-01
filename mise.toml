@@ -47,7 +47,7 @@ depends = ["check-go-version"]
 
 [tasks.test-targeted]
 description = "Run targeted Go tests"
-run = "go test -count=1 ./cmd/sqlcery ./internal/app ./internal/config ./internal/history"
+run = "go test -count=1 ./cmd/sqlcery ./internal/app ./internal/audit ./internal/config ./internal/history"
 depends = ["check-go-version"]
 
 [tasks.test-config]
@@ -63,6 +63,11 @@ depends = ["check-go-version"]
 [tasks.test-app]
 description = "Run app package tests"
 run = "go test -count=1 ./internal/app"
+depends = ["check-go-version"]
+
+[tasks.test-audit]
+description = "Run audit package tests"
+run = "go test -count=1 ./internal/audit"
 depends = ["check-go-version"]
 
 [tasks.test-app-history]

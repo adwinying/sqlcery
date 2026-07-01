@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -16,6 +19,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	appaudit "github.com/adwinying/sqlcery/internal/audit"
 	"github.com/adwinying/sqlcery/internal/config"
 	"github.com/adwinying/sqlcery/internal/db"
 	"github.com/adwinying/sqlcery/internal/export"
@@ -24,21 +28,24 @@ import (
 )
 
 type Model struct {
-	session       Session
-	history       *apphistory.History
-	exec          executionCoordinator
-	command       commandModeModel
-	resultsPane   resultsPaneModeModel
-	state         SharedAppState
-	schema        *AutocompleteSchemaContext
-	loader        autocompleteSchemaLoader
-	modals        []Modal
-	width         int
-	height        int
-	splitRatio    float64
-	pendingQuit   bool
-	lastClickRow  int
-	lastClickTime time.Time
+	session              Session
+	history              *apphistory.History
+	audit                appaudit.Appender
+	now                  func() time.Time
+	newExecutionIdentity func() string
+	exec                 executionCoordinator
+	command              commandModeModel
+	resultsPane          resultsPaneModeModel
+	state                SharedAppState
+	schema               *AutocompleteSchemaContext
+	loader               autocompleteSchemaLoader
+	modals               []Modal
+	width                int
+	height               int
+	splitRatio           float64
+	pendingQuit          bool
+	lastClickRow         int
+	lastClickTime        time.Time
 
 	// Connection Picker state
 	pendingConnectAbort bool               // first Esc armed during a connect-in-flight (double-Esc to abort)
@@ -55,16 +62,19 @@ type Model struct {
 type autocompleteSchemaLoader func(context.Context, *db.SQLAdapter) (*AutocompleteSchemaContext, error)
 
 type modelDependencies struct {
-	loader            autocompleteSchemaLoader
-	history           *apphistory.History
-	version           string
-	open              func(context.Context, config.Connection) (*db.SQLAdapter, error)
-	closeAdapter      func(*db.SQLAdapter) error // defaults to (*db.SQLAdapter).Close; injectable for tests
-	newHistory        func(config.ConnectionIdentity) (*apphistory.History, error)
-	connectionsLoader func() (config.Connections, error)
-	reloadConnections func() error // re-reads disk and refreshes the connectionsLoader cache
-	frecencyStore     FrecencyStore
-	autoConnectTarget config.ResolvedConnection
+	loader               autocompleteSchemaLoader
+	history              *apphistory.History
+	audit                appaudit.Appender
+	now                  func() time.Time
+	newExecutionIdentity func() string
+	version              string
+	open                 func(context.Context, config.Connection) (*db.SQLAdapter, error)
+	closeAdapter         func(*db.SQLAdapter) error // defaults to (*db.SQLAdapter).Close; injectable for tests
+	newHistory           func(config.ConnectionIdentity) (*apphistory.History, error)
+	connectionsLoader    func() (config.Connections, error)
+	reloadConnections    func() error // re-reads disk and refreshes the connectionsLoader cache
+	frecencyStore        FrecencyStore
+	autoConnectTarget    config.ResolvedConnection
 }
 
 // nopCmd is a non-nil tea.Cmd that produces no message. Use it when a key
@@ -139,10 +149,12 @@ type focusPaneIntentMsg struct {
 type clearInputIntentMsg struct{}
 
 type statementExecutedMsg struct {
-	Statement     string
-	Result        *db.StatementResult
-	ResultSummary string
-	Err           error
+	Statement      string
+	Result         *db.StatementResult
+	ResultSummary  string
+	Err            error
+	AuditErr       error
+	AdapterInvoked bool
 }
 
 type slashCommandExecutedMsg struct {
@@ -251,6 +263,18 @@ func newModelWithDependencies(session Session, deps modelDependencies) Model {
 	if sessionHistory == nil {
 		sessionHistory = apphistory.NewHistory()
 	}
+	auditAppender := deps.audit
+	if auditAppender == nil {
+		auditAppender = appaudit.Discard{}
+	}
+	now := deps.now
+	if now == nil {
+		now = time.Now
+	}
+	newExecutionIdentity := deps.newExecutionIdentity
+	if newExecutionIdentity == nil {
+		newExecutionIdentity = randomExecutionIdentity
+	}
 
 	// Determine initial state. When no adapter is pre-wired (the common case),
 	// always start in StateSelectConnection so Init can route to either the
@@ -272,20 +296,23 @@ func newModelWithDependencies(session Session, deps modelDependencies) Model {
 	}
 
 	model := Model{
-		session:           session,
-		history:           sessionHistory,
-		command:           newCommandModeModel(),
-		resultsPane:       newResultsPaneModeModel(deps.version),
-		state:             initialState,
-		loader:            loader,
-		splitRatio:        0.65,
-		open:              deps.open,
-		closeAdapter:      closeAdapter,
-		newHistory:        deps.newHistory,
-		connectionsLoader: deps.connectionsLoader,
-		reloadConnections: deps.reloadConnections,
-		frecencyStore:     deps.frecencyStore,
-		autoConnectTarget: deps.autoConnectTarget,
+		session:              session,
+		history:              sessionHistory,
+		audit:                auditAppender,
+		now:                  now,
+		newExecutionIdentity: newExecutionIdentity,
+		command:              newCommandModeModel(),
+		resultsPane:          newResultsPaneModeModel(deps.version),
+		state:                initialState,
+		loader:               loader,
+		splitRatio:           0.65,
+		open:                 deps.open,
+		closeAdapter:         closeAdapter,
+		newHistory:           deps.newHistory,
+		connectionsLoader:    deps.connectionsLoader,
+		reloadConnections:    deps.reloadConnections,
+		frecencyStore:        deps.frecencyStore,
+		autoConnectTarget:    deps.autoConnectTarget,
 	}
 	model.syncAutocompleteSchemaSnapshot()
 	model.syncHistorySnapshot()
@@ -695,7 +722,12 @@ func (m Model) handleSubmitIntent() (tea.Model, tea.Cmd) {
 	}
 
 	m.state.SetLastSubmittedSQL(submittedSQL)
-	return m, m.startExecution("SQL", fmt.Sprintf("Executing %d characters of SQL.", len(submittedSQL)), NotificationInfo, executeStatementCmd(m.session.Adapter, submittedSQL))
+	if m.session.Adapter == nil {
+		m.state.SetPendingIntent(IntentNone, "submit", "No live Session is available.", NotificationError)
+		return m, m.notificationClearCmdIfSet()
+	}
+	executionIdentity := m.newExecutionIdentity()
+	return m, m.startExecution("SQL", fmt.Sprintf("Executing %d characters of SQL.", len(submittedSQL)), NotificationInfo, executeStatementCmd(m.session, m.audit, m.now, executionIdentity, submittedSQL))
 }
 
 func (m Model) handleCancelRunningIntent() (tea.Model, tea.Cmd) {
@@ -709,6 +741,11 @@ func (m Model) handleCancelRunningIntent() (tea.Model, tea.Cmd) {
 func (m Model) handleStatementExecuted(msg statementExecutedMsg) (tea.Model, tea.Cmd) {
 	running := m.state.Interaction.Running
 	m.state.SetRunningStatementContext(m.exec.complete())
+	if msg.AuditErr != nil && !msg.AdapterInvoked {
+		m.state.Interaction.PendingIntent = IntentNone
+		m.state.SetReady(fmt.Sprintf("Audit submission failed: %v", msg.AuditErr), NotificationError)
+		return m, m.notificationClearCmdIfSet()
+	}
 	historyErr := m.appendHistory(msg.Statement)
 	m.state.Interaction.PendingIntent = IntentNone
 	m.state.Interaction.LastAction = "submit"
@@ -717,17 +754,17 @@ func (m Model) handleStatementExecuted(msg statementExecutedMsg) (tea.Model, tea
 		m.command.AppendReplEntry("> ", msg.Statement, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
 		m.command.Clear()
 		if status, ok := executionInterruptedStatus(running, msg.Err); ok {
-			m.state.SetReady(withHistoryWarning(status, historyErr), historyNotificationLevel(NotificationInfo, historyErr))
+			m.state.SetReady(withPersistenceWarnings(status, historyErr, msg.AuditErr), persistenceNotificationLevel(NotificationInfo, historyErr, msg.AuditErr))
 			m.state.SetLatestResultContext(nil)
 			return m, m.notificationClearCmdIfSet()
 		}
-		m.state.SetReady(withHistoryWarning(formatOperationFailure("Execution failed.", msg.Err), historyErr), NotificationError)
+		m.state.SetReady(withPersistenceWarnings(formatOperationFailure("Execution failed.", msg.Err), historyErr, msg.AuditErr), NotificationError)
 		m.state.SetLatestResultContext(nil)
 		return m, m.notificationClearCmdIfSet()
 	}
 	m.command.AppendReplEntry("> ", msg.Statement, "OK: "+formatReplStatementOutput(msg.Result, nil))
 	m.command.Clear()
-	m.state.SetReady(withHistoryWarning(describeStatementStatus(msg.Result), historyErr), historyNotificationLevel(NotificationSuccess, historyErr))
+	m.state.SetReady(withPersistenceWarnings(describeStatementStatus(msg.Result), historyErr, msg.AuditErr), persistenceNotificationLevel(NotificationSuccess, historyErr, msg.AuditErr))
 	m.resultsPane.CancelVisualMode()
 	m.state.SetLatestResultContext(buildLatestResultContext(msg.Statement, m.resultOriginPane(), msg.Result))
 	return m, m.notificationClearCmdIfSet()
@@ -1501,16 +1538,18 @@ func (m *Model) appendHistory(statement string) error {
 	return err
 }
 
-func withHistoryWarning(status string, err error) string {
-	if err == nil {
-		return status
+func withPersistenceWarnings(status string, historyErr, auditErr error) string {
+	if historyErr != nil {
+		status = fmt.Sprintf("%s History was not persisted: %v", status, historyErr)
 	}
-
-	return fmt.Sprintf("%s History was not persisted: %v", status, err)
+	if auditErr != nil {
+		status = fmt.Sprintf("%s Audit completion was not persisted: %v", status, auditErr)
+	}
+	return status
 }
 
-func historyNotificationLevel(base NotificationLevel, historyErr error) NotificationLevel {
-	if historyErr != nil {
+func persistenceNotificationLevel(base NotificationLevel, historyErr, auditErr error) NotificationLevel {
+	if historyErr != nil || auditErr != nil {
 		return NotificationError
 	}
 	return base
@@ -1742,17 +1781,75 @@ func lazyScroll(selected, vp, listRows int) int {
 	return vp
 }
 
-func executeStatementCmd(adapter *db.SQLAdapter, statement string) func(context.Context, time.Time) tea.Cmd {
+func executeStatementCmd(session Session, auditLog appaudit.Appender, now func() time.Time, executionIdentity, statement string) func(context.Context, time.Time) tea.Cmd {
 	return func(ctx context.Context, _ time.Time) tea.Cmd {
 		return func() tea.Msg {
-			if adapter == nil {
+			if session.Adapter == nil {
 				return statementExecutedMsg{Statement: statement, ResultSummary: "error: adapter is required", Err: fmt.Errorf("adapter is required")}
 			}
+			if err := auditLog.AppendSubmitted(appaudit.SubmittedEvent{
+				Event: "submitted", ExecutionIdentity: executionIdentity,
+				ConnectionIdentity: string(session.ConnectionIdentity), ConnectionName: session.ConnectionName,
+				ConnectionOrigin: session.ConnectionOrigin, Statement: statement, Timestamp: now().UTC(),
+			}); err != nil {
+				return statementExecutedMsg{Statement: statement, AuditErr: err}
+			}
 
-			result, err := adapter.ExecuteStatementContext(ctx, statement, db.ResultOptions{Source: inferQuerySourceTable(statement)})
-			return statementExecutedMsg{Statement: statement, Result: result, ResultSummary: summarizeStatementResult(result, err), Err: err}
+			result, err := session.Adapter.ExecuteStatementContext(ctx, statement, db.ResultOptions{Source: inferQuerySourceTable(statement)})
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return statementExecutedMsg{Statement: statement, Result: result, ResultSummary: summarizeStatementResult(result, err), Err: err, AdapterInvoked: true}
+			}
+			completion := newAuditCompletedEvent(executionIdentity, now().UTC(), result, err)
+			auditErr := auditLog.AppendCompleted(completion)
+			return statementExecutedMsg{Statement: statement, Result: result, ResultSummary: summarizeStatementResult(result, err), Err: err, AuditErr: auditErr, AdapterInvoked: true}
 		}
 	}
+}
+
+func newAuditCompletedEvent(executionIdentity string, timestamp time.Time, result *db.StatementResult, executionErr error) appaudit.CompletedEvent {
+	event := appaudit.CompletedEvent{
+		Event: "completed", ExecutionIdentity: executionIdentity, Timestamp: timestamp,
+		Outcome: appaudit.OutcomeSuccess,
+	}
+	if executionErr != nil {
+		event.Outcome = appaudit.OutcomeFailure
+		event.ResultSummary.Error = boundAuditError(executionErr.Error())
+		return event
+	}
+	if result != nil && result.Kind == db.StatementResultKindQuery && result.ResultSet != nil {
+		rowCount := len(result.ResultSet.Rows)
+		event.ResultSummary.RowCount = &rowCount
+		return event
+	}
+	if result != nil && result.RowsAffected != nil {
+		rowsAffected := *result.RowsAffected
+		event.ResultSummary.RowsAffected = &rowsAffected
+		return event
+	}
+	event.ResultSummary.Message = "Statement executed successfully."
+	return event
+}
+
+const maxAuditErrorBytes = 4 * 1024
+const auditErrorTruncationMarker = "... [truncated]"
+
+func boundAuditError(value string) string {
+	if len(value) <= maxAuditErrorBytes {
+		return value
+	}
+	limit := maxAuditErrorBytes - len(auditErrorTruncationMarker)
+	for limit > 0 && !utf8.ValidString(value[:limit]) {
+		limit--
+	}
+	return value[:limit] + auditErrorTruncationMarker
+}
+
+func randomExecutionIdentity() string {
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		return fmt.Sprintf("fallback-%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(value[:])
 }
 
 func executionStatus(status string, timeout time.Duration) string {
