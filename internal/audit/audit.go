@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/adwinying/sqlcery/internal/filelock"
 )
 
 type Outcome string
@@ -96,7 +98,7 @@ func NewFileLog(path string) *FileLog {
 func (l *FileLog) AppendSubmitted(event SubmittedEvent) error { return l.append(event) }
 func (l *FileLog) AppendCompleted(event CompletedEvent) error { return l.append(event) }
 
-func (l *FileLog) append(event any) error {
+func (l *FileLog) append(event any) (returnErr error) {
 	data, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal Audit event: %w", err)
@@ -108,6 +110,15 @@ func (l *FileLog) append(event any) error {
 	if err := os.MkdirAll(filepath.Dir(l.path), 0o755); err != nil {
 		return fmt.Errorf("create Audit directory: %w", err)
 	}
+	owner, err := filelock.Acquire(auditLockPath(l.path))
+	if err != nil {
+		return fmt.Errorf("acquire Audit lock: %w", err)
+	}
+	defer func() {
+		if err := owner.Release(); err != nil && returnErr == nil {
+			returnErr = fmt.Errorf("release Audit lock: %w", err)
+		}
+	}()
 	file, err := os.OpenFile(l.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return fmt.Errorf("open Audit Log: %w", err)
@@ -127,4 +138,8 @@ func (l *FileLog) append(event any) error {
 		return fmt.Errorf("close Audit Log: %w", err)
 	}
 	return nil
+}
+
+func auditLockPath(path string) string {
+	return filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".lock")
 }

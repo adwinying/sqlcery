@@ -6,7 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/adwinying/sqlcery/internal/filelock"
 )
 
 func TestFileBackedHistoryPersistsOnlyOrderedStatementStrings(t *testing.T) {
@@ -181,5 +186,151 @@ func TestPersistentHistoryRestoresAndIsolatesConnectionIdentities(t *testing.T) 
 	}
 	if entries := other.Entries(); len(entries) != 0 {
 		t.Fatalf("other.Entries() = %#v, want isolated empty history", entries)
+	}
+}
+
+func TestIndependentHistoriesMergeUniqueStatementsOnDisk(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	first, err := NewPersistentHistory("shared-identity")
+	if err != nil {
+		t.Fatalf("NewPersistentHistory(first) error = %v", err)
+	}
+	second, err := NewPersistentHistory("shared-identity")
+	if err != nil {
+		t.Fatalf("NewPersistentHistory(second) error = %v", err)
+	}
+
+	if err := first.Append("select from first;"); err != nil {
+		t.Fatalf("first.Append() error = %v", err)
+	}
+	if err := second.Append("select from second;"); err != nil {
+		t.Fatalf("second.Append() error = %v", err)
+	}
+
+	reopened, err := NewPersistentHistory("shared-identity")
+	if err != nil {
+		t.Fatalf("NewPersistentHistory(reopened) error = %v", err)
+	}
+	if got, want := reopened.Entries(), []string{"select from first;", "select from second;"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("reopened.Entries() = %#v, want %#v", got, want)
+	}
+	if got, want := second.Entries(), []string{"select from second;"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("second.Entries() = %#v, want local snapshot %#v", got, want)
+	}
+}
+
+func TestConcurrentHistoriesDoNotLoseUniqueStatements(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	const sessions = 32
+	histories := make([]*History, sessions)
+	for i := range histories {
+		var err error
+		histories[i], err = NewPersistentHistory("shared-concurrent-identity")
+		if err != nil {
+			t.Fatalf("NewPersistentHistory(%d) error = %v", i, err)
+		}
+	}
+
+	start := make(chan struct{})
+	errs := make(chan error, sessions)
+	var workers sync.WaitGroup
+	for i, history := range histories {
+		workers.Add(1)
+		go func(i int, history *History) {
+			defer workers.Done()
+			<-start
+			errs <- history.Append("select " + strconv.Itoa(i) + ";")
+		}(i, history)
+	}
+	close(start)
+	workers.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent Append() error = %v", err)
+		}
+	}
+
+	reopened, err := NewPersistentHistory("shared-concurrent-identity")
+	if err != nil {
+		t.Fatalf("NewPersistentHistory(reopened) error = %v", err)
+	}
+	entries := reopened.Entries()
+	if len(entries) != sessions {
+		t.Fatalf("len(reopened.Entries()) = %d, want %d: %#v", len(entries), sessions, entries)
+	}
+	seen := make(map[string]bool, sessions)
+	for _, entry := range entries {
+		seen[entry] = true
+	}
+	for i := 0; i < sessions; i++ {
+		statement := "select " + strconv.Itoa(i) + ";"
+		if !seen[statement] {
+			t.Fatalf("reopened History is missing %q", statement)
+		}
+	}
+}
+
+func TestDifferentHistoryIdentitiesDoNotSerializeEachOther(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	firstPath, err := DefaultPath("identity-one")
+	if err != nil {
+		t.Fatalf("DefaultPath(first) error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(firstPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	firstOwner, err := filelock.Acquire(historyLockPath(firstPath))
+	if err != nil {
+		t.Fatalf("Acquire(first identity) error = %v", err)
+	}
+
+	second, err := NewPersistentHistory("identity-two")
+	if err != nil {
+		_ = firstOwner.Release()
+		t.Fatalf("NewPersistentHistory(second) error = %v", err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- second.Append("select two;") }()
+	select {
+	case err := <-done:
+		if err != nil {
+			_ = firstOwner.Release()
+			t.Fatalf("second.Append() error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		_ = firstOwner.Release()
+		t.Fatal("second identity blocked on first identity's lock")
+	}
+	if err := firstOwner.Release(); err != nil {
+		t.Fatalf("Release(first identity) error = %v", err)
+	}
+}
+
+func TestMergedHistoryMovesExactDuplicateToLatestPosition(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	first, err := NewPersistentHistory("shared-ordering-identity")
+	if err != nil {
+		t.Fatalf("NewPersistentHistory(first) error = %v", err)
+	}
+	stale, err := NewPersistentHistory("shared-ordering-identity")
+	if err != nil {
+		t.Fatalf("NewPersistentHistory(stale) error = %v", err)
+	}
+	for _, statement := range []string{"select duplicate;", "select newer;"} {
+		if err := first.Append(statement); err != nil {
+			t.Fatalf("first.Append(%q) error = %v", statement, err)
+		}
+	}
+	if err := stale.Append("select duplicate;"); err != nil {
+		t.Fatalf("stale.Append() error = %v", err)
+	}
+
+	reopened, err := NewPersistentHistory("shared-ordering-identity")
+	if err != nil {
+		t.Fatalf("NewPersistentHistory(reopened) error = %v", err)
+	}
+	if got, want := reopened.Entries(), []string{"select newer;", "select duplicate;"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("reopened.Entries() = %#v, want %#v", got, want)
 	}
 }

@@ -5,10 +5,52 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/adwinying/sqlcery/internal/filelock"
 )
+
+func TestFileLogWaitsForSharedInterprocessLock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.log")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	owner, err := filelock.Acquire(auditLockPath(path))
+	if err != nil {
+		t.Fatalf("Acquire() error = %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- NewFileLog(path).AppendSubmitted(SubmittedEvent{
+			Event: "submitted", ExecutionIdentity: "exec-locked", ConnectionIdentity: "conn",
+			Statement: "select 1;", Timestamp: time.Now().UTC(),
+		})
+	}()
+
+	select {
+	case err := <-done:
+		_ = owner.Release()
+		t.Fatalf("AppendSubmitted() returned before lock release: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	if err := owner.Release(); err != nil {
+		t.Fatalf("Release() error = %v", err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("AppendSubmitted() error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("AppendSubmitted() did not finish after lock release")
+	}
+}
 
 func TestFileLogAppendsExternallyConsumableJSONL(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sqlcery", "audit.log")
@@ -54,6 +96,78 @@ func TestFileLogAppendsExternallyConsumableJSONL(t *testing.T) {
 	}
 	if got := records[1]["execution_identity"]; got != records[0]["execution_identity"] {
 		t.Fatalf("completed identity = %v, want %v", got, records[0]["execution_identity"])
+	}
+}
+
+func TestIndependentFileLogsAppendCompleteConcurrentJSONLRecords(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.log")
+	const executions = 32
+	start := make(chan struct{})
+	errs := make(chan error, executions)
+	var workers sync.WaitGroup
+	for i := 0; i < executions; i++ {
+		workers.Add(1)
+		go func(i int) {
+			defer workers.Done()
+			<-start
+			identity := "exec-" + strconv.Itoa(i)
+			log := NewFileLog(path)
+			if err := log.AppendSubmitted(SubmittedEvent{
+				Event: "submitted", ExecutionIdentity: identity, ConnectionIdentity: "conn",
+				Statement: "select '" + strings.Repeat(strconv.Itoa(i%10), 8192) + "';", Timestamp: time.Now().UTC(),
+			}); err != nil {
+				errs <- err
+				return
+			}
+			if err := log.AppendCompleted(CompletedEvent{
+				Event: "completed", ExecutionIdentity: identity, Timestamp: time.Now().UTC(),
+				Outcome: OutcomeSuccess, ResultSummary: ResultSummary{Message: "ok"},
+			}); err != nil {
+				errs <- err
+			}
+		}(i)
+	}
+	close(start)
+	workers.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("concurrent append error = %v", err)
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	counts := make(map[string]int)
+	lines := 0
+	for scanner.Scan() {
+		var record struct {
+			Event             string `json:"event"`
+			ExecutionIdentity string `json:"execution_identity"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
+			t.Fatalf("Audit line %d is malformed: %v", lines+1, err)
+		}
+		if record.Event != "submitted" && record.Event != "completed" {
+			t.Fatalf("Audit line %d event = %q", lines+1, record.Event)
+		}
+		counts[record.ExecutionIdentity]++
+		lines++
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	if lines != executions*2 {
+		t.Fatalf("Audit line count = %d, want %d", lines, executions*2)
+	}
+	for i := 0; i < executions; i++ {
+		identity := "exec-" + strconv.Itoa(i)
+		if counts[identity] != 2 {
+			t.Fatalf("records for %s = %d, want submitted and completed", identity, counts[identity])
+		}
 	}
 }
 

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/adwinying/sqlcery/internal/filelock"
 )
 
 const (
@@ -22,6 +24,7 @@ type store interface {
 
 type History struct {
 	statements []string
+	pending    []string
 	store      store
 }
 
@@ -85,21 +88,31 @@ func (h *History) Append(statement string) error {
 	if h == nil || strings.TrimSpace(statement) == "" {
 		return nil
 	}
-	for i, existing := range h.statements {
-		if existing == statement {
-			copy(h.statements[i:], h.statements[i+1:])
-			h.statements = h.statements[:len(h.statements)-1]
-			break
-		}
-	}
-	h.statements = append(h.statements, statement)
-	if len(h.statements) > MaxEntries {
-		h.statements = h.statements[len(h.statements)-MaxEntries:]
-	}
+	h.statements = appendStatement(h.statements, statement)
 	if h.store == nil {
 		return nil
 	}
-	return h.store.Save(h.statements)
+	h.pending = appendStatement(h.pending, statement)
+	if err := h.store.Save(h.pending); err != nil {
+		return err
+	}
+	h.pending = nil
+	return nil
+}
+
+func appendStatement(statements []string, statement string) []string {
+	for i, existing := range statements {
+		if existing == statement {
+			copy(statements[i:], statements[i+1:])
+			statements = statements[:len(statements)-1]
+			break
+		}
+	}
+	statements = append(statements, statement)
+	if len(statements) > MaxEntries {
+		statements = statements[len(statements)-MaxEntries:]
+	}
+	return statements
 }
 
 func (h *History) Entries() []string {
@@ -137,11 +150,28 @@ type fileStore struct {
 	path string
 }
 
-func (s fileStore) Save(statements []string) error {
+func (s fileStore) Save(statements []string) (returnErr error) {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return fmt.Errorf("create history dir: %w", err)
 	}
-	data, err := json.Marshal(statements)
+	owner, err := filelock.Acquire(historyLockPath(s.path))
+	if err != nil {
+		return fmt.Errorf("acquire History lock: %w", err)
+	}
+	defer func() {
+		if err := owner.Release(); err != nil && returnErr == nil {
+			returnErr = fmt.Errorf("release History lock: %w", err)
+		}
+	}()
+
+	persisted, err := loadStatements(s.path)
+	if err != nil {
+		return err
+	}
+	for _, statement := range statements {
+		persisted = appendStatement(persisted, statement)
+	}
+	data, err := json.Marshal(persisted)
 	if err != nil {
 		return fmt.Errorf("marshal history: %w", err)
 	}
@@ -169,4 +199,8 @@ func (s fileStore) Save(statements []string) error {
 		return fmt.Errorf("replace history file: %w", err)
 	}
 	return nil
+}
+
+func historyLockPath(path string) string {
+	return filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".lock")
 }

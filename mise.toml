@@ -40,6 +40,11 @@ printf 'Go version aligned at %s\n' "$mod_version"
 description = "Format Go code"
 run = "gofmt -w ."
 
+[tasks.mod-tidy]
+description = "Tidy Go module dependencies"
+run = "go mod tidy"
+depends = ["check-go-version"]
+
 [tasks.test]
 description = "Run Go tests"
 run = "go test ./..."
@@ -68,6 +73,24 @@ depends = ["check-go-version"]
 [tasks.test-audit]
 description = "Run audit package tests"
 run = "go test -count=1 ./internal/audit"
+depends = ["check-go-version"]
+
+[tasks.test-filelock]
+description = "Run advisory file lock package tests"
+run = "go test -count=1 ./internal/filelock"
+depends = ["check-go-version"]
+
+[tasks.test-persistence-race]
+description = "Run persistence concurrency tests with the Go race detector"
+run = "go test -race -count=1 ./internal/filelock ./internal/audit ./internal/history"
+depends = ["check-go-version"]
+
+[tasks.build-platforms]
+description = "Cross-build supported Unix and Windows targets"
+run = '''
+GOOS=linux GOARCH=amd64 go build ./...
+GOOS=windows GOARCH=amd64 go build ./...
+'''
 depends = ["check-go-version"]
 
 [tasks.test-app-history]

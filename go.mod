@@ -10,6 +10,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/go-sql-driver/mysql v1.9.3
+	github.com/gofrs/flock v0.12.1
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/mattn/go-runewidth v0.0.23
 	github.com/testcontainers/testcontainers-go v0.40.0
