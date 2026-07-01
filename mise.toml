@@ -47,7 +47,27 @@ depends = ["check-go-version"]
 
 [tasks.test-targeted]
 description = "Run targeted Go tests"
-run = "go test ./cmd/sqlcery ./internal/app"
+run = "go test -count=1 ./cmd/sqlcery ./internal/app ./internal/config ./internal/history"
+depends = ["check-go-version"]
+
+[tasks.test-config]
+description = "Run config package tests"
+run = "go test -count=1 ./internal/config"
+depends = ["check-go-version"]
+
+[tasks.test-history]
+description = "Run history package tests"
+run = "go test -count=1 ./internal/history"
+depends = ["check-go-version"]
+
+[tasks.test-app]
+description = "Run app package tests"
+run = "go test -count=1 ./internal/app"
+depends = ["check-go-version"]
+
+[tasks.test-app-history]
+description = "Run app history behavior tests"
+run = "go test -count=1 ./internal/app -run 'History|SlashCommand|ConnectionIdentity'"
 depends = ["check-go-version"]
 
 [tasks.test-db]

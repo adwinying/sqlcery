@@ -2,8 +2,11 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -383,7 +386,7 @@ func TestModelSubmitDispatchesSlashTablesExpandsToSQL(t *testing.T) {
 	}
 }
 
-func TestModelSubmitSlashCommandExpandToEditorDoesNotPersistHistory(t *testing.T) {
+func TestModelSubmitSlashCommandPersistsOnlyExpandedStatementAfterSubmission(t *testing.T) {
 	adapter := openTestAdapter(t)
 	defer func() {
 		if err := adapter.Close(); err != nil {
@@ -395,7 +398,7 @@ func TestModelSubmitSlashCommandExpandToEditorDoesNotPersistHistory(t *testing.T
 		t.Fatalf("ExecContext(create table) error = %v", err)
 	}
 
-	historyPath := filepath.Join(t.TempDir(), apphistory.DirName, apphistory.FileName)
+	historyPath := filepath.Join(t.TempDir(), apphistory.DirName, "history.json")
 	history := apphistory.NewFileBackedHistory(historyPath)
 	model := newModelWithDependencies(Session{ConnectionName: "local", DatabaseType: "sqlite", Adapter: adapter}, modelDependencies{history: history})
 	model.state.SetReady("", NotificationNone)
@@ -417,6 +420,24 @@ func TestModelSubmitSlashCommandExpandToEditorDoesNotPersistHistory(t *testing.T
 	}
 	if got, want := len(model.state.Interaction.History), 0; got != want {
 		t.Fatalf("len(state.Query.History) = %d, want %d", got, want)
+	}
+
+	expanded := model.command.editor.Value()
+	next, cmd = model.Update(submitIntentMsg{})
+	model = next.(Model)
+	next, _ = model.Update(firstCommandMessageForTest[statementExecutedMsg](t, cmd))
+	model = next.(Model)
+
+	data, err := os.ReadFile(historyPath)
+	if err != nil {
+		t.Fatalf("ReadFile(expanded Statement) error = %v", err)
+	}
+	var persisted []string
+	if err := json.Unmarshal(data, &persisted); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if got, want := persisted, []string{expanded}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("persisted History = %#v, want %#v", got, want)
 	}
 }
 
@@ -489,6 +510,9 @@ func TestModelSubmitCommandsOpensWizard(t *testing.T) {
 	}
 	if got, want := model.state.Notification.Text, "Choose a slash command and press enter."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
+	}
+	if got := model.state.Interaction.History; len(got) != 0 {
+		t.Fatalf("History = %#v, want UI-opening Slash Command excluded", got)
 	}
 	view := model.View().Content
 	for _, want := range []string{"Choose Command", "Step 1/2: choose a slash command", "/tables - list tables in the current database", "enter confirm", "ctrl+n next", "ctrl+p prev", "esc close"} {
@@ -737,6 +761,22 @@ func TestSlashCommandCancellationUsesFriendlyStatus(t *testing.T) {
 
 	if got, want := model.state.Notification.Text, "Cancelled /tables after 1.2s."; got != want {
 		t.Fatalf("state.Status = %q, want %q", got, want)
+	}
+}
+
+func TestSlashCommandFailureDoesNotEnterHistory(t *testing.T) {
+	model := NewModel(Session{})
+	model.state.SetReady("", NotificationNone)
+
+	next, _ := model.Update(slashCommandExecutedMsg{
+		Command:       slashCommand{RawInput: "/unknown", DisplayName: "/unknown", Name: "unknown"},
+		ResultSummary: "error: unknown slash command",
+		Err:           errors.New("unknown slash command"),
+	})
+	model = next.(Model)
+
+	if got := model.state.Interaction.History; len(got) != 0 {
+		t.Fatalf("History = %#v, want Slash Command excluded", got)
 	}
 }
 

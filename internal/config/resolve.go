@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -8,9 +10,12 @@ import (
 	"strings"
 )
 
+type ConnectionIdentity string
+
 type ResolvedConnection struct {
 	Name       string
 	Raw        string
+	Identity   ConnectionIdentity
 	Connection Connection
 }
 
@@ -54,8 +59,22 @@ func ResolveConnectionReference(connections Connections, raw string) (ResolvedCo
 	return ResolvedConnection{
 		Name:       raw,
 		Raw:        raw,
+		Identity:   namedConnectionIdentity(connection.Origin, raw),
 		Connection: connection,
 	}, nil
+}
+
+func namedConnectionIdentity(origin, name string) ConnectionIdentity {
+	origin = filepath.Clean(origin)
+	if absolute, err := filepath.Abs(origin); err == nil {
+		origin = absolute
+	}
+	return hashConnectionIdentity("named", origin+"\x00"+name)
+}
+
+func hashConnectionIdentity(kind, value string) ConnectionIdentity {
+	sum := sha256.Sum256([]byte("sqlcery/connection-identity/" + kind + "/v1\x00" + value))
+	return ConnectionIdentity(hex.EncodeToString(sum[:]))
 }
 
 func ParseConnectionString(raw string) (ResolvedConnection, bool, error) {
@@ -84,6 +103,7 @@ func ParseConnectionString(raw string) (ResolvedConnection, bool, error) {
 
 	return ResolvedConnection{
 		Raw:        raw,
+		Identity:   hashConnectionIdentity("connection-string", raw),
 		Connection: connection,
 	}, true, nil
 }

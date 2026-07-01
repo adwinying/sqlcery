@@ -229,7 +229,7 @@ func TestMidRunSwapSuccessNewSessionOldAdapterClosed(t *testing.T) {
 	model := newReadyModel(t, alphaAdapter, "alpha", connections)
 	model.frecencyStore = fs
 	model.closeAdapter = trackingClose
-	model.newHistory = func(_ string) (*apphistory.History, error) { return apphistory.NewHistory(), nil }
+	model.newHistory = func(_ config.ConnectionIdentity) (*apphistory.History, error) { return apphistory.NewHistory(), nil }
 
 	// Inject an open function that returns betaAdapter.
 	model.open = func(_ context.Context, conn config.Connection) (*db.SQLAdapter, error) {
@@ -445,7 +445,7 @@ func TestMidRunSwapFrecencyRecordedExactlyOnce(t *testing.T) {
 
 	model := newReadyModel(t, alphaAdapter, "alpha", connections)
 	model.frecencyStore = fs
-	model.newHistory = func(_ string) (*apphistory.History, error) { return apphistory.NewHistory(), nil }
+	model.newHistory = func(_ config.ConnectionIdentity) (*apphistory.History, error) { return apphistory.NewHistory(), nil }
 	model.open = func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
 		return betaAdapter, nil
 	}
@@ -489,7 +489,7 @@ func TestMidRunSwitchResetsCommandPane(t *testing.T) {
 	}
 
 	model := newReadyModel(t, alphaAdapter, "alpha", connections)
-	model.newHistory = func(_ string) (*apphistory.History, error) { return apphistory.NewHistory(), nil }
+	model.newHistory = func(_ config.ConnectionIdentity) (*apphistory.History, error) { return apphistory.NewHistory(), nil }
 	model.open = func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
 		return betaAdapter, nil
 	}
@@ -580,7 +580,7 @@ func TestMidRunSwitchResetsResultsPane(t *testing.T) {
 	}
 
 	model := newReadyModel(t, alphaAdapter, "alpha", connections)
-	model.newHistory = func(_ string) (*apphistory.History, error) { return apphistory.NewHistory(), nil }
+	model.newHistory = func(_ config.ConnectionIdentity) (*apphistory.History, error) { return apphistory.NewHistory(), nil }
 	model.open = func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
 		return betaAdapter, nil
 	}
@@ -669,7 +669,7 @@ func TestMidRunSwitchResetsLayoutAndActivePane(t *testing.T) {
 	}
 
 	model := newReadyModel(t, alphaAdapter, "alpha", connections)
-	model.newHistory = func(_ string) (*apphistory.History, error) { return apphistory.NewHistory(), nil }
+	model.newHistory = func(_ config.ConnectionIdentity) (*apphistory.History, error) { return apphistory.NewHistory(), nil }
 	model.open = func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
 		return betaAdapter, nil
 	}
@@ -723,7 +723,7 @@ func TestMidRunSwitchClearsStaleInteractionState(t *testing.T) {
 	}
 
 	model := newReadyModel(t, alphaAdapter, "alpha", connections)
-	model.newHistory = func(_ string) (*apphistory.History, error) { return apphistory.NewHistory(), nil }
+	model.newHistory = func(_ config.ConnectionIdentity) (*apphistory.History, error) { return apphistory.NewHistory(), nil }
 	model.open = func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
 		return betaAdapter, nil
 	}
@@ -1006,7 +1006,7 @@ func newReadyModel(t *testing.T, adapter *db.SQLAdapter, connName string, connec
 			return adapter, nil
 		},
 		connectionsLoader: func() (config.Connections, error) { return connections, nil },
-		newHistory:        func(_ string) (*apphistory.History, error) { return apphistory.NewHistory(), nil },
+		newHistory:        func(_ config.ConnectionIdentity) (*apphistory.History, error) { return apphistory.NewHistory(), nil },
 	})
 	// Force StateReady (the model starts in StateStartup when adapter is given).
 	model.state.SetReady("", NotificationNone)

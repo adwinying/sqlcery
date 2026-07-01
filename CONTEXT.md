@@ -135,11 +135,14 @@ The two-step Modal for configuring and triggering an Export:
 1. **Choose format** — filterable list of Export Formats
 2. **Enter path** — a relative or absolute file path; leaving it blank exports to the clipboard instead
 
+### Connection Identity
+What makes two Connections "the same" for the purpose of scoping History and the Audit Log. For a named Connection it is the pairing of its **origin** (whether it was defined globally or in a specific project) with its **name** — so a global `prod` and a project `prod` are different identities, and same-named Connections in different projects stay separate even when they currently point at the same database. For a direct Connection String it is the exact supplied text. Deliberately *not* the live database being targeted: two routes to the same database keep separate recall and audit scopes. Distinct from Connection Frecency, which scores opens by name only.
+
 ### History
-The list of Statements executed against a given Connection or Connection String. Persists across Sessions — a new Session to the same Connection resumes the same History. Used for fuzzy recall via the History Search modal (Ctrl-r). Distinct from the Audit Log, which is a flat append-only record across all Connections.
+The connection-scoped, persistent recall list of submitted Statements, including unsuccessful attempts; exact duplicates collapse to their latest submission and the 1,000 most recent unique Statements are retained. Slash Commands are excluded; distinct from the global, unbounded Audit Log.
 
 ### Audit Log
-The persistent JSON file (`$XDG_DATA_HOME/sqlcery/audit.log`) that records every executed Statement. Each entry contains: connection name, statement text, timestamp, and result summary. Written regardless of whether execution succeeded. Distinct from History.
+The global, unbounded append-only event record of every submitted Statement across all Connections, persisted at `$XDG_DATA_HOME/sqlcery/audit.log`. Each execution has correlated durable `submitted` and `completed` events; unmatched submissions have unknown outcomes, and summaries may include a (length-bounded) error string but never result rows or cell values. Scoped by Connection Identity, like History.
 
 ### Database Type
 The database engine a Connection targets. One of: SQLite, PostgreSQL, MySQL. User-facing term used in config (`type = "sqlite"/"postgres"/"mysql"`). Distinct from Dialect and from Driver Column Type.

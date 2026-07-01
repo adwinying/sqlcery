@@ -66,6 +66,9 @@ func load[T any](cwd string, fileName string) (Result[T], error) {
 		if _, err := toml.Decode(string(data), &result.Value); err != nil {
 			return Result[T]{}, &InvalidConfigError{Op: "decode", Path: path, Err: err}
 		}
+		if err := preserveConnectionOrigins(&result.Value, data, path); err != nil {
+			return Result[T]{}, fmt.Errorf("resolve connection origin %s: %w", path, err)
+		}
 
 		result.Loaded = append(result.Loaded, path)
 	}
@@ -77,6 +80,35 @@ func load[T any](cwd string, fileName string) (Result[T], error) {
 	result.Value = normalizeValue(result.Value)
 
 	return result, nil
+}
+
+func preserveConnectionOrigins[T any](value *T, data []byte, path string) error {
+	connections, ok := any(value).(*Connections)
+	if !ok {
+		return nil
+	}
+
+	var layer Connections
+	if _, err := toml.Decode(string(data), &layer); err != nil {
+		return err
+	}
+
+	origin, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return err
+	}
+	origin, err = filepath.Abs(origin)
+	if err != nil {
+		return err
+	}
+	origin = filepath.Clean(origin)
+
+	for name := range layer.Connection {
+		connection := connections.Connection[name]
+		connection.Origin = origin
+		connections.Connection[name] = connection
+	}
+	return nil
 }
 
 func validateValue[T any](value T) error {

@@ -208,7 +208,7 @@ func TestPickerSuccessTransitionsToReady(t *testing.T) {
 
 	model := newStartupPickerModel(t, modelDependencies{
 		frecencyStore: fs,
-		newHistory:    func(_ string) (*apphistory.History, error) { return apphistory.NewHistory(), nil },
+		newHistory:    func(_ config.ConnectionIdentity) (*apphistory.History, error) { return apphistory.NewHistory(), nil },
 		open: func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
 			return adapter, nil
 		},
@@ -460,7 +460,7 @@ func TestPickerAutoConnectRecordsFrecency(t *testing.T) {
 
 	model := newModelWithDependencies(Session{}, modelDependencies{
 		frecencyStore: fs,
-		newHistory:    func(_ string) (*apphistory.History, error) { return apphistory.NewHistory(), nil },
+		newHistory:    func(_ config.ConnectionIdentity) (*apphistory.History, error) { return apphistory.NewHistory(), nil },
 		open: func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
 			return adapter, nil
 		},
@@ -501,6 +501,117 @@ func TestPickerAutoConnectRecordsFrecency(t *testing.T) {
 	}
 	if got, want := fs.opens[0], "petworks-local"; got != want {
 		t.Fatalf("frecency opens[0] = %q, want %q", got, want)
+	}
+}
+
+func TestPickerAutoConnectLoadsHistoryByConnectionIdentity(t *testing.T) {
+	adapter := openTestAdapter(t)
+	defer adapter.Close()
+
+	wantIdentity := config.ConnectionIdentity("opaque-startup-identity")
+	var gotIdentity string
+	model := newModelWithDependencies(Session{}, modelDependencies{
+		newHistory: func(identity config.ConnectionIdentity) (*apphistory.History, error) {
+			gotIdentity = string(identity)
+			return apphistory.NewHistory(), nil
+		},
+		open: func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
+			return adapter, nil
+		},
+		autoConnectTarget: config.ResolvedConnection{
+			Name:       "local",
+			Identity:   wantIdentity,
+			Connection: config.Connection{Type: "sqlite", Database: ":memory:"},
+		},
+	})
+
+	next, cmd := model.Update(model.Init()())
+	model = next.(Model)
+	success := firstCommandMessageForTest[pickerConnectSuccessMsg](t, cmd)
+	_, _ = model.Update(success)
+
+	if gotIdentity != string(wantIdentity) {
+		t.Fatalf("NewHistory identity = %q, want %q", gotIdentity, wantIdentity)
+	}
+}
+
+func TestPickerSelectionLoadsHistoryByResolvedConnectionIdentity(t *testing.T) {
+	adapter := openTestAdapter(t)
+	defer adapter.Close()
+
+	connections := config.Connections{Connection: map[string]config.Connection{
+		"local": {Origin: "/project/connections.toml", Type: "sqlite", Database: ":memory:"},
+	}}
+	want, err := config.ResolveConnectionReference(connections, "local")
+	if err != nil {
+		t.Fatalf("ResolveConnectionReference() error = %v", err)
+	}
+	var gotIdentity string
+	model := newModelWithDependencies(Session{}, modelDependencies{
+		newHistory: func(identity config.ConnectionIdentity) (*apphistory.History, error) {
+			gotIdentity = string(identity)
+			return apphistory.NewHistory(), nil
+		},
+		open: func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
+			return adapter, nil
+		},
+		connectionsLoader: func() (config.Connections, error) { return connections, nil },
+	})
+
+	next, cmd := model.Update(midRunConnectMsg{name: "local"})
+	model = next.(Model)
+	next, _ = model.Update(cmd())
+	model = next.(Model)
+
+	if gotIdentity != string(want.Identity) {
+		t.Fatalf("NewHistory identity = %q, want %q", gotIdentity, want.Identity)
+	}
+	if model.session.ConnectionIdentity != want.Identity {
+		t.Fatalf("session.ConnectionIdentity = %q, want %q", model.session.ConnectionIdentity, want.Identity)
+	}
+}
+
+func TestConnectionSwitchReplacesVisibleRecallWithSelectedIdentityHistory(t *testing.T) {
+	oldAdapter := openTestAdapter(t)
+	defer oldAdapter.Close()
+	newAdapter := openTestAdapter(t)
+	defer newAdapter.Close()
+
+	selected := config.Connections{Connection: map[string]config.Connection{
+		"second": {Origin: "/project/connections.toml", Type: "sqlite", Database: ":memory:"},
+	}}
+	resolved, err := config.ResolveConnectionReference(selected, "second")
+	if err != nil {
+		t.Fatalf("ResolveConnectionReference() error = %v", err)
+	}
+	firstHistory := apphistory.NewHistory()
+	_ = firstHistory.Append("select first;")
+	secondHistory := apphistory.NewHistory()
+	_ = secondHistory.Append("select second;")
+
+	model := newModelWithDependencies(Session{ConnectionName: "first", Adapter: oldAdapter}, modelDependencies{
+		history: firstHistory,
+		newHistory: func(identity config.ConnectionIdentity) (*apphistory.History, error) {
+			if identity != resolved.Identity {
+				t.Fatalf("NewHistory identity = %q, want %q", identity, resolved.Identity)
+			}
+			return secondHistory, nil
+		},
+		open:              func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) { return newAdapter, nil },
+		closeAdapter:      func(*db.SQLAdapter) error { return nil },
+		connectionsLoader: func() (config.Connections, error) { return selected, nil },
+	})
+
+	next, cmd := model.Update(midRunConnectMsg{name: "second"})
+	model = next.(Model)
+	next, _ = model.Update(cmd())
+	model = next.(Model)
+
+	if got, want := len(model.state.Interaction.History), 1; got != want {
+		t.Fatalf("len(visible History) = %d, want %d", got, want)
+	}
+	if got, want := model.state.Interaction.History[0].Statement, "select second;"; got != want {
+		t.Fatalf("visible History Statement = %q, want %q", got, want)
 	}
 }
 
@@ -620,7 +731,7 @@ func TestPickerFrecencyRecordedExactlyOnce(t *testing.T) {
 
 	model := newStartupPickerModel(t, modelDependencies{
 		frecencyStore: fs,
-		newHistory:    func(_ string) (*apphistory.History, error) { return apphistory.NewHistory(), nil },
+		newHistory:    func(_ config.ConnectionIdentity) (*apphistory.History, error) { return apphistory.NewHistory(), nil },
 		open: func(_ context.Context, _ config.Connection) (*db.SQLAdapter, error) {
 			return adapter, nil
 		},

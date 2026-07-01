@@ -13,12 +13,13 @@ import (
 // Session carries the live runtime connection once an Adapter is open.
 // It is populated inside the Model after a successful open — not before.
 type Session struct {
-	ConnectionName  string
-	DatabaseType    string
-	ConnectionColor string
-	WorkingDir      string
-	Adapter         *db.SQLAdapter
-	MouseDisabled   bool
+	ConnectionName     string
+	ConnectionIdentity config.ConnectionIdentity
+	DatabaseType       string
+	ConnectionColor    string
+	WorkingDir         string
+	Adapter            *db.SQLAdapter
+	MouseDisabled      bool
 }
 
 type Program interface {
@@ -38,9 +39,9 @@ type FrecencyStore interface {
 type RunOptions struct {
 	// Open opens a database Adapter from a Connection config. Required.
 	Open func(context.Context, config.Connection) (*db.SQLAdapter, error)
-	// NewHistory builds a persistent History for the given connection name.
+	// NewHistory builds a persistent History for the given opaque Connection Identity.
 	// Defaults to apphistory.NewPersistentHistory when nil.
-	NewHistory func(connectionName string) (*apphistory.History, error)
+	NewHistory func(config.ConnectionIdentity) (*apphistory.History, error)
 	// ConnectionsLoader returns the current named Connections for the Picker.
 	// Defaults to an empty Connections when nil.
 	ConnectionsLoader func() (config.Connections, error)
@@ -81,7 +82,9 @@ func Run(ctx context.Context, options RunOptions) error {
 	}
 
 	if options.NewHistory == nil {
-		options.NewHistory = apphistory.NewPersistentHistory
+		options.NewHistory = func(identity config.ConnectionIdentity) (*apphistory.History, error) {
+			return apphistory.NewPersistentHistory(string(identity))
+		}
 	}
 
 	programOptions := make([]tea.ProgramOption, 0, len(options.ProgramOptions)+1)

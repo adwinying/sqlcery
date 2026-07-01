@@ -47,6 +47,7 @@ func (c Connections) Validate() error {
 }
 
 type Connection struct {
+	Origin    string                     `toml:"-"`
 	Type      string                     `toml:"type"`
 	Host      string                     `toml:"host"`
 	Port      int                        `toml:"port"`

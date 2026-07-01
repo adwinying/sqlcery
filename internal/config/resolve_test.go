@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -86,6 +88,68 @@ func TestResolveCLIConnectionDirectConnectionString(t *testing.T) {
 
 	if got, want := resolved.Connection.Password, "secret"; got != want {
 		t.Fatalf("resolved.Connection.Password = %q, want %q", got, want)
+	}
+}
+
+func TestResolveConnectionReferenceIdentitySeparatesOriginAndName(t *testing.T) {
+	connection := Connection{Type: "sqlite", Database: "same.db"}
+	resolve := func(name, origin string) ResolvedConnection {
+		t.Helper()
+		connection.Origin = origin
+		resolved, err := ResolveConnectionReference(Connections{Connection: map[string]Connection{name: connection}}, name)
+		if err != nil {
+			t.Fatalf("ResolveConnectionReference() error = %v", err)
+		}
+		return resolved
+	}
+
+	global := resolve("analytics", "/config/sqlcery/connections.toml")
+	project := resolve("analytics", "/work/project/connections.toml")
+	otherName := resolve("reporting", "/config/sqlcery/connections.toml")
+
+	if global.Identity == "" {
+		t.Fatal("global.Identity = empty")
+	}
+	if global.Identity == project.Identity {
+		t.Fatal("same name from global and project origins has the same identity")
+	}
+	if global.Identity == otherName.Identity {
+		t.Fatal("different names from the same origin have the same identity")
+	}
+	if strings.Contains(string(global.Identity), global.Name) || strings.Contains(string(global.Identity), global.Connection.Origin) {
+		t.Fatalf("global.Identity = %q, want opaque value", global.Identity)
+	}
+}
+
+func TestDirectConnectionStringIdentityIsStableDomainSeparatedAndSecret(t *testing.T) {
+	raw := "postgres://app:secret@db.example.com/warehouse?sslmode=require"
+	first, ok, err := ParseConnectionString(raw)
+	if err != nil || !ok {
+		t.Fatalf("ParseConnectionString() = (%#v, %v, %v), want accepted", first, ok, err)
+	}
+	second, _, err := ParseConnectionString(raw)
+	if err != nil {
+		t.Fatalf("ParseConnectionString(second) error = %v", err)
+	}
+
+	wantSum := sha256.Sum256([]byte("sqlcery/connection-identity/connection-string/v1\x00" + raw))
+	want := hex.EncodeToString(wantSum[:])
+	if got := string(first.Identity); got != want {
+		t.Fatalf("first.Identity = %q, want %q", got, want)
+	}
+	if first.Identity != second.Identity {
+		t.Fatalf("identities differ for exact accepted string: %q != %q", first.Identity, second.Identity)
+	}
+	if strings.Contains(string(first.Identity), "secret") || strings.Contains(string(first.Identity), raw) {
+		t.Fatalf("first.Identity = %q, want no raw connection string material", first.Identity)
+	}
+
+	different, _, err := ParseConnectionString("postgres://app:secret@db.example.com/warehouse?sslmode=disable")
+	if err != nil {
+		t.Fatalf("ParseConnectionString(different) error = %v", err)
+	}
+	if first.Identity == different.Identity {
+		t.Fatal("different accepted connection strings have the same identity")
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -69,7 +70,7 @@ func TestRunUsesProvidedHistorySession(t *testing.T) {
 		}
 	}()
 
-	historyPath := filepath.Join(t.TempDir(), apphistory.DirName, apphistory.FileName)
+	historyPath := filepath.Join(t.TempDir(), apphistory.DirName, "history.json")
 
 	// Inject a NewHistory factory that returns a file-backed history at historyPath.
 	err := Run(context.Background(), RunOptions{
@@ -81,7 +82,7 @@ func TestRunUsesProvidedHistorySession(t *testing.T) {
 			Raw:        "local",
 			Connection: config.Connection{Type: "sqlite", Database: ":memory:"},
 		},
-		NewHistory: func(_ string) (*apphistory.History, error) {
+		NewHistory: func(_ config.ConnectionIdentity) (*apphistory.History, error) {
 			return apphistory.NewFileBackedHistory(historyPath), nil
 		},
 		NewProgram: func(model tea.Model, _ ...tea.ProgramOption) Program {
@@ -123,26 +124,12 @@ func TestRunUsesProvidedHistorySession(t *testing.T) {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
 
-	var persisted struct {
-		Statement  string `json:"statement"`
-		Connection string `json:"connection"`
-		Result     string `json:"result"`
-		Time       string `json:"time"`
-	}
+	var persisted []string
 	if err := json.Unmarshal(data, &persisted); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
-	if got, want := persisted.Statement, "select 1;"; got != want {
-		t.Fatalf("persisted command = %q, want %q", got, want)
-	}
-	if got, want := persisted.Connection, "local"; got != want {
-		t.Fatalf("persisted connection = %q, want %q", got, want)
-	}
-	if got, want := persisted.Result, "Query returned 1 row."; got != want {
-		t.Fatalf("persisted result = %q, want %q", got, want)
-	}
-	if persisted.Time == "" {
-		t.Fatal("persisted time = empty, want RFC3339 timestamp")
+	if got, want := persisted, []string{"select 1;"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("persisted history = %#v, want %#v", got, want)
 	}
 }
 
@@ -179,7 +166,7 @@ func TestModelUpdateSubmitWarnsWhenHistoryPersistenceFails(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	history := apphistory.NewFileBackedHistory(filepath.Join(blockerPath, apphistory.FileName))
+	history := apphistory.NewFileBackedHistory(filepath.Join(blockerPath, "history.json"))
 	model := newModelWithDependencies(Session{ConnectionName: "local", DatabaseType: "sqlite", Adapter: adapter}, modelDependencies{history: history})
 	model.state.SetReady("", NotificationNone)
 	model.command.editor.SetValue("select 1;")
@@ -199,6 +186,31 @@ func TestModelUpdateSubmitWarnsWhenHistoryPersistenceFails(t *testing.T) {
 	}
 	if got := model.state.Notification.Text; !strings.Contains(got, "History was not persisted:") {
 		t.Fatalf("state.Status = %q, want history persistence warning", got)
+	}
+}
+
+func TestSubmittedStatementsEnterHistoryForEveryExecutionOutcome(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{name: "successful"},
+		{name: "failed", err: errors.New("constraint violation")},
+		{name: "cancelled", err: context.Canceled},
+		{name: "timed out", err: context.DeadlineExceeded},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			model := NewModel(Session{})
+			next, _ := model.Update(statementExecutedMsg{Statement: "select outcome;", Err: tt.err})
+			model = next.(Model)
+			if got, want := len(model.state.Interaction.History), 1; got != want {
+				t.Fatalf("len(History) = %d, want %d", got, want)
+			}
+			if got, want := model.state.Interaction.History[0].Statement, "select outcome;"; got != want {
+				t.Fatalf("History Statement = %q, want %q", got, want)
+			}
+		})
 	}
 }
 

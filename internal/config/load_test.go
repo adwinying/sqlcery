@@ -224,7 +224,7 @@ func TestLoadConnectionsLayersGlobalAndLocal(t *testing.T) {
 	}
 
 	globalPath := filepath.Join(globalDir, ConnectionsFileName)
-	if err := os.WriteFile(globalPath, []byte("[connection.analytics]\ntype = \"postgres\"\nhost = \"global-db\"\nport = 5432\ndatabase = \"warehouse\"\nusername = \"root\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(globalPath, []byte("[connection.analytics]\ntype = \"postgres\"\nhost = \"global-db\"\nport = 5432\ndatabase = \"warehouse\"\nusername = \"root\"\n[connection.globalonly]\ntype = \"sqlite\"\ndatabase = \"global.db\"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(global) error = %v", err)
 	}
 
@@ -275,6 +275,14 @@ func TestLoadConnectionsLayersGlobalAndLocal(t *testing.T) {
 		t.Fatalf("analytics.Username = %q, want %q", got, want)
 	}
 
+	canonicalLocalPath, err := filepath.EvalSymlinks(localPath)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(localPath) error = %v", err)
+	}
+	if got, want := analytics.Origin, canonicalLocalPath; got != want {
+		t.Fatalf("analytics.Origin = %q, want %q", got, want)
+	}
+
 	cache, ok := result.Value.Connection["cache"]
 	if !ok {
 		t.Fatal("result.Value.Connection[\"cache\"] missing")
@@ -298,6 +306,18 @@ func TestLoadConnectionsLayersGlobalAndLocal(t *testing.T) {
 
 	if got, want := cache.Username, "cache-user"; got != want {
 		t.Fatalf("cache.Username = %q, want %q", got, want)
+	}
+
+	if got, want := cache.Origin, canonicalLocalPath; got != want {
+		t.Fatalf("cache.Origin = %q, want %q", got, want)
+	}
+
+	canonicalGlobalPath, err := filepath.EvalSymlinks(globalPath)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(globalPath) error = %v", err)
+	}
+	if got, want := result.Value.Connection["globalonly"].Origin, canonicalGlobalPath; got != want {
+		t.Fatalf("globalonly.Origin = %q, want %q", got, want)
 	}
 
 	local, ok := result.Value.Connection["local"]

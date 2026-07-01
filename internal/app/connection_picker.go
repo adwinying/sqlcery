@@ -82,12 +82,13 @@ func (m Model) handlePickerConnectSuccess(msg pickerConnectSuccessMsg) (Model, t
 
 	// Build the session.
 	m.session = Session{
-		ConnectionName:  msg.resolved.Name,
-		DatabaseType:    msg.resolved.Connection.Type,
-		ConnectionColor: msg.resolved.Connection.Color,
-		WorkingDir:      m.session.WorkingDir,
-		Adapter:         msg.adapter,
-		MouseDisabled:   m.session.MouseDisabled,
+		ConnectionName:     msg.resolved.Name,
+		ConnectionIdentity: msg.resolved.Identity,
+		DatabaseType:       msg.resolved.Connection.Type,
+		ConnectionColor:    msg.resolved.Connection.Color,
+		WorkingDir:         m.session.WorkingDir,
+		Adapter:            msg.adapter,
+		MouseDisabled:      m.session.MouseDisabled,
 	}
 
 	// Record frecency for named connections only.
@@ -98,7 +99,7 @@ func (m Model) handlePickerConnectSuccess(msg pickerConnectSuccessMsg) (Model, t
 	// Build history.
 	var history *apphistory.History
 	if m.newHistory != nil {
-		h, err := m.newHistory(msg.resolved.Name)
+		h, err := m.newHistory(msg.resolved.Identity)
 		if err == nil {
 			history = h
 		} else {

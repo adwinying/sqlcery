@@ -8,31 +8,21 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 )
 
 const (
-	DirName               = "sqlcery"
-	FileName              = "audit.log"
-	maxAuditLogSize       = 1 << 20
-	rotatedAuditLogSuffix = ".1"
-	maxLoadedEntries      = 1000
+	DirName        = "sqlcery"
+	HistoryDirName = "history"
+	MaxEntries     = 1000
 )
 
-type Entry struct {
-	Statement      string
-	ConnectionName string
-	ExecutedAt     time.Time
-	ResultSummary  string
-}
-
 type store interface {
-	Append(Entry) error
+	Save([]string) error
 }
 
 type History struct {
-	entries []Entry
-	store   store
+	statements []string
+	store      store
 }
 
 func NewHistory() *History {
@@ -43,144 +33,87 @@ func NewFileBackedHistory(path string) *History {
 	if strings.TrimSpace(path) == "" {
 		return NewHistory()
 	}
-
-	return &History{store: auditLogStore{path: path}}
+	return &History{store: fileStore{path: path}}
 }
 
-func NewPersistentHistory(connectionName string) (*History, error) {
-	path, err := DefaultPath()
+func NewPersistentHistory(identity string) (*History, error) {
+	path, err := DefaultPath(identity)
 	if err != nil {
 		return nil, err
 	}
-
-	entries, err := LoadFromFile(path, connectionName)
+	statements, err := loadStatements(path)
 	if err != nil {
 		return nil, err
 	}
-
-	h := NewFileBackedHistory(path)
-	h.entries = entries
-	return h, nil
+	return &History{statements: statements, store: fileStore{path: path}}, nil
 }
 
-// LoadFromFile reads persisted history entries from path and path+".1" (if it
-// exists), filters to the given connectionName, deduplicates keeping the most
-// recent occurrence of each command, and returns at most maxLoadedEntries
-// entries in chronological order.
-func LoadFromFile(path string, connectionName string) ([]Entry, error) {
-	var all []Entry
-	// Read the older rotated file first so entries are in chronological order.
-	for _, p := range []string{path + rotatedAuditLogSuffix, path} {
-		entries, err := readAuditLogFile(p)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			return nil, fmt.Errorf("read history file %s: %w", p, err)
-		}
-		all = append(all, entries...)
+func DefaultPath(identity string) (string, error) {
+	identity = strings.TrimSpace(identity)
+	if identity == "" || filepath.Base(identity) != identity {
+		return "", fmt.Errorf("connection identity is required")
 	}
-
-	// Filter to the requested connection.
-	filtered := make([]Entry, 0, len(all))
-	for _, e := range all {
-		if e.ConnectionName == connectionName {
-			filtered = append(filtered, e)
-		}
-	}
-
-	// Deduplicate: walk backwards so the first occurrence we encounter is the
-	// most recent; skip any command we have already seen.
-	seen := make(map[string]struct{}, len(filtered))
-	deduped := make([]Entry, 0, len(filtered))
-	for i := len(filtered) - 1; i >= 0; i-- {
-		statement := filtered[i].Statement
-		if _, ok := seen[statement]; ok {
-			continue
-		}
-		seen[statement] = struct{}{}
-		deduped = append(deduped, filtered[i])
-	}
-
-	// Restore chronological (oldest-first) order.
-	for i, j := 0, len(deduped)-1; i < j; i, j = i+1, j-1 {
-		deduped[i], deduped[j] = deduped[j], deduped[i]
-	}
-
-	// Cap to the most recent maxLoadedEntries entries.
-	if len(deduped) > maxLoadedEntries {
-		deduped = deduped[len(deduped)-maxLoadedEntries:]
-	}
-
-	return deduped, nil
-}
-
-// readAuditLogFile reads all valid JSONL history entries from a single file.
-// Malformed lines are silently skipped.
-func readAuditLogFile(path string) ([]Entry, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var entries []Entry
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var pe persistedEntry
-		if err := json.Unmarshal([]byte(line), &pe); err != nil {
-			continue // skip malformed lines
-		}
-		entries = append(entries, Entry{
-			Statement:      pe.Statement,
-			ConnectionName: pe.Connection,
-			ExecutedAt:     pe.Time,
-			ResultSummary:  pe.Result,
-		})
-	}
-	return entries, nil
-}
-
-func DefaultPath() (string, error) {
 	dataHome, err := resolveDataHome(os.UserHomeDir, runtime.GOOS)
 	if err != nil {
 		return "", fmt.Errorf("resolve user data dir: %w", err)
 	}
-
-	return filepath.Join(dataHome, DirName, FileName), nil
+	return filepath.Join(dataHome, DirName, HistoryDirName, identity+".json"), nil
 }
 
-func (s *History) Append(entry Entry) error {
-	if s == nil || strings.TrimSpace(entry.Statement) == "" {
-		return nil
+func loadStatements(path string) ([]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read history file %s: %w", path, err)
 	}
-
-	s.entries = append(s.entries, entry)
-	if s.store == nil {
-		return nil
+	var statements []string
+	if err := json.Unmarshal(data, &statements); err != nil {
+		return nil, fmt.Errorf("decode history file %s: %w", path, err)
 	}
-
-	return s.store.Append(entry)
+	normalized := NewHistory()
+	for _, statement := range statements {
+		if err := normalized.Append(statement); err != nil {
+			return nil, err
+		}
+	}
+	return normalized.statements, nil
 }
 
-func (s *History) Entries() []Entry {
-	if s == nil || len(s.entries) == 0 {
+func (h *History) Append(statement string) error {
+	if h == nil || strings.TrimSpace(statement) == "" {
 		return nil
 	}
-
-	entries := make([]Entry, len(s.entries))
-	copy(entries, s.entries)
-	return entries
+	for i, existing := range h.statements {
+		if existing == statement {
+			copy(h.statements[i:], h.statements[i+1:])
+			h.statements = h.statements[:len(h.statements)-1]
+			break
+		}
+	}
+	h.statements = append(h.statements, statement)
+	if len(h.statements) > MaxEntries {
+		h.statements = h.statements[len(h.statements)-MaxEntries:]
+	}
+	if h.store == nil {
+		return nil
+	}
+	return h.store.Save(h.statements)
 }
 
-func (s *History) Latest() (Entry, bool) {
-	if s == nil || len(s.entries) == 0 {
-		return Entry{}, false
+func (h *History) Entries() []string {
+	if h == nil || len(h.statements) == 0 {
+		return nil
 	}
+	return append([]string(nil), h.statements...)
+}
 
-	return s.entries[len(s.entries)-1], true
+func (h *History) Latest() (string, bool) {
+	if h == nil || len(h.statements) == 0 {
+		return "", false
+	}
+	return h.statements[len(h.statements)-1], true
 }
 
 func resolveDataHome(userHomeDir func() (string, error), goos string) (string, error) {
@@ -190,111 +123,50 @@ func resolveDataHome(userHomeDir func() (string, error), goos string) (string, e
 		}
 		return dir, nil
 	}
-
 	homeDir, err := userHomeDir()
 	if err != nil {
 		return "", err
 	}
-
 	if goos == "windows" {
 		return filepath.Join(homeDir, "AppData", "Local"), nil
 	}
-
 	return filepath.Join(homeDir, ".local", "share"), nil
 }
 
-type auditLogStore struct {
+type fileStore struct {
 	path string
 }
 
-type persistedEntry struct {
-	Statement  string    `json:"statement"`
-	Connection string    `json:"connection"`
-	Time       time.Time `json:"time"`
-	Result     string    `json:"result,omitempty"`
-}
-
-func newPersistedEntry(entry Entry) persistedEntry {
-	return persistedEntry{
-		Statement:  strings.TrimRight(entry.Statement, "\n"),
-		Connection: entry.ConnectionName,
-		Time:       entry.ExecutedAt,
-		Result:     boundResultSummary(entry.ResultSummary),
-	}
-}
-
-func boundResultSummary(value string) string {
-	const maxRunes = 120
-
-	trimmed := strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
-	if trimmed == "" {
-		return ""
-	}
-
-	runes := []rune(trimmed)
-	if len(runes) <= maxRunes {
-		return trimmed
-	}
-
-	if maxRunes <= 3 {
-		return string(runes[:maxRunes])
-	}
-
-	return string(runes[:maxRunes-3]) + "..."
-}
-
-func (s auditLogStore) Append(entry Entry) error {
-	if strings.TrimSpace(entry.Statement) == "" {
-		return nil
-	}
-
+func (s fileStore) Save(statements []string) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
-		return fmt.Errorf("create audit log dir: %w", err)
+		return fmt.Errorf("create history dir: %w", err)
 	}
-
-	line, err := json.Marshal(newPersistedEntry(entry))
+	data, err := json.Marshal(statements)
 	if err != nil {
-		return fmt.Errorf("marshal history entry: %w", err)
+		return fmt.Errorf("marshal history: %w", err)
 	}
-	line = append(line, '\n')
+	data = append(data, '\n')
 
-	if err := s.rotateIfNeeded(int64(len(line))); err != nil {
-		return err
-	}
-
-	file, err := os.OpenFile(s.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	temporary, err := os.CreateTemp(filepath.Dir(s.path), ".history-*.tmp")
 	if err != nil {
-		return fmt.Errorf("open audit log: %w", err)
+		return fmt.Errorf("create history temp file: %w", err)
 	}
-	defer file.Close()
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
 
-	if _, err := file.Write(line); err != nil {
-		return fmt.Errorf("append audit log: %w", err)
+	if err := temporary.Chmod(0o644); err != nil {
+		temporary.Close()
+		return fmt.Errorf("set history temp file permissions: %w", err)
 	}
-
-	return nil
-}
-
-func (s auditLogStore) rotateIfNeeded(nextWriteSize int64) error {
-	info, err := os.Stat(s.path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return fmt.Errorf("stat audit log: %w", err)
+	if _, err := temporary.Write(data); err != nil {
+		temporary.Close()
+		return fmt.Errorf("write history temp file: %w", err)
 	}
-
-	if info.Size()+nextWriteSize <= maxAuditLogSize {
-		return nil
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("close history temp file: %w", err)
 	}
-
-	rotatedPath := s.path + rotatedAuditLogSuffix
-	if err := os.Remove(rotatedPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("remove rotated audit log: %w", err)
+	if err := os.Rename(temporaryPath, s.path); err != nil {
+		return fmt.Errorf("replace history file: %w", err)
 	}
-	if err := os.Rename(s.path, rotatedPath); err != nil {
-		return fmt.Errorf("rotate audit log: %w", err)
-	}
-
 	return nil
 }

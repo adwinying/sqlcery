@@ -45,7 +45,7 @@ type Model struct {
 	cancelConnect       context.CancelFunc // non-nil while a connect is in flight
 	open                func(context.Context, config.Connection) (*db.SQLAdapter, error)
 	closeAdapter        func(*db.SQLAdapter) error // defaults to (*db.SQLAdapter).Close; injectable for tests
-	newHistory          func(connectionName string) (*apphistory.History, error)
+	newHistory          func(config.ConnectionIdentity) (*apphistory.History, error)
 	connectionsLoader   func() (config.Connections, error)
 	reloadConnections   func() error // re-reads disk and refreshes the connectionsLoader cache
 	frecencyStore       FrecencyStore
@@ -60,7 +60,7 @@ type modelDependencies struct {
 	version           string
 	open              func(context.Context, config.Connection) (*db.SQLAdapter, error)
 	closeAdapter      func(*db.SQLAdapter) error // defaults to (*db.SQLAdapter).Close; injectable for tests
-	newHistory        func(connectionName string) (*apphistory.History, error)
+	newHistory        func(config.ConnectionIdentity) (*apphistory.History, error)
 	connectionsLoader func() (config.Connections, error)
 	reloadConnections func() error // re-reads disk and refreshes the connectionsLoader cache
 	frecencyStore     FrecencyStore
@@ -709,7 +709,7 @@ func (m Model) handleCancelRunningIntent() (tea.Model, tea.Cmd) {
 func (m Model) handleStatementExecuted(msg statementExecutedMsg) (tea.Model, tea.Cmd) {
 	running := m.state.Interaction.Running
 	m.state.SetRunningStatementContext(m.exec.complete())
-	historyErr := m.appendHistory(msg.Statement, msg.ResultSummary)
+	historyErr := m.appendHistory(msg.Statement)
 	m.state.Interaction.PendingIntent = IntentNone
 	m.state.Interaction.LastAction = "submit"
 	m.state.SetPendingPaneSwitch(nil)
@@ -736,12 +736,6 @@ func (m Model) handleStatementExecuted(msg statementExecutedMsg) (tea.Model, tea
 func (m Model) handleSlashCommandExecuted(msg slashCommandExecutedMsg) (tea.Model, tea.Cmd) {
 	running := m.state.Interaction.Running
 	m.state.SetRunningStatementContext(m.exec.complete())
-	shouldRecordSlashCommand := msg.Err != nil || !msg.Result.ShouldReplace
-	var historyErr error
-	if shouldRecordSlashCommand {
-		historyErr = m.appendHistory(msg.Command.RawInput, msg.ResultSummary)
-		m.state.SetLastSubmittedSQL(msg.Command.RawInput)
-	}
 	m.state.Interaction.PendingIntent = IntentNone
 	m.state.Interaction.LastAction = "slash:" + msg.Command.DisplayName
 	m.state.SetPendingPaneSwitch(nil)
@@ -750,11 +744,11 @@ func (m Model) handleSlashCommandExecuted(msg slashCommandExecutedMsg) (tea.Mode
 		m.command.AppendReplEntry("> ", msg.Command.RawInput, "ERROR: "+strings.TrimSpace(msg.Err.Error()))
 		m.command.Clear()
 		if status, ok := executionInterruptedStatus(running, msg.Err); ok {
-			m.state.SetReady(withHistoryWarning(status, historyErr), historyNotificationLevel(NotificationInfo, historyErr))
+			m.state.SetReady(status, NotificationInfo)
 			m.state.SetLatestResultContext(nil)
 			return m, m.notificationClearCmdIfSet()
 		}
-		m.state.SetReady(withHistoryWarning(formatOperationFailure(msg.Command.DisplayName+" failed", msg.Err), historyErr), NotificationError)
+		m.state.SetReady(formatOperationFailure(msg.Command.DisplayName+" failed", msg.Err), NotificationError)
 		m.state.SetLatestResultContext(nil)
 		return m, m.notificationClearCmdIfSet()
 	}
@@ -778,7 +772,7 @@ func (m Model) handleSlashCommandExecuted(msg slashCommandExecutedMsg) (tea.Mode
 		m.state.SetLatestResultContext(nil)
 	}
 
-	m.state.SetReady(withHistoryWarning(defaultStatus(msg.Result.Status, fmt.Sprintf("%s completed.", msg.Command.DisplayName)), historyErr), historyNotificationLevel(NotificationSuccess, historyErr))
+	m.state.SetReady(defaultStatus(msg.Result.Status, fmt.Sprintf("%s completed.", msg.Command.DisplayName)), NotificationSuccess)
 	return m, m.notificationClearCmdIfSet()
 }
 
@@ -1489,27 +1483,20 @@ func (m *Model) syncHistorySnapshot() {
 
 	entries := m.history.Entries()
 	contexts := make([]HistoryEntryContext, 0, len(entries))
-	for _, entry := range entries {
+	for _, statement := range entries {
 		contexts = append(contexts, HistoryEntryContext{
-			Statement:      entry.Statement,
-			ConnectionName: entry.ConnectionName,
-			ExecutedAt:     entry.ExecutedAt,
+			Statement: statement,
 		})
 	}
 	m.state.SetHistory(contexts)
 }
 
-func (m *Model) appendHistory(statement, resultSummary string) error {
+func (m *Model) appendHistory(statement string) error {
 	if m.history == nil || strings.TrimSpace(statement) == "" {
 		return nil
 	}
 
-	err := m.history.Append(apphistory.Entry{
-		Statement:      statement,
-		ConnectionName: m.session.ConnectionName,
-		ExecutedAt:     time.Now().UTC(),
-		ResultSummary:  resultSummary,
-	})
+	err := m.history.Append(statement)
 	m.syncHistorySnapshot()
 	return err
 }
