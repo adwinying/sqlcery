@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
@@ -611,15 +612,17 @@ func TestAuditSubmissionDoesNotExposeDirectConnectionString(t *testing.T) {
 	}
 }
 
-func TestAuditDefersCancellationCompletionClassification(t *testing.T) {
+func TestAuditClassifiesManualCancellationAsCancelled(t *testing.T) {
 	adapter := openTestAdapter(t)
 	t.Cleanup(func() { _ = adapter.Close() })
-	completedCalls := 0
+	var completed appaudit.CompletedEvent
+	wantAuditErr := errors.New("cancelled completion unavailable")
 	model := newModelWithDependencies(Session{Adapter: adapter}, modelDependencies{
-		audit: fakeAudit{appendCompleted: func(appaudit.CompletedEvent) error {
-			completedCalls++
-			return nil
+		audit: fakeAudit{appendCompleted: func(event appaudit.CompletedEvent) error {
+			completed = event
+			return wantAuditErr
 		}},
+		newExecutionIdentity: func() string { return "cancelled-execution" },
 	})
 	model.state.SetReady("", NotificationNone)
 	model.command.editor.SetValue("select 1;")
@@ -629,9 +632,91 @@ func TestAuditDefersCancellationCompletionClassification(t *testing.T) {
 	model = next.(Model)
 	next, _ = model.Update(cancelRunningIntentMsg{})
 	model = next.(Model)
-	_ = firstCommandMessageForTest[statementExecutedMsg](t, cmd)
+	executed := firstCommandMessageForTest[statementExecutedMsg](t, cmd)
+	next, _ = model.Update(executed)
+	model = next.(Model)
 
-	if completedCalls != 0 {
-		t.Fatalf("completed Audit calls = %d, want cancellation classification deferred", completedCalls)
+	if completed.ExecutionIdentity != "cancelled-execution" {
+		t.Fatalf("completion execution identity = %q, want correlated identity", completed.ExecutionIdentity)
+	}
+	if completed.Outcome != appaudit.OutcomeCancelled {
+		t.Fatalf("completion outcome = %q, want cancelled", completed.Outcome)
+	}
+	if completed.ResultSummary.Error == "" {
+		t.Fatal("completion summary error is empty, want useful cancellation metadata")
+	}
+	if pending := model.state.Interaction.PendingAuditCompletion; pending == nil || *pending != completed {
+		t.Fatalf("pending Audit completion = %#v, want exact cancelled event %#v", pending, completed)
+	}
+	if latest, ok := model.history.Latest(); !ok || latest != "select 1;" {
+		t.Fatalf("History latest = %q, %v; want cancelled Statement retained", latest, ok)
+	}
+	if got := model.state.Notification.Text; !strings.Contains(got, "Cancelled SQL") || !strings.Contains(got, wantAuditErr.Error()) {
+		t.Fatalf("notification = %q, want friendly cancellation and Audit recovery feedback", got)
+	}
+}
+
+func TestAuditClassifiesDeadlineAndRetainsTimedOutStatementInHistory(t *testing.T) {
+	adapter := openTestAdapter(t)
+	t.Cleanup(func() { _ = adapter.Close() })
+	var completed appaudit.CompletedEvent
+	model := newModelWithDependencies(Session{Adapter: adapter}, modelDependencies{
+		audit: fakeAudit{appendCompleted: func(event appaudit.CompletedEvent) error {
+			completed = event
+			return nil
+		}},
+		newExecutionIdentity: func() string { return "timed-out-execution" },
+		executionTimeout:     time.Nanosecond,
+	})
+	model.state.SetReady("", NotificationNone)
+	statement := "select 1;"
+	model.command.editor.SetValue(statement)
+	model.syncCurrentSQL()
+
+	next, cmd := model.Update(submitIntentMsg{})
+	model = next.(Model)
+	next, _ = model.Update(firstCommandMessageForTest[statementExecutedMsg](t, cmd))
+	model = next.(Model)
+
+	if completed.ExecutionIdentity != "timed-out-execution" {
+		t.Fatalf("completion execution identity = %q, want correlated identity", completed.ExecutionIdentity)
+	}
+	if completed.Outcome != appaudit.OutcomeTimedOut {
+		t.Fatalf("completion outcome = %q, want timed_out", completed.Outcome)
+	}
+	if completed.ResultSummary.Error == "" {
+		t.Fatal("completion summary error is empty, want useful timeout metadata")
+	}
+	if latest, ok := model.history.Latest(); !ok || latest != statement {
+		t.Fatalf("History latest = %q, %v; want timed-out Statement retained", latest, ok)
+	}
+	if got := model.state.Notification.Text; !strings.Contains(got, "timed out") {
+		t.Fatalf("notification = %q, want friendly timeout feedback", got)
+	}
+}
+
+func TestStaleInterruptedExecutionMessageDoesNotCompleteNewerExecution(t *testing.T) {
+	model := NewModel(Session{})
+	model.state.SetReady("new execution still running", NotificationInfo)
+	model.state.SetRunningStatementContext(&RunningStatementContext{
+		Label:             "SQL",
+		ExecutionIdentity: "new-execution",
+	})
+
+	next, _ := model.Update(statementExecutedMsg{
+		ExecutionIdentity: "old-execution",
+		Statement:         "select old_work();",
+		Err:               context.Canceled,
+	})
+	model = next.(Model)
+
+	if running := model.state.Interaction.Running; running == nil || running.ExecutionIdentity != "new-execution" {
+		t.Fatalf("Running Statement = %#v, want newer execution unchanged", running)
+	}
+	if _, ok := model.history.Latest(); ok {
+		t.Fatal("History changed for stale execution message")
+	}
+	if got := model.state.Notification.Text; got != "new execution still running" {
+		t.Fatalf("notification = %q, want newer execution feedback unchanged", got)
 	}
 }

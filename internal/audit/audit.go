@@ -14,8 +14,10 @@ import (
 type Outcome string
 
 const (
-	OutcomeSuccess Outcome = "success"
-	OutcomeFailure Outcome = "failure"
+	OutcomeSuccess   Outcome = "success"
+	OutcomeFailure   Outcome = "failure"
+	OutcomeCancelled Outcome = "cancelled"
+	OutcomeTimedOut  Outcome = "timed_out"
 )
 
 type SubmittedEvent struct {

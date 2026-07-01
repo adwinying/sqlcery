@@ -115,10 +115,11 @@ type InteractionState struct {
 }
 
 type RunningStatementContext struct {
-	Label        string
-	StartedAt    time.Time
-	Elapsed      time.Duration
-	SpinnerFrame int
+	Label             string
+	ExecutionIdentity string
+	StartedAt         time.Time
+	Elapsed           time.Duration
+	SpinnerFrame      int
 }
 
 type SlashCommandWizardStep string

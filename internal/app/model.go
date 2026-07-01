@@ -67,6 +67,7 @@ type modelDependencies struct {
 	audit                appaudit.Appender
 	now                  func() time.Time
 	newExecutionIdentity func() string
+	executionTimeout     time.Duration
 	version              string
 	open                 func(context.Context, config.Connection) (*db.SQLAdapter, error)
 	closeAdapter         func(*db.SQLAdapter) error // defaults to (*db.SQLAdapter).Close; injectable for tests
@@ -149,13 +150,14 @@ type focusPaneIntentMsg struct {
 type clearInputIntentMsg struct{}
 
 type statementExecutedMsg struct {
-	Statement       string
-	Result          *db.StatementResult
-	ResultSummary   string
-	Err             error
-	AuditErr        error
-	AuditCompletion *appaudit.CompletedEvent
-	AdapterInvoked  bool
+	ExecutionIdentity string
+	Statement         string
+	Result            *db.StatementResult
+	ResultSummary     string
+	Err               error
+	AuditErr          error
+	AuditCompletion   *appaudit.CompletedEvent
+	AdapterInvoked    bool
 }
 
 type auditCompletionRetriedMsg struct {
@@ -307,6 +309,7 @@ func newModelWithDependencies(session Session, deps modelDependencies) Model {
 		audit:                auditAppender,
 		now:                  now,
 		newExecutionIdentity: newExecutionIdentity,
+		exec:                 executionCoordinator{timeout: deps.executionTimeout},
 		command:              newCommandModeModel(),
 		resultsPane:          newResultsPaneModeModel(deps.version),
 		state:                initialState,
@@ -753,7 +756,7 @@ func (m Model) handleSubmitIntent() (tea.Model, tea.Cmd) {
 		return m, m.notificationClearCmdIfSet()
 	}
 	executionIdentity := m.newExecutionIdentity()
-	return m, m.startExecution("SQL", fmt.Sprintf("Executing %d characters of SQL.", len(submittedSQL)), NotificationInfo, executeStatementCmd(m.session, m.audit, m.now, executionIdentity, submittedSQL))
+	return m, m.startExecutionWithIdentity("SQL", fmt.Sprintf("Executing %d characters of SQL.", len(submittedSQL)), NotificationInfo, executionIdentity, executeStatementCmd(m.session, m.audit, m.now, executionIdentity, submittedSQL))
 }
 
 func (m Model) handleCancelRunningIntent() (tea.Model, tea.Cmd) {
@@ -766,6 +769,9 @@ func (m Model) handleCancelRunningIntent() (tea.Model, tea.Cmd) {
 
 func (m Model) handleStatementExecuted(msg statementExecutedMsg) (tea.Model, tea.Cmd) {
 	running := m.state.Interaction.Running
+	if running != nil && running.ExecutionIdentity != "" && msg.ExecutionIdentity != "" && running.ExecutionIdentity != msg.ExecutionIdentity {
+		return m, nil
+	}
 	m.state.SetRunningStatementContext(m.exec.complete())
 	if msg.AuditErr != nil && !msg.AdapterInvoked {
 		m.state.Interaction.PendingIntent = IntentNone
@@ -1611,10 +1617,15 @@ func loadAutocompleteSchemaCmd(adapter *db.SQLAdapter, loader autocompleteSchema
 }
 
 func (m *Model) startExecution(label, status string, level NotificationLevel, execute func(context.Context, time.Time) tea.Cmd) tea.Cmd {
+	return m.startExecutionWithIdentity(label, status, level, "", execute)
+}
+
+func (m *Model) startExecutionWithIdentity(label, status string, level NotificationLevel, executionIdentity string, execute func(context.Context, time.Time) tea.Cmd) tea.Cmd {
 	if execute == nil {
 		return nil
 	}
 	running, execCmd := m.exec.begin(label, execute)
+	running.ExecutionIdentity = executionIdentity
 	m.state.SetRunningStatementContext(running)
 	m.state.SetReady("", NotificationNone)
 	m.state.SetPendingIntent(IntentSubmit, "submit", executionStatus(status, defaultInteractiveExecutionTimeout), level)
@@ -1818,23 +1829,20 @@ func executeStatementCmd(session Session, auditLog appaudit.Appender, now func()
 	return func(ctx context.Context, _ time.Time) tea.Cmd {
 		return func() tea.Msg {
 			if session.Adapter == nil {
-				return statementExecutedMsg{Statement: statement, ResultSummary: "error: adapter is required", Err: fmt.Errorf("adapter is required")}
+				return statementExecutedMsg{ExecutionIdentity: executionIdentity, Statement: statement, ResultSummary: "error: adapter is required", Err: fmt.Errorf("adapter is required")}
 			}
 			if err := auditLog.AppendSubmitted(appaudit.SubmittedEvent{
 				Event: "submitted", ExecutionIdentity: executionIdentity,
 				ConnectionIdentity: string(session.ConnectionIdentity), ConnectionName: session.ConnectionName,
 				ConnectionOrigin: session.ConnectionOrigin, Statement: statement, Timestamp: now().UTC(),
 			}); err != nil {
-				return statementExecutedMsg{Statement: statement, AuditErr: err}
+				return statementExecutedMsg{ExecutionIdentity: executionIdentity, Statement: statement, AuditErr: err}
 			}
 
 			result, err := session.Adapter.ExecuteStatementContext(ctx, statement, db.ResultOptions{Source: inferQuerySourceTable(statement)})
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return statementExecutedMsg{Statement: statement, Result: result, ResultSummary: summarizeStatementResult(result, err), Err: err, AdapterInvoked: true}
-			}
-			completion := newAuditCompletedEvent(executionIdentity, now().UTC(), result, err)
+			completion := newAuditCompletedEvent(executionIdentity, now().UTC(), result, err, ctx.Err())
 			auditErr := auditLog.AppendCompleted(completion)
-			return statementExecutedMsg{Statement: statement, Result: result, ResultSummary: summarizeStatementResult(result, err), Err: err, AuditErr: auditErr, AuditCompletion: &completion, AdapterInvoked: true}
+			return statementExecutedMsg{ExecutionIdentity: executionIdentity, Statement: statement, Result: result, ResultSummary: summarizeStatementResult(result, err), Err: err, AuditErr: auditErr, AuditCompletion: &completion, AdapterInvoked: true}
 		}
 	}
 }
@@ -1845,13 +1853,20 @@ func retryAuditCompletionCmd(auditLog appaudit.Appender, completion appaudit.Com
 	}
 }
 
-func newAuditCompletedEvent(executionIdentity string, timestamp time.Time, result *db.StatementResult, executionErr error) appaudit.CompletedEvent {
+func newAuditCompletedEvent(executionIdentity string, timestamp time.Time, result *db.StatementResult, executionErr, contextErr error) appaudit.CompletedEvent {
 	event := appaudit.CompletedEvent{
 		Event: "completed", ExecutionIdentity: executionIdentity, Timestamp: timestamp,
 		Outcome: appaudit.OutcomeSuccess,
 	}
 	if executionErr != nil {
-		event.Outcome = appaudit.OutcomeFailure
+		switch {
+		case errors.Is(contextErr, context.DeadlineExceeded), errors.Is(executionErr, context.DeadlineExceeded):
+			event.Outcome = appaudit.OutcomeTimedOut
+		case errors.Is(contextErr, context.Canceled), errors.Is(executionErr, context.Canceled):
+			event.Outcome = appaudit.OutcomeCancelled
+		default:
+			event.Outcome = appaudit.OutcomeFailure
+		}
 		event.ResultSummary.Error = boundAuditError(executionErr.Error())
 		return event
 	}

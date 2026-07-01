@@ -38,6 +38,7 @@ type runningTickMsg struct {
 // serves non-execution feedback).
 type executionCoordinator struct {
 	cancelFn context.CancelFunc
+	timeout  time.Duration
 }
 
 // begin starts a new in-flight execution. It cancels any previous one, opens a
@@ -48,7 +49,11 @@ func (ec *executionCoordinator) begin(label string, execute func(context.Context
 		ec.cancelFn()
 	}
 	startedAt := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), defaultInteractiveExecutionTimeout)
+	timeout := ec.timeout
+	if timeout <= 0 {
+		timeout = defaultInteractiveExecutionTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	ec.cancelFn = cancel
 	return newRunningStatementContext(label, startedAt), tea.Batch(execute(ctx, startedAt), runningTickCmd(startedAt))
 }
